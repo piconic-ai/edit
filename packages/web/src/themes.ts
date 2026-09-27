@@ -245,7 +245,8 @@ export const CARET_HALO = '#ffffff'
 export const readerTheme: Extension = [
   Prec.highest(
     EditorView.theme({
-      '&': { fontSize: 'var(--editor-font-size)' },
+      // --editor-font-floor keeps iOS from zooming in when the editor gets focus (style.css).
+      '&': { fontSize: 'max(var(--editor-font-floor, 0px), var(--editor-font-size))' },
       '.cm-scroller': {
         fontFamily: 'var(--editor-font)',
         lineHeight: 'var(--editor-line-height)',

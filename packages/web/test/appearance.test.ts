@@ -6,6 +6,9 @@ import {
   applyPage,
   applyText,
   DEFAULT_APPEARANCE,
+  FONT_SIZE,
+  fontSizeRange,
+  IOS_FONT_FLOOR,
   loadAppearance,
   parseAppearance,
   pickTheme,
@@ -170,5 +173,15 @@ describe('applyPage / applyText', () => {
     expect(root.style.getPropertyValue('--editor-line-height')).toBe('1.4')
     applyText(DEFAULT_APPEARANCE, root)
     expect(root.style.getPropertyValue('--editor-font')).toBe('var(--mono)')
+  })
+})
+
+describe('fontSizeRange', () => {
+  it('offers the full range off iOS', () => {
+    expect(fontSizeRange(false)).toEqual(FONT_SIZE)
+  })
+
+  it('starts at the size iOS shows anyway, so every step changes the text', () => {
+    expect(fontSizeRange(true)).toEqual({ ...FONT_SIZE, min: IOS_FONT_FLOOR })
   })
 })

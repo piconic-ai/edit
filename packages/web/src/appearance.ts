@@ -24,6 +24,13 @@ export interface Appearance {
 }
 
 export const FONT_SIZE = { min: 12, max: 24, step: 1 } as const
+/** iOS zooms in on focused text under 16px; style.css keeps the editor at this size or more there. */
+export const IOS_FONT_FLOOR = 16
+
+/** The font sizes worth offering: on iOS, smaller ones would show at the floor anyway. */
+export function fontSizeRange(ios: boolean): { min: number; max: number; step: number } {
+  return { ...FONT_SIZE, min: ios ? IOS_FONT_FLOOR : FONT_SIZE.min }
+}
 export const LINE_HEIGHT = { min: 1.2, max: 2, step: 0.1 } as const
 
 export const DEFAULT_APPEARANCE: Appearance = {

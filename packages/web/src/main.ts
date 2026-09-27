@@ -10,18 +10,20 @@ import {
   type Appearance,
   applyPage,
   applyText,
-  FONT_SIZE,
   type Font,
+  fontSizeRange,
   LINE_HEIGHT,
   loadAppearance,
   pickTheme,
   resolveAppearance,
   saveAppearance,
 } from './appearance.ts'
+import { copyButton } from './copy.ts'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
 import { resolveLanguage } from './language.ts'
 import { PreviewPane } from './pane.ts'
+import { expandOnTap, setMore } from './people.ts'
 import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
 import { createSettings, type Settings } from './settings.ts'
 import { Splitter } from './splitter.ts'
@@ -34,6 +36,7 @@ import {
   ThemeSwitcher,
 } from './themes.ts'
 import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
+import { trackViewport } from './viewport.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
 import './style.css'
 
@@ -188,10 +191,11 @@ function addAppearanceSettings(
     editor.requestMeasure()
   }
   settings.addSection('Text')
+  const fontSize = fontSizeRange(CSS.supports('-webkit-touch-callout', 'none'))
   settings.addRange({
     label: 'Font size',
-    ...FONT_SIZE,
-    value: current.fontSize,
+    ...fontSize,
+    value: Math.max(fontSize.min, current.fontSize),
     format: (v) => `${v}px`,
     onChange: (fontSize) => setText({ ...current, fontSize }),
   })
@@ -245,6 +249,7 @@ async function joinRoom(
       textContent:
         'This session has ended: the host is not connected. You can still copy the text.',
     }),
+    copyButton(() => text.toString()),
     reconnect,
   ])
   const settings = createSettings()
@@ -252,6 +257,7 @@ async function joinRoom(
   const source = h('div', { className: 'source' })
   const main = h('main', { className: 'editor' }, [source])
   const narrow = matchMedia(NARROW_QUERY)
+  expandOnTap(people, narrow)
   // Filled in below; the switch applies its first mode before the editor exists.
   let showView: (mode: ViewMode) => void = (mode) => {
     main.dataset.view = mode
@@ -318,6 +324,12 @@ async function joinRoom(
     followEditor()
   }
   showView(view.mode)
+  // Keep the page above the on-screen keyboard, with the cursor in sight.
+  trackViewport(document.documentElement, window.visualViewport, () => {
+    editor.requestMeasure()
+    if (!editor.hasFocus) return
+    editor.dispatch({ effects: EditorView.scrollIntoView(editor.state.selection.main.head) })
+  })
 
   addAppearanceSettings(
     settings,
@@ -398,6 +410,7 @@ async function joinRoom(
         return li
       }),
     )
+    setMore(people, list.length)
     const host = [...awareness.getStates().values()].find((s) => s.role === 'host')
     // Keep showing the file name after the host has gone.
     if (typeof host?.file === 'string') {

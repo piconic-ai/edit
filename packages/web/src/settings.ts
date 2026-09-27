@@ -140,7 +140,7 @@ export function createSettings(): Settings {
     panel.style.width = `${width}px`
     panel.style.left = `${left}px`
     panel.style.top = `${top}px`
-    panel.style.maxHeight = `calc(100dvh - ${top + EDGE}px)`
+    panel.style.maxHeight = `calc(var(--app-height, 100dvh) - ${top + EDGE}px)`
   })
 
   const nextId = (prefix: string) => `settings-${prefix}-${++uid}`

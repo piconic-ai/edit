@@ -74,3 +74,22 @@ describe('index.html boot script', () => {
     }
   })
 })
+
+describe('index.html viewport', () => {
+  const meta = new DOMParser()
+    .parseFromString(html, 'text/html')
+    .querySelector<HTMLMetaElement>('meta[name="viewport"]')
+  const content = meta?.content.split(',').map((s) => s.trim()) ?? []
+
+  it('shrinks the layout for the on-screen keyboard on Android', () => {
+    expect(content).toContain('interactive-widget=resizes-content')
+  })
+
+  it('reaches under the notch, which style.css pads with safe-area insets', () => {
+    expect(content).toContain('viewport-fit=cover')
+  })
+
+  it('never stops the reader from zooming', () => {
+    expect(content.some((c) => /^(maximum-scale|user-scalable)=/.test(c))).toBe(false)
+  })
+})
