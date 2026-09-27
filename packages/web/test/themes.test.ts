@@ -9,17 +9,18 @@ import { yCollab } from 'y-codemirror.next'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { composite, contrast } from '../src/contrast.ts'
+import { PALETTE_VARS, type PagePalette } from '../src/palette.ts'
 import { COLORS, selectionTint } from '../src/room.ts'
 import {
   CARET_HALO,
   DEFAULT_THEME,
   fallbackTheme,
-  IMA_PALETTE,
-  IMA_SYNTAX,
+  loadTheme,
   readerTheme,
   THEMES,
   ThemeSwitcher,
   themeInfo,
+  themeOrDefault,
 } from '../src/themes.ts'
 
 const views: EditorView[] = []
@@ -43,7 +44,7 @@ function hex(rgb: string): string {
 }
 
 describe('theme registry', () => {
-  it('has unique ids, a mix of light and dark, and the ima defaults', () => {
+  it('has unique ids, a mix of light and dark, and the defaults', () => {
     const ids = THEMES.map((t) => t.id)
     expect(new Set(ids).size).toBe(ids.length)
     const light = THEMES.filter((t) => t.scheme === 'light').length
@@ -66,29 +67,55 @@ describe('theme registry', () => {
   )
 })
 
-describe('ima themes', () => {
+describe('default themes', () => {
   const css = readFileSync(resolve(import.meta.dirname, '../src/style.css'), 'utf8')
-  // `--panel: light-dark(#ffffff, #1a2029);` and so on.
+  // `--panel: light-dark(#ffffff, #0d1117);` and so on.
   const fromCss = (name: string) => {
-    const m = new RegExp(`--${name}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`).exec(
-      css,
-    )
-    if (!m) throw new Error(`--${name} not found in style.css`)
+    const hex = '(#[0-9a-f]{6}(?:[0-9a-f]{2})?)'
+    const m = new RegExp(`${name}:\\s*light-dark\\(${hex},\\s*${hex}\\)`).exec(css)
+    if (!m) throw new Error(`${name} not found in style.css`)
     return { light: m[1], dark: m[2] }
   }
+  const light = themeOrDefault(null, 'light').page
+  const dark = themeOrDefault(null, 'dark').page
 
-  it.each(Object.keys(IMA_PALETTE.light))('uses the page palette for --%s', (name) => {
-    const key = name as keyof typeof IMA_PALETTE.light
-    expect(fromCss(name)).toEqual({ light: IMA_PALETTE.light[key], dark: IMA_PALETTE.dark[key] })
+  it.each(Object.entries(PALETTE_VARS))('paint style.css before any script for %s', (key, name) => {
+    const k = key as keyof PagePalette
+    expect(fromCss(name)).toEqual({ light: light[k], dark: dark[k] })
   })
 
-  it.each(['light', 'dark'] as const)('keeps %s syntax colours readable on the panel', (scheme) => {
-    const { panel, ink, muted, accent } = IMA_PALETTE[scheme]
-    const { selection, ...syntax } = IMA_SYNTAX[scheme]
-    for (const color of [ink, muted, accent, ...Object.values(syntax)]) {
-      expect(contrast(color, panel), color).toBeGreaterThanOrEqual(4.5)
+  it('are bundled, so they show at once and serve as the fallback', async () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const { id, extension } = fallbackTheme(DEFAULT_THEME[scheme])
+      expect(id).toBe(DEFAULT_THEME[scheme])
+      expect(await loadTheme(id)).toBe(extension)
     }
-    expect(contrast(ink, selection)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('page palettes', () => {
+  it.each(THEMES.map((t) => [t.id, t] as const))(
+    'match the editor and keep the page readable on %s',
+    (_, theme) => {
+      const p = theme.page
+      expect(p.panel).toBe(theme.bg)
+      // Text, secondary text, links, and the panel colour on accent buttons.
+      for (const color of [p.ink, p.muted, p.accent]) {
+        expect(contrast(color, p.panel), color).toBeGreaterThanOrEqual(4.5)
+      }
+      expect(contrast(p.ink, p.bg)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(p.ink, composite(p.codeBg, p.panel))).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(p.warnInk, p.warnBg)).toBeGreaterThanOrEqual(4.5)
+      // Borders and the panels stand apart from what surrounds them.
+      expect(contrast(p.line, p.panel)).toBeGreaterThan(1.1)
+      expect(p.bg).not.toBe(p.panel)
+    },
+  )
+
+  it('looks up themes and falls back to the default of the scheme for unknown ids', () => {
+    expect(themeOrDefault('dracula', 'light').id).toBe('dracula')
+    expect(themeOrDefault('nord', 'dark').id).toBe('github-dark')
+    expect(themeOrDefault(null, 'light').id).toBe('github-light')
   })
 })
 
@@ -165,9 +192,9 @@ describe('ThemeSwitcher', () => {
   it('reconfigures the real themes keeping the document, selection and Yjs binding', async () => {
     const { doc, text, theme, view } = setup()
     view.dispatch({ selection: EditorSelection.single(2, 6) })
-    const switcher = new ThemeSwitcher(view, theme, 'ima-light')
+    const switcher = new ThemeSwitcher(view, theme, 'github-light')
 
-    for (const id of ['dracula', 'solarized-light', 'ima-dark']) {
+    for (const id of ['dracula', 'solarized-light', 'github-dark']) {
       expect(await switcher.set(id)).toBe(true)
       expect(switcher.id).toBe(id)
       expect(view.state.facet(EditorView.darkTheme)).toBe(themeInfo(id)?.scheme === 'dark')
@@ -187,7 +214,7 @@ describe('ThemeSwitcher', () => {
   it('ends on the latest choice when an earlier one loads slowly', async () => {
     const { theme, view } = setup()
     const slow = deferred<Extension>()
-    const switcher = new ThemeSwitcher(view, theme, 'ima-light', (id) =>
+    const switcher = new ThemeSwitcher(view, theme, 'github-light', (id) =>
       id === 'dracula' ? slow.promise : Promise.resolve(marker(id)),
     )
 
@@ -199,14 +226,14 @@ describe('ThemeSwitcher', () => {
     expect(view.dom.dataset.theme).toBe('github-light')
   })
 
-  it('falls back to the ima theme of the same scheme when a theme cannot load', async () => {
+  it('falls back to the default theme of the same scheme when a theme cannot load', async () => {
     const { theme, view } = setup()
-    const switcher = new ThemeSwitcher(view, theme, 'ima-light', () =>
+    const switcher = new ThemeSwitcher(view, theme, 'github-light', () =>
       Promise.reject(new Error('offline')),
     )
 
     expect(await switcher.set('dracula')).toBe(false)
-    expect(switcher.id).toBe('ima-dark')
+    expect(switcher.id).toBe('github-dark')
     expect(view.state.facet(EditorView.darkTheme)).toBe(true)
     expect(view.dom.dataset.theme).toBeUndefined()
   })

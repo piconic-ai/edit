@@ -13,12 +13,25 @@
         var stored = JSON.parse(localStorage.getItem('ima:appearance') || 'null')
         var root = document.documentElement
         if (stored && typeof stored === 'object') {
-          if (stored.page === 'light' || stored.page === 'dark') root.dataset.scheme = stored.page
           if (typeof stored.fontSize === 'number' && stored.fontSize >= 12 && stored.fontSize <= 24)
             root.style.setProperty('--editor-font-size', stored.fontSize + 'px')
           if (stored.font === 'sans') root.style.setProperty('--editor-font', 'var(--sans)')
           if (typeof stored.lineHeight === 'number' && stored.lineHeight >= 1.2 && stored.lineHeight <= 2)
             root.style.setProperty('--editor-line-height', String(stored.lineHeight))
+        }
+        // The page colours of the reader's theme, as palette.ts last applied them.
+        var palette = JSON.parse(localStorage.getItem('ima:palette') || 'null')
+        var names = ['--bg', '--panel', '--ink', '--muted', '--line', '--accent', '--code-bg', '--warn-bg', '--warn-ink']
+        var hex = '#[0-9a-f]{6}([0-9a-f]{2})?'
+        var color = new RegExp('^(' + hex + '|light-dark\\(' + hex + ', ' + hex + '\\))$')
+        if (palette && typeof palette === 'object') {
+          for (var i = 0; i < names.length; i++) {
+            var value = palette[names[i]]
+            if (typeof value === 'string' && color.test(value)) root.style.setProperty(names[i], value)
+          }
+          var scheme = palette['color-scheme']
+          if (scheme === 'light' || scheme === 'dark' || scheme === 'light dark')
+            root.style.setProperty('color-scheme', scheme)
         }
       } catch (e) {}
     </script>
