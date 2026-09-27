@@ -3,18 +3,18 @@ import { describe, expect, it } from 'vitest'
 import {
   APPEARANCE_KEY,
   type Appearance,
-  applyPage,
   applyText,
   DEFAULT_APPEARANCE,
   FONT_SIZE,
   fontSizeRange,
   IOS_FONT_FLOOR,
   loadAppearance,
+  pageColors,
   parseAppearance,
-  pickTheme,
-  resolveAppearance,
+  resolveTheme,
   saveAppearance,
 } from '../src/appearance.ts'
+import { themeInfo } from '../src/themes.ts'
 
 function memoryStore(init: Record<string, string> = {}) {
   const data = new Map(Object.entries(init))
@@ -39,10 +39,7 @@ describe('loadAppearance / saveAppearance', () => {
     expect(loadAppearance(memoryStore())).toEqual(DEFAULT_APPEARANCE)
     expect(loadAppearance(null)).toEqual(DEFAULT_APPEARANCE)
     expect(DEFAULT_APPEARANCE).toMatchObject({
-      page: 'system',
-      editor: 'page',
-      light: 'ima-light',
-      dark: 'ima-dark',
+      theme: null,
       fontSize: 15,
       font: 'mono',
       lineHeight: 1.6,
@@ -53,10 +50,7 @@ describe('loadAppearance / saveAppearance', () => {
   it('round-trips under one key', () => {
     const store = memoryStore()
     const a: Appearance = {
-      page: 'dark',
-      editor: 'light',
-      light: 'solarized-light',
-      dark: 'dracula',
+      theme: 'dracula',
       fontSize: 18,
       font: 'sans',
       lineHeight: 1.8,
@@ -94,77 +88,87 @@ describe('parseAppearance', () => {
   })
 
   it('drops unknown values and keys', () => {
-    const a = parseAppearance({ page: 'sepia', editor: 'auto', font: 'comic', wrap: 'yes', x: 1 })
+    const a = parseAppearance({ theme: 'nord', font: 'comic', wrap: 'yes', x: 1 })
     expect(a).toEqual(DEFAULT_APPEARANCE)
+    expect(parseAppearance({ theme: 42 }).theme).toBeNull()
+    expect(parseAppearance({ theme: 'solarized-dark' }).theme).toBe('solarized-dark')
+  })
+})
+
+describe('parseAppearance with settings from earlier versions', () => {
+  const legacy = { page: 'system', editor: 'page', light: 'ima-light', dark: 'ima-dark' }
+
+  it('keeps following the OS on the defaults', () => {
+    expect(parseAppearance(legacy, false).theme).toBeNull()
+    expect(parseAppearance(legacy, true).theme).toBeNull()
   })
 
-  it('falls back to the ima theme for unknown ids or ids of the other scheme', () => {
-    expect(parseAppearance({ light: 'nord', dark: 'github-light' })).toMatchObject({
-      light: 'ima-light',
-      dark: 'ima-dark',
+  it('keeps the theme the reader saw under the OS scheme', () => {
+    const a = { ...legacy, light: 'solarized-light', dark: 'dracula' }
+    expect(parseAppearance(a, false).theme).toBe('solarized-light')
+    expect(parseAppearance(a, true).theme).toBe('dracula')
+    expect(parseAppearance({ ...legacy, dark: 'dracula' }, false).theme).toBeNull()
+  })
+
+  it('keeps a chosen scheme or editor pin, mapping the removed ima themes to GitHub', () => {
+    expect(parseAppearance({ ...legacy, page: 'dark' }, false).theme).toBe('github-dark')
+    expect(parseAppearance({ ...legacy, page: 'light', dark: 'dracula' }, true).theme).toBe(
+      'github-light',
+    )
+    expect(
+      parseAppearance({ ...legacy, page: 'light', editor: 'dark', dark: 'dracula' }, false).theme,
+    ).toBe('dracula')
+  })
+
+  it('ignores a pick that does not belong to its scheme', () => {
+    expect(parseAppearance({ page: 'dark', dark: 'github-light' }).theme).toBeNull()
+    expect(parseAppearance({ page: 'dark', dark: 'nord' }).theme).toBeNull()
+  })
+
+  it('migrates through loadAppearance with the OS scheme', () => {
+    const store = memoryStore({
+      [APPEARANCE_KEY]: JSON.stringify({ ...legacy, light: 'gruvbox-light', fontSize: 18 }),
     })
+    expect(loadAppearance(store, false)).toMatchObject({ theme: 'gruvbox-light', fontSize: 18 })
   })
 })
 
-describe('resolveAppearance', () => {
-  const pages = ['system', 'light', 'dark'] as const
-  const editors = ['page', 'light', 'dark'] as const
-  const cases = pages.flatMap((page) =>
-    editors.flatMap((editor) =>
-      [false, true].map((prefersDark) => ({ page, editor, prefersDark })),
-    ),
-  )
-
-  it.each(cases)(
-    'page=$page editor=$editor prefersDark=$prefersDark',
-    ({ page, editor, prefersDark }) => {
-      const a = { ...DEFAULT_APPEARANCE, page, editor, light: 'github-light', dark: 'dracula' }
-      const r = resolveAppearance(a, prefersDark)
-      const expectedPage = page === 'system' ? (prefersDark ? 'dark' : 'light') : page
-      const expectedEditor = editor === 'page' ? expectedPage : editor
-      expect(r).toEqual({
-        page: expectedPage,
-        editorScheme: expectedEditor,
-        editorTheme: expectedEditor === 'dark' ? 'dracula' : 'github-light',
-      })
-    },
-  )
-})
-
-describe('pickTheme', () => {
-  it('follows the page when the theme matches its scheme', () => {
-    const a = pickTheme({ ...DEFAULT_APPEARANCE, editor: 'dark' }, 'github-light', false)
-    expect(a).toMatchObject({ light: 'github-light', editor: 'page' })
-    expect(resolveAppearance(a, false).editorTheme).toBe('github-light')
+describe('resolveTheme', () => {
+  it('shows the default theme of the OS scheme until the reader picks one', () => {
+    expect(resolveTheme(DEFAULT_APPEARANCE, false)).toBe('github-light')
+    expect(resolveTheme(DEFAULT_APPEARANCE, true)).toBe('github-dark')
   })
 
-  it('pins the editor to the other scheme, keeping each group in memory', () => {
-    const a = pickTheme(DEFAULT_APPEARANCE, 'dracula', false)
-    expect(a).toMatchObject({ dark: 'dracula', light: 'ima-light', editor: 'dark' })
-    expect(resolveAppearance(a, false).editorTheme).toBe('dracula')
-  })
-
-  it('moves a page-following editor to the remembered theme when the OS switches', () => {
-    let a = pickTheme(DEFAULT_APPEARANCE, 'solarized-dark', true)
-    a = pickTheme(a, 'gruvbox-light', false)
-    expect(resolveAppearance(a, true).editorTheme).toBe('solarized-dark')
-    expect(resolveAppearance(a, false).editorTheme).toBe('gruvbox-light')
-  })
-
-  it('ignores unknown themes', () => {
-    expect(pickTheme(DEFAULT_APPEARANCE, 'nord', false)).toBe(DEFAULT_APPEARANCE)
+  it('shows the pick whatever the OS scheme', () => {
+    const a = { ...DEFAULT_APPEARANCE, theme: 'dracula' }
+    expect(resolveTheme(a, false)).toBe('dracula')
+    expect(resolveTheme(a, true)).toBe('dracula')
   })
 })
 
-describe('applyPage / applyText', () => {
-  it('sets the scheme only when the reader chose one', () => {
-    const root = document.createElement('html')
-    applyPage({ ...DEFAULT_APPEARANCE, page: 'dark' }, root)
-    expect(root.dataset.scheme).toBe('dark')
-    applyPage(DEFAULT_APPEARANCE, root)
-    expect(root.hasAttribute('data-scheme')).toBe(false)
+describe('pageColors', () => {
+  const light = themeInfo('github-light')?.page
+  const dark = themeInfo('github-dark')?.page
+
+  it('follows the OS with the default themes until the reader picks one', () => {
+    const vars = pageColors(DEFAULT_APPEARANCE)
+    expect(vars['color-scheme']).toBe('light dark')
+    expect(vars['--panel']).toBe(`light-dark(${light?.panel}, ${dark?.panel})`)
   })
 
+  it('colours the page in the picked theme and its scheme', () => {
+    const vars = pageColors({ ...DEFAULT_APPEARANCE, theme: 'dracula' })
+    expect(vars['color-scheme']).toBe('dark')
+    expect(vars['--accent']).toBe(themeInfo('dracula')?.page.accent)
+  })
+
+  it('follows the theme the editor fell back to rather than the pick', () => {
+    const vars = pageColors({ ...DEFAULT_APPEARANCE, theme: 'dracula' }, 'github-dark')
+    expect(vars['--panel']).toBe(dark?.panel)
+  })
+})
+
+describe('applyText', () => {
   it('exposes the text settings as CSS variables', () => {
     const root = document.createElement('html')
     applyText({ ...DEFAULT_APPEARANCE, fontSize: 18, font: 'sans', lineHeight: 1.4 }, root)

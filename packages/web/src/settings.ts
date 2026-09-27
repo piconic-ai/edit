@@ -23,12 +23,13 @@ function gearPath(teeth = 8, outer = 10, inner = 7.5): string {
   return `M${points.join('L')}Z`
 }
 
-function gearIcon(): SVGSVGElement {
+/** A stroked 24x24 icon, hidden from screen readers since its button has a label. */
+function icon(size: number, d: string): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   for (const [k, v] of Object.entries({
     viewBox: '0 0 24 24',
-    width: '18',
-    height: '18',
+    width: String(size),
+    height: String(size),
     fill: 'none',
     stroke: 'currentColor',
     'stroke-width': '2',
@@ -39,12 +40,21 @@ function gearIcon(): SVGSVGElement {
     svg.setAttribute(k, v)
   }
   const path = document.createElementNS(SVG_NS, 'path')
-  path.setAttribute('d', gearPath())
-  const hub = document.createElementNS(SVG_NS, 'circle')
-  for (const [k, v] of Object.entries({ cx: '12', cy: '12', r: '3' })) hub.setAttribute(k, v)
-  svg.append(path, hub)
+  path.setAttribute('d', d)
+  svg.append(path)
   return svg
 }
+
+function gearIcon(): SVGSVGElement {
+  const svg = icon(18, gearPath())
+  const hub = document.createElementNS(SVG_NS, 'circle')
+  for (const [k, v] of Object.entries({ cx: '12', cy: '12', r: '3' })) hub.setAttribute(k, v)
+  svg.append(hub)
+  return svg
+}
+
+const CHEVRON_RIGHT = 'M9 6l6 6-6 6'
+const CHEVRON_LEFT = 'M15 6l-6 6 6 6'
 
 export interface ToggleOptions {
   label: string
@@ -61,7 +71,7 @@ export interface Control<T> {
 /** Updates the checkbox without calling onChange, e.g. to undo a failed change. */
 export type Toggle = Control<boolean>
 
-export interface ChoiceOptions<T extends string> {
+export interface SelectOptions<T extends string> {
   label: string
   options: readonly { value: T; label: string }[]
   value: T
@@ -78,16 +88,16 @@ export interface RangeOptions {
   onChange: (value: number) => void
 }
 
-export interface ListboxOption {
+export interface GalleryOption {
   value: string
   label: string
-  /** Background and text colours for a small preview. */
-  swatch?: { bg: string; fg: string }
+  /** A picture of the option; called once for its card and again whenever it becomes current. */
+  preview: () => HTMLElement
 }
 
-export interface ListboxOptions {
+export interface GalleryOptions {
   label: string
-  groups: readonly { label: string; options: readonly ListboxOption[] }[]
+  groups: readonly { label: string; options: readonly GalleryOption[] }[]
   value: string
   onChange: (value: string) => void
 }
@@ -97,15 +107,15 @@ export interface Settings {
   panel: HTMLElement
   addSection(title: string): void
   addToggle(options: ToggleOptions): Toggle
-  /** A row of radio buttons. */
-  addChoice<T extends string>(options: ChoiceOptions<T>): Control<T>
-  addSelect<T extends string>(options: ChoiceOptions<T>): Control<T>
+  addSelect<T extends string>(options: SelectOptions<T>): Control<T>
   addRange(options: RangeOptions): Control<number>
   /**
-   * A grouped list that applies the highlighted option as the arrow keys move,
-   * so the effect shows while the panel stays open. Enter closes the panel.
+   * A row showing the current option that opens a page of cards. The cards are
+   * a listbox that applies each option as it is clicked or the arrow keys
+   * reach it, so the effect shows behind the panel. Enter, Escape or the back
+   * button return to the settings.
    */
-  addListbox(options: ListboxOptions): Control<string>
+  addGallery(options: GalleryOptions): Control<string>
 }
 
 let uid = 0
@@ -117,10 +127,11 @@ let uid = 0
  */
 export function createSettings(): Settings {
   const list = h('div', { className: 'settings-list' })
-  const panel = h('div', { className: 'settings', id: 'settings', role: 'dialog' }, [
+  const home = h('div', { className: 'settings-home' }, [
     h('h2', { textContent: 'Settings' }),
     list,
   ])
+  const panel = h('div', { className: 'settings', id: 'settings', role: 'dialog' }, [home])
   panel.setAttribute('popover', '')
   panel.setAttribute('aria-label', 'Settings')
 
@@ -132,6 +143,8 @@ export function createSettings(): Settings {
   // and keep the whole panel on screen, scrolling inside it if it is too tall.
   panel.addEventListener('beforetoggle', (ev) => {
     if ((ev as ToggleEvent).newState !== 'open') return
+    // Always open on the settings themselves, not a page left open last time.
+    showHome()
     const rect = button.getBoundingClientRect()
     const viewport = document.documentElement.clientWidth
     const width = Math.min(PANEL_WIDTH, viewport - 2 * EDGE)
@@ -144,6 +157,18 @@ export function createSettings(): Settings {
   })
 
   const nextId = (prefix: string) => `settings-${prefix}-${++uid}`
+
+  // Pages that replace the settings inside the panel, such as the theme gallery.
+  const pages: HTMLElement[] = []
+  const showHome = () => {
+    for (const page of pages) page.hidden = true
+    home.hidden = false
+  }
+  const showPage = (page: HTMLElement) => {
+    home.hidden = true
+    for (const p of pages) p.hidden = p !== page
+    panel.scrollTop = 0
+  }
 
   const addSection = (title: string) => {
     list.append(h('h3', { className: 'settings-section', textContent: title }))
@@ -162,41 +187,12 @@ export function createSettings(): Settings {
     }
   }
 
-  const addChoice = <T extends string>({
-    label,
-    options,
-    value,
-    onChange,
-  }: ChoiceOptions<T>): Control<T> => {
-    const name = nextId('choice')
-    const inputs = options.map((o) => {
-      const input = h('input', { type: 'radio', name, value: o.value, checked: o.value === value })
-      input.addEventListener('change', () => {
-        if (input.checked) onChange(o.value)
-      })
-      return h('label', {}, [input, h('span', { textContent: o.label })])
-    })
-    list.append(
-      h('fieldset', { className: 'settings-field settings-choice' }, [
-        h('legend', { textContent: label }),
-        h('div', {}, inputs),
-      ]),
-    )
-    return {
-      set: (next) => {
-        for (const radio of list.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`)) {
-          radio.checked = radio.value === next
-        }
-      },
-    }
-  }
-
   const addSelect = <T extends string>({
     label,
     options,
     value,
     onChange,
-  }: ChoiceOptions<T>): Control<T> => {
+  }: SelectOptions<T>): Control<T> => {
     const select = h(
       'select',
       {},
@@ -251,43 +247,70 @@ export function createSettings(): Settings {
     }
   }
 
-  const addListbox = ({ label, groups, value, onChange }: ListboxOptions): Control<string> => {
-    const labelId = nextId('label')
-    const box = h('div', { className: 'settings-listbox', role: 'listbox', tabIndex: 0 })
-    box.setAttribute('aria-labelledby', labelId)
+  const addGallery = ({ label, groups, value, onChange }: GalleryOptions): Control<string> => {
+    const titleId = nextId('title')
+    const back = h('button', { type: 'button', className: 'settings-back', title: 'Back' }, [
+      icon(18, CHEVRON_LEFT),
+    ])
+    back.setAttribute('aria-label', 'Back to settings')
+    const box = h('div', { className: 'settings-gallery', role: 'listbox', tabIndex: 0 })
+    box.setAttribute('aria-labelledby', titleId)
+    const page = h('div', { className: 'settings-page', hidden: true }, [
+      h('div', { className: 'settings-page-head' }, [
+        back,
+        h('h2', { id: titleId, textContent: label }),
+      ]),
+      box,
+    ])
+    pages.push(page)
+    panel.append(page)
+
     const options: HTMLElement[] = []
+    const byValue = new Map<string, GalleryOption>()
     for (const group of groups) {
       const groupId = nextId('group')
+      const cards = h('div', { className: 'settings-cards' })
       const el = h('div', { role: 'group' }, [
         h('div', { className: 'settings-group-label', id: groupId, textContent: group.label }),
+        cards,
       ])
       el.setAttribute('aria-labelledby', groupId)
       for (const o of group.options) {
-        const swatch = h('span', { className: 'swatch', textContent: 'Aa' })
-        swatch.setAttribute('aria-hidden', 'true')
-        if (o.swatch) {
-          swatch.style.background = o.swatch.bg
-          swatch.style.color = o.swatch.fg
-        }
+        byValue.set(o.value, o)
         const option = h('div', { role: 'option', id: nextId('option') }, [
-          swatch,
-          h('span', { textContent: o.label }),
+          o.preview(),
+          h('span', { className: 'settings-card-label', textContent: o.label }),
         ])
         option.dataset.value = o.value
         option.addEventListener('click', () => choose(option))
         options.push(option)
-        el.append(option)
+        cards.append(option)
       }
       box.append(el)
     }
+
+    // The row on the settings page: the current option and a way into the gallery.
+    const current = h('span', { className: 'settings-nav-value' })
+    const currentPreview = h('span', { className: 'settings-nav-preview' })
+    const row = h('button', { type: 'button', className: 'settings-nav' }, [
+      currentPreview,
+      h('span', { className: 'settings-text' }, [h('span', { textContent: label }), current]),
+      icon(16, CHEVRON_RIGHT),
+    ])
+    row.setAttribute('aria-haspopup', 'listbox')
+    list.append(row)
 
     const select = (active: HTMLElement | undefined) => {
       for (const option of options) {
         option.setAttribute('aria-selected', String(option === active))
       }
+      const o = byValue.get(active?.dataset.value ?? '')
+      current.textContent = o?.label ?? ''
+      currentPreview.replaceChildren(...(o ? [o.preview()] : []))
+      row.setAttribute('aria-label', o ? `${label}: ${o.label}` : label)
       if (active) {
         box.setAttribute('aria-activedescendant', active.id)
-        active.scrollIntoView?.({ block: 'nearest' })
+        if (!page.hidden) active.scrollIntoView?.({ block: 'nearest' })
       } else {
         box.removeAttribute('aria-activedescendant')
       }
@@ -297,15 +320,26 @@ export function createSettings(): Settings {
       select(option)
       onChange(option.dataset.value ?? '')
     }
+    const open = () => {
+      showPage(page)
+      box.focus()
+      box.querySelector('[aria-selected=true]')?.scrollIntoView?.({ block: 'center' })
+    }
+    const close = () => {
+      showHome()
+      row.focus()
+    }
+    row.addEventListener('click', open)
+    back.addEventListener('click', close)
 
     box.addEventListener('keydown', (ev) => {
-      const current = options.findIndex((o) => o.getAttribute('aria-selected') === 'true')
+      const at = options.findIndex((o) => o.getAttribute('aria-selected') === 'true')
       const last = options.length - 1
       const target =
-        ev.key === 'ArrowDown'
-          ? Math.min(last, current + 1)
-          : ev.key === 'ArrowUp'
-            ? Math.max(0, current - 1)
+        ev.key === 'ArrowDown' || ev.key === 'ArrowRight'
+          ? Math.min(last, at + 1)
+          : ev.key === 'ArrowUp' || ev.key === 'ArrowLeft'
+            ? Math.max(0, at - 1)
             : ev.key === 'Home'
               ? 0
               : ev.key === 'End'
@@ -314,22 +348,22 @@ export function createSettings(): Settings {
       if (target !== null) {
         ev.preventDefault()
         choose(options[target])
-      } else if (ev.key === 'Enter') {
+      } else if (ev.key === 'Enter' || ev.key === ' ') {
         ev.preventDefault()
-        panel.hidePopover?.()
+        close()
       }
+    })
+    // Escape goes back one page rather than closing the whole panel.
+    page.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape') return
+      ev.preventDefault()
+      close()
     })
 
     const find = (v: string) => options.find((o) => o.dataset.value === v)
     select(find(value))
-    list.append(
-      h('div', { className: 'settings-field' }, [
-        h('span', { id: labelId, textContent: label }),
-        box,
-      ]),
-    )
     return { set: (next) => select(find(next)) }
   }
 
-  return { button, panel, addSection, addToggle, addChoice, addSelect, addRange, addListbox }
+  return { button, panel, addSection, addToggle, addSelect, addRange, addGallery }
 }

@@ -8,33 +8,27 @@ import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import {
   type Appearance,
-  applyPage,
   applyText,
   type Font,
   fontSizeRange,
   LINE_HEIGHT,
   loadAppearance,
-  pickTheme,
-  resolveAppearance,
+  pageColors,
+  resolveTheme,
   saveAppearance,
 } from './appearance.ts'
 import { copyButton } from './copy.ts'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
 import { resolveLanguage } from './language.ts'
+import { applyPalette } from './palette.ts'
 import { PreviewPane } from './pane.ts'
 import { expandOnTap, setMore } from './people.ts'
 import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
 import { createSettings, type Settings } from './settings.ts'
 import { Splitter } from './splitter.ts'
-import {
-  fallbackTheme,
-  loadTheme,
-  readerTheme,
-  THEMES,
-  type ThemeInfo,
-  ThemeSwitcher,
-} from './themes.ts'
+import { themePreview } from './theme-preview.ts'
+import { fallbackTheme, loadTheme, readerTheme, THEMES, ThemeSwitcher } from './themes.ts'
 import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { trackViewport } from './viewport.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
@@ -116,7 +110,7 @@ interface LoadedTheme {
   extension: Extension
 }
 
-/** Offline or a stale deploy: start on the ima theme of the same scheme. */
+/** Offline or a stale deploy: start on the default theme of the same scheme. */
 function loadStartTheme(id: string): Promise<LoadedTheme> {
   return loadTheme(id).then(
     (extension) => ({ id, extension }),
@@ -143,46 +137,33 @@ function addAppearanceSettings(
     saveAppearance(next)
   }
   const showTheme = async () => {
-    const { editorTheme } = resolveAppearance(current, prefersDark.matches)
-    gallery.set(editorTheme)
-    if (editorTheme === themes.id) return
-    if (!(await themes.set(editorTheme))) gallery.set(themes.id)
+    const theme = resolveTheme(current, prefersDark.matches)
+    gallery.set(theme)
+    if (theme !== themes.id && !(await themes.set(theme))) gallery.set(themes.id)
+    applyPalette(pageColors(current, themes.id))
   }
-  const swatches = (scheme: ThemeInfo['scheme']) =>
+  const cards = (scheme: 'light' | 'dark') =>
     THEMES.filter((t) => t.scheme === scheme).map((t) => ({
       value: t.id,
       label: t.label,
-      swatch: { bg: t.bg, fg: t.fg },
+      preview: () => themePreview(t),
     }))
 
   settings.addSection('Appearance')
-  settings.addChoice({
-    label: 'Page',
-    options: [
-      { value: 'system', label: 'System' },
-      { value: 'light', label: 'Light' },
-      { value: 'dark', label: 'Dark' },
-    ],
-    value: current.page,
-    onChange: (page) => {
-      update({ ...current, page })
-      applyPage(current)
-      void showTheme()
-    },
-  })
-  const gallery = settings.addListbox({
-    label: 'Editor theme',
+  const gallery = settings.addGallery({
+    label: 'Theme',
     groups: [
-      { label: 'Light', options: swatches('light') },
-      { label: 'Dark', options: swatches('dark') },
+      { label: 'Light', options: cards('light') },
+      { label: 'Dark', options: cards('dark') },
     ],
     value: themes.id,
-    onChange: (id) => {
-      update(pickTheme(current, id, prefersDark.matches))
+    onChange: (theme) => {
+      update({ ...current, theme })
       void showTheme()
     },
   })
-  // A theme that follows the page moves to the reader's pick for the other scheme.
+  // Until the reader picks a theme, the default one follows the OS. Picking is one-way by
+  // design: there is one theme, and no "follow the system" entry to go back to (#30).
   prefersDark.addEventListener('change', () => void showTheme())
 
   const setText = (next: Appearance) => {
@@ -440,9 +421,12 @@ async function joinRoom(
 
 async function start(): Promise<void> {
   // index.html applied the stored values already; this validates and completes them.
-  const appearance = loadAppearance()
-  applyPage(appearance)
+  const prefersDark = matchMedia(DARK_QUERY).matches
+  const appearance = loadAppearance(undefined, prefersDark)
+  // Settings from an earlier version are migrated once, so the OS scheme then no longer matters.
+  saveAppearance(appearance)
   applyText(appearance)
+  applyPalette(pageColors(appearance))
   if (location.pathname === '/' || location.pathname === '') {
     showLanding()
     return
@@ -455,15 +439,16 @@ async function start(): Promise<void> {
     return
   }
   // Fetch the editor theme meanwhile, so the editor paints in it from the start.
-  const theme = loadStartTheme(
-    resolveAppearance(appearance, matchMedia(DARK_QUERY).matches).editorTheme,
-  )
+  const theme = loadStartTheme(resolveTheme(appearance, prefersDark))
   // Behind Cloudflare Access we already know who you are.
   const identity = await fetchIdentity()
   const me: Me = identity
     ? { name: identity.name, avatar: await avatarFor(identity) }
     : { name: loadName() ?? (await askName()) }
-  await joinRoom(room.id, room.key, me, appearance, await theme)
+  const loaded = await theme
+  // If the theme could not load, the page matches the default theme the editor falls back to.
+  applyPalette(pageColors(appearance, loaded.id))
+  await joinRoom(room.id, room.key, me, appearance, loaded)
 }
 
 void start()
