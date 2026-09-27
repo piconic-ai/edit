@@ -1,6 +1,6 @@
 import { indentWithTab } from '@codemirror/commands'
 import type { Compartment, Extension } from '@codemirror/state'
-import { type EditorView, keymap, ViewPlugin } from '@codemirror/view'
+import { type EditorView, keymap, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 import type * as Y from 'yjs'
 import { defaultStore, type Store } from './storage.ts'
 
@@ -49,7 +49,12 @@ export async function vimExtension(undoManager: Y.UndoManager): Promise<Extensio
   Vim.defineEx('undo', 'u', undo)
   Vim.defineEx('redo', 'red', redo)
   fixLastLineDelete(Vim)
-  return [vim({ status: true }), keymap.of([indentWithTab]), skipTrailingLine(getCM)]
+  return [
+    vim({ status: true }),
+    keymap.of([indentWithTab]),
+    watchLastLineDelete,
+    skipTrailingLine(getCM),
+  ]
 }
 
 type GetCM = typeof import('@replit/codemirror-vim').getCM
@@ -57,6 +62,9 @@ type VimApi = typeof import('@replit/codemirror-vim').Vim
 type RegisterController = ReturnType<VimApi['getRegisterController']>
 
 const fixedControllers = new WeakSet<object>()
+
+/** Whether the latest edit was `dd` of the last line together with the newline before it. */
+let lastLineDeleted = false
 
 /**
  * `dd` on the last line of a file without a trailing newline also deletes
@@ -71,23 +79,55 @@ function fixLastLineDelete(Vim: VimApi): void {
   fixedControllers.add(proto)
   const pushText = proto.pushText
   proto.pushText = function (registerName, operator, text, linewise, blockwise) {
-    const lastLine = linewise && text.startsWith('\n') && !text.endsWith('\n')
+    const lastLine = operator === 'delete' && linewise && lastLineDeleted && text.startsWith('\n')
+    lastLineDeleted = false
     const stored = lastLine ? `${text.slice(1)}\n` : text
     pushText.call(this, registerName, operator, stored, linewise, blockwise)
   }
 }
 
 /**
+ * Tells that special case apart from a delete that really starts on an
+ * empty line (`2dd`, `dG`), which removes the same text. The Vim extension
+ * selects the lines an operator covers before it runs, so the selection
+ * shows which one it was.
+ */
+const watchLastLineDelete = ViewPlugin.define(() => ({
+  update(update) {
+    if (update.docChanged) lastLineDeleted = deletesLastLine(update)
+  },
+}))
+
+function deletesLastLine({ startState, changes }: ViewUpdate): boolean {
+  const { doc, selection } = startState
+  const last = doc.lines
+  const { from, to } = selection.main
+  if (last < 2 || from !== doc.line(last).from || to !== doc.length) return false
+  // The newline before the line through the end, and nothing else.
+  let count = 0
+  let matches = false
+  changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    count++
+    matches = fromA === doc.line(last - 1).to && toA === doc.length && inserted.length === 0
+  })
+  return count === 1 && matches
+}
+
+/**
  * A file that ends with a newline shows an empty line after it, which Vim
  * does not have. Keeps the normal-mode cursor off that line, so `dd` on the
  * last line lands on the new last line and `p` pastes below it, as in Vim.
+ *
+ * The exception is an empty line left at the end by `dd` on the last line of
+ * a file without a trailing newline: that one is a real line in Vim.
  */
 function skipTrailingLine(getCM: GetCM): Extension {
   return ViewPlugin.define((view) => {
     const cm = getCM(view)
+    let keep = false
     const skip = () => {
       const vim = cm?.state.vim
-      if (!cm || !vim || vim.insertMode || vim.visualMode) return
+      if (!cm || !vim || vim.insertMode || vim.visualMode || keep) return
       const { doc, selection } = view.state
       const last = doc.lines
       if (last < 2 || doc.line(last).length > 0) return
@@ -102,7 +142,12 @@ function skipTrailingLine(getCM: GetCM): Extension {
       else queueMicrotask(skip)
     }
     cm?.on('cursorActivity', onCursorActivity)
-    return { destroy: () => cm?.off('cursorActivity', onCursorActivity) }
+    return {
+      update(update: ViewUpdate) {
+        if (update.docChanged) keep = deletesLastLine(update)
+      },
+      destroy: () => cm?.off('cursorActivity', onCursorActivity),
+    }
   })
 }
 

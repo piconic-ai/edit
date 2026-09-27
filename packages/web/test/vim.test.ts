@@ -255,6 +255,16 @@ describe('the empty line after a trailing newline', () => {
     expect(line()).toBe(2)
   })
 
+  it('treats a newline added at the end as the end of the file', async () => {
+    // Without a trailing newline, `o` on the last line adds one, and the new
+    // empty line is then the one Vim does not have.
+    const { keys, line, view } = await vimOn('aaa')
+    keys('G', 'o', '<Esc>')
+    await Promise.resolve()
+    expect(view.state.doc.toString()).toBe('aaa\n')
+    expect(line()).toBe(1)
+  })
+
   it('is skipped after a click too, once the view has updated', async () => {
     const { line, view } = await vimOn('aaa\n  bbb\n')
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -291,13 +301,18 @@ describe('deleting the last line of a file without a trailing newline', () => {
   }
 
   it.each([
-    ['dd then p', ['G', 'd', 'd', 'p'], 'aaa\nbbb'],
-    ['dd then P', ['G', 'd', 'd', 'P'], 'bbb\naaa'],
-    ['Vd then p', ['G', 'V', 'd', 'p'], 'aaa\nbbb'],
-  ])('puts the line back without an empty line: %s', async (_, keys, expected) => {
-    const { view } = await run('aaa\nbbb', ...keys)
-    expect(view.state.doc.toString()).toBe(expected)
-  })
+    ['dd then p', 'aaa\nbbb', ['G', 'd', 'd', 'p']],
+    ['dd then P', 'aaa\nbbb', ['G', 'd', 'd', 'P'], 'bbb\naaa'],
+    ['Vd then p', 'aaa\nbbb', ['G', 'V', 'd', 'p']],
+    ['dd after an empty line', 'aaa\n\nbbb', ['G', 'd', 'd', 'p']],
+    ['dd after an empty first line', '\nbbb', ['G', 'd', 'd', 'p']],
+  ])(
+    'puts the line back without an empty line: %s',
+    async (_, initial, keys, expected = initial) => {
+      const { view } = await run(initial, ...keys)
+      expect(view.state.doc.toString()).toBe(expected)
+    },
+  )
 
   it('stores the line as a plain line', async () => {
     const { register, view } = await run('aaa\nbbb', 'G', 'd', 'd')
@@ -309,6 +324,11 @@ describe('deleting the last line of a file without a trailing newline', () => {
     ['an empty line', 'aaa\n\nbbb', ['2', 'G', 'd', 'd'], '\n'],
     ['two lines from an empty one', 'aaa\n\nx\nccc', ['2', 'G', '2', 'd', 'd'], '\nx\n'],
     ['a yanked last line', 'aaa\nbbb', ['G', 'y', 'y'], 'bbb\n'],
+    ['2yy from an empty line to the end', 'aaa\n\nccc', ['2', 'G', '2', 'y', 'y'], '\nccc\n'],
+    ['2dd from an empty line to the end', 'aaa\n\nccc', ['2', 'G', '2', 'd', 'd'], '\nccc\n'],
+    ['yG from an empty first line', '\nbbb', ['g', 'g', 'y', 'G'], '\nbbb\n'],
+    ['dG from an empty first line', '\nbbb', ['g', 'g', 'd', 'G'], '\nbbb\n'],
+    ['VGd from an empty line to the end', 'aaa\n\nccc', ['2', 'G', 'V', 'G', 'd'], '\nccc\n'],
   ])('leaves other line registers alone: %s', async (_, initial, keys, expected) => {
     const { register } = await run(initial, ...keys)
     expect(register).toBe(expected)
