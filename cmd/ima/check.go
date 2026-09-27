@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/piconic-ai/ima/internal/suggest"
-	"golang.org/x/sys/unix"
 )
 
 // checkFile tells why arg cannot be shared, in words that help fix it, or
@@ -34,11 +33,11 @@ func checkFile(arg string) string {
 		return directory(arg)
 	case !st.Mode().IsRegular():
 		return "ima: " + arg + " is not a regular file. ima shares text files."
-	case unix.Access(arg, unix.R_OK) != nil:
+	case !canRead(arg):
 		return "ima: cannot read " + arg + ": permission denied."
-	case unix.Access(arg, unix.W_OK) != nil:
+	case !canWrite(arg):
 		return "ima: " + arg + " is read-only. ima writes edits back to it, so it needs write permission."
-	case unix.Access(filepath.Dir(arg), unix.W_OK) != nil:
+	case !canWrite(filepath.Dir(arg)):
 		return "ima: cannot save to " + arg + ": ima saves by replacing the file, which needs write permission on " + dirName(arg) + "."
 	}
 	return ""

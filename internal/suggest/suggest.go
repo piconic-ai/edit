@@ -44,7 +44,7 @@ func Files(dir, name string) []string {
 			name:      n,
 			dist:      d,
 			otherExt:  !strings.EqualFold(ext, x),
-			otherCase: s != stem || x != ext,
+			otherCase: s != stem || (x != ext && strings.EqualFold(x, ext)),
 		})
 	}
 	sort.Slice(found, func(i, j int) bool {

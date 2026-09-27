@@ -30,6 +30,9 @@ func TestFiles(t *testing.T) {
 			files: []string{"note.md", "Notes.md", "notes.txt", "notes.md.bak", "nots.md"},
 			want:  []string{"Notes.md", "notes.txt", "note.md"},
 		},
+		// Among other extensions too, the same case comes first.
+		{name: "notes.md", files: []string{"Notes.txt", "notes.org"}, want: []string{"notes.org", "Notes.txt"}},
+		{name: "notes.md", files: []string{"notes.MD", "notes.txt"}, want: []string{"notes.MD", "notes.txt"}},
 		{name: "env", files: []string{".env"}, want: nil},
 		{name: ".evn", files: []string{".env"}, want: []string{".env"}},
 	}

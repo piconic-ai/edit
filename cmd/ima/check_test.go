@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -29,6 +30,9 @@ func inDir(t *testing.T, files map[string]os.FileMode) string {
 
 func skipIfRoot(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix permissions")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores permissions")
 	}
