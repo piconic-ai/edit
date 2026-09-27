@@ -6,18 +6,39 @@ import { basicSetup } from 'codemirror'
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
+import {
+  type Appearance,
+  applyPage,
+  applyText,
+  FONT_SIZE,
+  type Font,
+  LINE_HEIGHT,
+  loadAppearance,
+  pickTheme,
+  resolveAppearance,
+  saveAppearance,
+} from './appearance.ts'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
 import { resolveLanguage } from './language.ts'
 import { PreviewPane } from './pane.ts'
-import { colorFor, parseRoomLocation, participants, roomSocketUrl } from './room.ts'
-import { createSettings } from './settings.ts'
+import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
+import { createSettings, type Settings } from './settings.ts'
 import { Splitter } from './splitter.ts'
+import {
+  fallbackTheme,
+  loadTheme,
+  readerTheme,
+  THEMES,
+  type ThemeInfo,
+  ThemeSwitcher,
+} from './themes.ts'
 import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
 import './style.css'
 
 const NAME_KEY = 'ima:name'
+const DARK_QUERY = '(prefers-color-scheme: dark)'
 const app = document.getElementById('app') as HTMLElement
 
 function loadName(): string | null {
@@ -87,12 +108,131 @@ interface Me {
   avatar?: string
 }
 
-async function joinRoom(id: string, key: string, me: Me): Promise<void> {
+interface LoadedTheme {
+  id: string
+  extension: Extension
+}
+
+/** Offline or a stale deploy: start on the ima theme of the same scheme. */
+function loadStartTheme(id: string): Promise<LoadedTheme> {
+  return loadTheme(id).then(
+    (extension) => ({ id, extension }),
+    () => fallbackTheme(id),
+  )
+}
+
+function lineWrapping(on: boolean): Extension {
+  return on ? EditorView.lineWrapping : []
+}
+
+/** The Appearance and Text sections of the settings panel. */
+function addAppearanceSettings(
+  settings: Settings,
+  editor: EditorView,
+  themes: ThemeSwitcher,
+  wrap: Compartment,
+  initial: Appearance,
+): void {
+  const prefersDark = matchMedia(DARK_QUERY)
+  let current = initial
+  const update = (next: Appearance) => {
+    current = next
+    saveAppearance(next)
+  }
+  const showTheme = async () => {
+    const { editorTheme } = resolveAppearance(current, prefersDark.matches)
+    gallery.set(editorTheme)
+    if (editorTheme === themes.id) return
+    if (!(await themes.set(editorTheme))) gallery.set(themes.id)
+  }
+  const swatches = (scheme: ThemeInfo['scheme']) =>
+    THEMES.filter((t) => t.scheme === scheme).map((t) => ({
+      value: t.id,
+      label: t.label,
+      swatch: { bg: t.bg, fg: t.fg },
+    }))
+
+  settings.addSection('Appearance')
+  settings.addChoice({
+    label: 'Page',
+    options: [
+      { value: 'system', label: 'System' },
+      { value: 'light', label: 'Light' },
+      { value: 'dark', label: 'Dark' },
+    ],
+    value: current.page,
+    onChange: (page) => {
+      update({ ...current, page })
+      applyPage(current)
+      void showTheme()
+    },
+  })
+  const gallery = settings.addListbox({
+    label: 'Editor theme',
+    groups: [
+      { label: 'Light', options: swatches('light') },
+      { label: 'Dark', options: swatches('dark') },
+    ],
+    value: themes.id,
+    onChange: (id) => {
+      update(pickTheme(current, id, prefersDark.matches))
+      void showTheme()
+    },
+  })
+  // A theme that follows the page moves to the reader's pick for the other scheme.
+  prefersDark.addEventListener('change', () => void showTheme())
+
+  const setText = (next: Appearance) => {
+    update(next)
+    applyText(current)
+    editor.requestMeasure()
+  }
+  settings.addSection('Text')
+  settings.addRange({
+    label: 'Font size',
+    ...FONT_SIZE,
+    value: current.fontSize,
+    format: (v) => `${v}px`,
+    onChange: (fontSize) => setText({ ...current, fontSize }),
+  })
+  settings.addSelect<Font>({
+    label: 'Font',
+    options: [
+      { value: 'mono', label: 'Monospace' },
+      { value: 'sans', label: 'Proportional' },
+    ],
+    value: current.font,
+    onChange: (font) => setText({ ...current, font }),
+  })
+  settings.addRange({
+    label: 'Line height',
+    ...LINE_HEIGHT,
+    value: current.lineHeight,
+    format: (v) => v.toFixed(1),
+    onChange: (lineHeight) => setText({ ...current, lineHeight }),
+  })
+  settings.addToggle({
+    label: 'Wrap long lines',
+    checked: current.wrap,
+    onChange: (on) => {
+      update({ ...current, wrap: on })
+      editor.dispatch({ effects: wrap.reconfigure(lineWrapping(on)) })
+    },
+  })
+}
+
+async function joinRoom(
+  id: string,
+  key: string,
+  me: Me,
+  appearance: Appearance,
+  theme: LoadedTheme,
+): Promise<void> {
   const doc = new Y.Doc()
   const text = doc.getText('content')
   const awareness = new Awareness(doc)
   const color = colorFor(doc.clientID)
-  awareness.setLocalState({ user: { ...me, color, colorLight: `${color}33` } })
+  awareness.setLocalState({ user: { ...me, color, colorLight: selectionTint(color) } })
 
   const status = h('span', { className: 'status' }, [h('span', { className: 'dot' }), h('span')])
   const file = h('span', { className: 'file' })
@@ -135,6 +275,8 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
   const vimMode = new Compartment()
   const editable = new Compartment()
   const language = new Compartment()
+  const themeMode = new Compartment()
+  const wrap = new Compartment()
   // Reused so switching back to Markdown does not reparse the document.
   const markdownSupport = markdown()
   const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)]
@@ -148,7 +290,9 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
       // Undo only this browser's edits, not everyone's.
       Prec.high(keymap.of(yUndoManagerKeymap)),
       language.of(markdownSupport),
-      EditorView.lineWrapping,
+      themeMode.of(theme.extension),
+      readerTheme,
+      wrap.of(lineWrapping(appearance.wrap)),
       editable.of([]),
       yCollab(text, awareness, { undoManager }),
     ],
@@ -175,6 +319,14 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
   }
   showView(view.mode)
 
+  addAppearanceSettings(
+    settings,
+    editor,
+    new ThemeSwitcher(editor, themeMode, theme.id),
+    wrap,
+    appearance,
+  )
+  settings.addSection('Editor')
   const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
   const setVim = async (on: boolean) => {
     if (!(await vim.set(on))) vimToggle.set(vim.on)
@@ -274,6 +426,10 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  // index.html applied the stored values already; this validates and completes them.
+  const appearance = loadAppearance()
+  applyPage(appearance)
+  applyText(appearance)
   if (location.pathname === '/' || location.pathname === '') {
     showLanding()
     return
@@ -285,12 +441,16 @@ async function start(): Promise<void> {
     ])
     return
   }
+  // Fetch the editor theme meanwhile, so the editor paints in it from the start.
+  const theme = loadStartTheme(
+    resolveAppearance(appearance, matchMedia(DARK_QUERY).matches).editorTheme,
+  )
   // Behind Cloudflare Access we already know who you are.
   const identity = await fetchIdentity()
   const me: Me = identity
     ? { name: identity.name, avatar: await avatarFor(identity) }
     : { name: loadName() ?? (await askName()) }
-  await joinRoom(room.id, room.key, me)
+  await joinRoom(room.id, room.key, me, appearance, await theme)
 }
 
 void start()
