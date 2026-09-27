@@ -1,0 +1,192 @@
+import DOMPurify from 'dompurify'
+import MarkdownIt from 'markdown-it'
+import { type Embed, embedFor, httpUrl, isAllowedFrame, isVideoFile } from './embed.ts'
+
+// Raw HTML in the document is shown as text, never parsed.
+const md = new MarkdownIt({ html: false, linkify: true })
+const escape = md.utils.escapeHtml
+
+function lineAttr(line: unknown): string {
+  return typeof line === 'number' ? ` data-line="${line}"` : ''
+}
+
+function videoHtml(src: string, label: string, line?: unknown): string {
+  const aria = label ? ` aria-label="${escape(label)}"` : ''
+  return `<video${lineAttr(line)} src="${escape(src)}"${aria} controls preload="metadata" playsinline></video>`
+}
+
+function embedHtml(embed: Embed, line: unknown): string {
+  if (embed.kind === 'video') return videoHtml(embed.src, '', line)
+  return (
+    `<div class="embed"${lineAttr(line)}><iframe src="${escape(embed.src)}" title="${escape(embed.title)}"` +
+    ' loading="lazy" allow="fullscreen; picture-in-picture; encrypted-media"' +
+    ' sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"' +
+    // YouTube refuses to play without a referrer; the origin carries no room or key.
+    ' referrerpolicy="strict-origin-when-cross-origin"></iframe></div>'
+  )
+}
+
+// A paragraph that is nothing but a YouTube, Vimeo or video file URL becomes a player.
+md.core.ruler.after('linkify', 'embeds', (state) => {
+  const tokens = state.tokens
+  for (let i = 0; i + 2 < tokens.length; i++) {
+    const [open, inline, close] = [tokens[i], tokens[i + 1], tokens[i + 2]]
+    if (open?.type !== 'paragraph_open' || close?.type !== 'paragraph_close' || !inline) continue
+    const [linkOpen, text, linkClose, ...rest] = inline.children ?? []
+    // info is 'auto' for both linkified URLs and <autolinks>, not for [text](url).
+    if (linkOpen?.type !== 'link_open' || linkOpen.info !== 'auto') continue
+    if (text?.type !== 'text' || linkClose?.type !== 'link_close' || rest.length > 0) continue
+    const embed = embedFor(String(linkOpen.attrGet('href') ?? ''))
+    if (!embed) continue
+    const token = new state.Token('embed', '', 0)
+    token.meta = { embed, line: open.map?.[0] }
+    inline.children = [token]
+    open.hidden = true
+    close.hidden = true
+  }
+})
+
+// Tag blocks with their first source line, for scroll sync.
+md.core.ruler.push('source_lines', (state) => {
+  for (const token of state.tokens) {
+    if (token.map && token.nesting !== -1 && token.type !== 'inline') {
+      token.attrSet('data-line', String(token.map[0]))
+    }
+  }
+})
+
+md.renderer.rules.embed = (tokens, idx) => {
+  const { embed, line } = tokens[idx]?.meta as { embed: Embed; line?: number }
+  return embedHtml(embed, line)
+}
+
+const defaultImage = md.renderer.rules.image
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  if (!token) return ''
+  const src = String(token.attrGet('src') ?? '')
+  const alt = self.renderInlineAsText(token.children ?? [], options, env)
+  const url = httpUrl(src)
+  // Relative paths point into the host's disk, which the browser cannot reach.
+  if (!url) return `<span class="missing-image" title="${escape(src)}">${escape(alt || src)}</span>`
+  if (isVideoFile(url)) return videoHtml(url.href, alt)
+  token.attrSet('loading', 'lazy')
+  token.attrSet('referrerpolicy', 'no-referrer')
+  return defaultImage
+    ? defaultImage(tokens, idx, options, env, self)
+    : self.renderToken(tokens, idx, options)
+}
+
+const purify = DOMPurify(window)
+
+purify.addHook('uponSanitizeElement', (node, data) => {
+  if (data.tagName === 'iframe' && !isAllowedFrame((node as Element).getAttribute('src'))) {
+    node.parentNode?.removeChild(node)
+  }
+})
+
+purify.addHook('afterSanitizeAttributes', (node) => {
+  const el = node as Element
+  switch (node.nodeName) {
+    case 'A': {
+      const href = el.getAttribute('href') ?? ''
+      if (httpUrl(href) || href.startsWith('mailto:')) {
+        // Leaving this page would lose the key in the URL fragment.
+        el.setAttribute('target', '_blank')
+        el.setAttribute('rel', 'noopener noreferrer')
+      } else {
+        // Relative and #fragment links cannot resolve here; keep the text.
+        el.removeAttribute('href')
+        el.removeAttribute('target')
+      }
+      break
+    }
+    case 'IMG':
+    case 'VIDEO':
+      el.removeAttribute('srcset')
+      el.removeAttribute('poster')
+      if (!httpUrl(el.getAttribute('src') ?? '')) el.remove()
+      break
+  }
+})
+
+/** Strips anything that could run script or load from somewhere unexpected. */
+export function sanitize(html: string): DocumentFragment {
+  return purify.sanitize(html, {
+    // Markdown only produces plain HTML: no SVG, MathML, styles or forms.
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select'],
+    ADD_TAGS: ['iframe'],
+    ADD_ATTR: ['allow', 'sandbox', 'referrerpolicy', 'loading'],
+    RETURN_DOM_FRAGMENT: true,
+  })
+}
+
+/** Renders Markdown to sanitised nodes, ready for {@link patch}. */
+export function render(source: string): DocumentFragment {
+  return sanitize(md.render(source))
+}
+
+const keys = new WeakMap<Node, string>()
+
+/** What a top-level node looks like, ignoring the line numbers that shift on every edit. */
+function keyOf(node: Node): string {
+  let key = keys.get(node)
+  if (key === undefined) {
+    const clone = node.cloneNode(true)
+    if (clone instanceof Element) {
+      for (const el of [clone, ...clone.querySelectorAll('[data-line]')]) {
+        el.removeAttribute('data-line')
+      }
+      key = clone.outerHTML
+    } else {
+      key = `${node.nodeType}:${node.textContent}`
+    }
+    keys.set(node, key)
+  }
+  return key
+}
+
+function copyLines(from: Node | undefined, to: Node): void {
+  if (!(from instanceof Element) || !(to instanceof Element)) return
+  const source = [from, ...from.querySelectorAll('*')]
+  const target = [to, ...to.querySelectorAll('*')]
+  source.forEach((el, i) => {
+    const line = el.getAttribute('data-line')
+    const to = target[i]
+    if (!to || to.getAttribute('data-line') === line) return
+    if (line === null) to.removeAttribute('data-line')
+    else to.setAttribute('data-line', line)
+  })
+}
+
+/**
+ * Replaces the container's children with the fragment's, leaving unchanged
+ * blocks at the start and end in place so that images and players inside
+ * them do not reload while someone types elsewhere.
+ */
+export function patch(container: Element, fragment: DocumentFragment): void {
+  const before = [...container.childNodes]
+  const after = [...fragment.childNodes]
+  const same = (a: Node | undefined, b: Node | undefined) =>
+    a !== undefined && b !== undefined && keyOf(a) === keyOf(b)
+  let head = 0
+  while (head < before.length && head < after.length && same(before[head], after[head])) head++
+  let tail = 0
+  while (
+    tail < before.length - head &&
+    tail < after.length - head &&
+    same(before.at(-1 - tail), after.at(-1 - tail))
+  ) {
+    tail++
+  }
+  const kept = [...before.slice(0, head), ...before.slice(before.length - tail)]
+  const fresh = [...after.slice(0, head), ...after.slice(after.length - tail)]
+  kept.forEach((node, i) => copyLines(fresh[i], node))
+  const anchor = before[before.length - tail] ?? null
+  for (const node of before.slice(head, before.length - tail)) node.remove()
+  for (const node of after.slice(head, after.length - tail)) {
+    keyOf(node)
+    container.insertBefore(node, anchor)
+  }
+}

@@ -10,6 +10,8 @@ ima notes.md
 
 Any UTF-8 text file works, not only Markdown: `ima main.go`, `ima data.csv` or `ima board.canvas`. The editor picks syntax highlighting from the file extension and falls back to Markdown when there is none or it is unknown; `.txt`, `.csv` and `.tsv` stay plain text.
 
+Markdown files open with a rendered preview next to the editor (preview only on phones); switch between Edit, Split and Preview in the header. The preview shows images and videos from absolute URLs already in the document, and plays bare YouTube and Vimeo links. Images at relative paths show their alt text, since they live on your disk.
+
 **Why "ima"?** It comes from two Japanese words read *ima*: 居間 (the living room, where you casually invite people in) and 今 (now). You invite people into your place to write together, right now, and the document never leaves your home.
 
 ## How it works

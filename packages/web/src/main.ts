@@ -9,8 +9,11 @@ import * as Y from 'yjs'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
 import { resolveLanguage } from './language.ts'
+import { PreviewPane } from './pane.ts'
 import { colorFor, parseRoomLocation, participants, roomSocketUrl } from './room.ts'
 import { createSettings } from './settings.ts'
+import { Splitter } from './splitter.ts'
+import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
 import './style.css'
 
@@ -105,13 +108,23 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
     reconnect,
   ])
   const settings = createSettings()
-  const main = h('main', { className: 'editor' })
+  // CodeMirror forces display on .cm-editor, so the panes are hidden through a wrapper.
+  const source = h('div', { className: 'source' })
+  const main = h('main', { className: 'editor' }, [source])
+  const narrow = matchMedia(NARROW_QUERY)
+  // Filled in below; the switch applies its first mode before the editor exists.
+  let showView: (mode: ViewMode) => void = (mode) => {
+    main.dataset.view = mode
+  }
+  const view = new ViewSwitch({ narrow: narrow.matches, onApply: (mode) => showView(mode) })
+  narrow.addEventListener('change', () => view.setNarrow(narrow.matches))
   app.replaceChildren(
     h('header', {}, [
       h('span', { className: 'brand', textContent: 'ima' }),
       file,
       status,
       people,
+      view.element,
       settings.button,
     ]),
     settings.panel,
@@ -127,7 +140,7 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
   const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)]
   const undoManager = new Y.UndoManager(text)
   const editor = new EditorView({
-    parent: main,
+    parent: source,
     extensions: [
       // The Vim keymap must see keys before basicSetup's.
       vimMode.of([]),
@@ -140,6 +153,27 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
       yCollab(text, awareness, { undoManager }),
     ],
   })
+
+  const followEditor = () => {
+    if (main.dataset.view === 'split') preview.follow(editor)
+  }
+  const preview = new PreviewPane(text, { onRender: followEditor })
+  const splitter = new Splitter(main, { onResize: followEditor })
+  main.append(splitter.element, preview.element)
+  let following = 0
+  editor.scrollDOM.addEventListener('scroll', () => {
+    following ||= requestAnimationFrame(() => {
+      following = 0
+      followEditor()
+    })
+  })
+  showView = (mode) => {
+    main.dataset.view = mode
+    preview.active = mode !== 'editor'
+    editor.requestMeasure()
+    followEditor()
+  }
+  showView(view.mode)
 
   const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
   const setVim = async (on: boolean) => {
@@ -177,6 +211,7 @@ async function joinRoom(id: string, key: string, me: Me): Promise<void> {
     if (fileName === languageFor) return
     languageFor = fileName
     const lang = resolveLanguage(fileName)
+    view.setEnabled(lang.kind === 'markdown')
     let support: Extension
     try {
       support =

@@ -1,18 +1,9 @@
 import type { Compartment, Extension } from '@codemirror/state'
 import type { EditorView } from '@codemirror/view'
 import type * as Y from 'yjs'
+import { defaultStore, type Store } from './storage.ts'
 
 export const VIM_KEY = 'ima:vim'
-
-type Store = Pick<Storage, 'getItem' | 'setItem'>
-
-function defaultStore(): Store | null {
-  try {
-    return localStorage
-  } catch {
-    return null
-  }
-}
 
 /** Vim mode is off unless this browser turned it on before. */
 export function loadVimMode(store: Store | null = defaultStore()): boolean {
