@@ -116,7 +116,8 @@ func (u *ui) signedIn(email string) {
 }
 
 // sharing shows the link to send, then starts the live line.
-func (u *ui) sharing(file, url string, copied bool) {
+// With scratch set, it also says how to come back to the new file.
+func (u *ui) sharing(file, url string, copied, scratch bool) {
 	lines := []string{
 		"",
 		u.bold(file + " is ready to write together."),
@@ -128,6 +129,9 @@ func (u *ui) sharing(file, url string, copied bool) {
 		lines = append(lines, "  "+u.dim("Copied to your clipboard."))
 	}
 	lines = append(lines, "", u.dim("Press Ctrl+C when you are done. Everything is saved to "+file+"."), "")
+	if scratch {
+		lines = append(lines, u.resume(file), "")
+	}
 	u.print(lines...)
 
 	u.mu.Lock()
@@ -166,6 +170,15 @@ func (u *ui) saving(file string) {
 
 func (u *ui) saved(file string) {
 	u.print(u.green("✓")+" Saved "+file+". The link no longer works.", "")
+}
+
+// scratch names the scratch file ima created and how to open it again.
+func (u *ui) scratch(file string) {
+	u.print("Saved to "+file, u.resume(file), "")
+}
+
+func (u *ui) resume(file string) string {
+	return "Resume with: " + u.bold("ima "+file)
 }
 
 // render redraws the live line. Callers hold u.mu.

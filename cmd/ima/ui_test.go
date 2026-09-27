@@ -14,7 +14,7 @@ func TestUIWithoutTerminal(t *testing.T) {
 	u.setStatus(protocol.StatusConnected) // not shown before sharing
 	u.signIn("ima.example.com", "https://ima.example.com/cdn-cgi/access/cli?token=abc")
 	u.signedIn("k@example.com")
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", true)
+	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", true, false)
 	u.setPeople([]string{"Alice"})
 	u.setPeople([]string{"Alice"}) // unchanged
 	u.setStatus(protocol.StatusDisconnected)
@@ -65,7 +65,7 @@ func TestUIWithoutTerminal(t *testing.T) {
 func TestUIOnTerminal(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, false)
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false)
+	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false, false)
 	u.setStatus(protocol.StatusConnected)
 	u.stopLive()
 	got := out.String()
@@ -88,10 +88,39 @@ func TestUIOnTerminal(t *testing.T) {
 func TestUIWithoutColor(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, true) // NO_COLOR
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", true)
+	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", true, false)
 	u.saved("notes.md")
 	if got := out.String(); strings.Contains(got, "\x1b[1m") || strings.Contains(got, "\x1b[3") {
 		t.Fatalf("colors despite NO_COLOR: %q", got)
+	}
+}
+
+func TestUIScratch(t *testing.T) {
+	var out strings.Builder
+	u := newUI(&out, false, false)
+	u.sharing("ima-2026-09-26-143012.md", "https://ima.example.com/r/AAAA#key", false, true)
+	u.stopLive()
+	u.saved("ima-2026-09-26-143012.md")
+	u.scratch("ima-2026-09-26-143012.md")
+	want := `
+  ima-2026-09-26-143012.md is ready to write together.
+
+  Send this link to the people you want to invite:
+    https://ima.example.com/r/AAAA#key
+
+  Press Ctrl+C when you are done. Everything is saved to ima-2026-09-26-143012.md.
+
+  Resume with: ima ima-2026-09-26-143012.md
+
+  ○ Connecting…
+  ✓ Saved ima-2026-09-26-143012.md. The link no longer works.
+
+  Saved to ima-2026-09-26-143012.md
+  Resume with: ima ima-2026-09-26-143012.md
+
+`
+	if out.String() != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
 

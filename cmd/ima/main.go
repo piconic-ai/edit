@@ -40,10 +40,11 @@ func getVersion() string {
 
 const defaultServer = "https://ima.piconic.ai"
 
-const usage = `Usage: ima <file>
+const usage = `Usage: ima [file]
 
 Share a local text file and co-edit it with others in their browser.
 Edits are written back to the file. Press Ctrl+C to finish.
+Without a file, ima starts on a new empty ima-<time>.md in the current directory.
 
 Environment:
   IMA_SERVER  ima server URL (default: ` + defaultServer + `)
@@ -63,11 +64,33 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, getVersion())
 		return 0
 	}
-	if len(args) != 1 || args[0] == "" {
+	if len(args) > 1 || (len(args) == 1 && args[0] == "") {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
-	arg := args[0]
+	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
+
+	var arg string
+	var shared bool
+	scratch := len(args) == 0
+	if scratch {
+		name, err := createScratch(".", func() string { return time.Now().Format("2006-01-02-150405") })
+		if err != nil {
+			dir, _ := os.Getwd()
+			fmt.Fprintf(stderr, "ima: could not create a scratch file in %s: %v\nRun ima <file> to share an existing file instead.\n", dir, err)
+			return 1
+		}
+		arg = name
+		// Say where the text is if ima ends before sharing it; finish
+		// says so once it is shared.
+		defer func() {
+			if !shared {
+				out.scratch(arg)
+			}
+		}()
+	} else {
+		arg = args[0]
+	}
 	file, err := filepath.Abs(arg)
 	if err != nil {
 		fmt.Fprintln(stderr, "ima:", err)
@@ -82,8 +105,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if server == "" {
 		server = defaultServer
 	}
-	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
-
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,7 +148,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	out.sharing(arg, s.URL, clipboard.Copy(s.URL))
+	out.sharing(arg, s.URL, clipboard.Copy(s.URL), scratch)
+	shared = true
 
 	<-ctx.Done()
 	// A second signal gives up on saving.
@@ -135,13 +157,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		<-signals
 		os.Exit(130)
 	}()
+	return finish(out, stderr, arg, scratch, s.Stop)
+}
+
+// finish saves the file and closes the room. It points to a scratch file
+// only once it is saved, so a failed save never reads as a safe one.
+func finish(out *ui, stderr io.Writer, arg string, scratch bool, stop func() error) int {
 	out.stopLive()
 	out.saving(arg)
-	if err := s.Stop(); err != nil {
+	if err := stop(); err != nil {
 		fmt.Fprintf(stderr, "ima: could not save %s: %v\n", arg, err)
 		return 1
 	}
 	out.saved(arg)
+	if scratch {
+		out.scratch(arg)
+	}
 	return 0
 }
 

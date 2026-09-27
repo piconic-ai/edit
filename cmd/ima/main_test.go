@@ -22,11 +22,11 @@ func TestRunArgs(t *testing.T) {
 		stdout string
 		stderr string
 	}{
-		{args: []string{"--help"}, code: 0, stdout: "Usage: ima <file>"},
+		{args: []string{"--help"}, code: 0, stdout: "Usage: ima [file]"},
 		{args: []string{"-h"}, code: 0, stdout: "IMA_SERVER"},
 		{args: []string{"--version"}, code: 0, stdout: "dev"},
-		{args: nil, code: 2, stderr: "Usage: ima <file>"},
-		{args: []string{"a.md", "b.md"}, code: 2, stderr: "Usage: ima <file>"},
+		{args: []string{"a.md", "b.md"}, code: 2, stderr: "Usage: ima [file]"},
+		{args: []string{""}, code: 2, stderr: "Usage: ima [file]"},
 		{args: []string{"does-not-exist.md"}, code: 1, stderr: "no such file: does-not-exist.md"},
 		{args: []string{"."}, code: 1, stderr: "no such file: ."},
 	}
@@ -37,6 +37,105 @@ func TestRunArgs(t *testing.T) {
 			t.Errorf("run(%q) = %d\nstdout: %s\nstderr: %s", tt.args, code, stdout.String(), stderr.String())
 		}
 	}
+}
+
+func TestCreateScratch(t *testing.T) {
+	now := func() string { return "2026-09-26-143012" }
+
+	t.Run("new", func(t *testing.T) {
+		dir := t.TempDir()
+		name, err := createScratch(dir, now)
+		if err != nil || name != "ima-2026-09-26-143012.md" {
+			t.Fatalf("= %q, %v", name, err)
+		}
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err != nil || len(b) != 0 {
+			t.Fatalf("file = %q, %v", b, err)
+		}
+	})
+	t.Run("collision", func(t *testing.T) {
+		dir := t.TempDir()
+		for _, name := range []string{"ima-2026-09-26-143012.md", "ima-2026-09-26-143012-2.md"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("keep"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		name, err := createScratch(dir, now)
+		if err != nil || name != "ima-2026-09-26-143012-3.md" {
+			t.Fatalf("= %q, %v", name, err)
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "ima-2026-09-26-143012.md")); string(b) != "keep" {
+			t.Fatalf("existing file changed: %q", b)
+		}
+	})
+	t.Run("read-only", func(t *testing.T) {
+		dir := readOnlyDir(t)
+		if _, err := createScratch(dir, now); err == nil {
+			t.Fatal("created a file in a read-only directory")
+		}
+	})
+}
+
+func TestRunWithoutFileInReadOnlyDir(t *testing.T) {
+	dir := readOnlyDir(t)
+	t.Chdir(dir)
+	var stdout, stderr strings.Builder
+	code := run(nil, &stdout, &stderr)
+	if code != 1 || !strings.Contains(stderr.String(), "could not create a scratch file in") || !strings.Contains(stderr.String(), "Run ima <file>") {
+		t.Fatalf("run() = %d\nstdout: %s\nstderr: %s", code, stdout.String(), stderr.String())
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("left files behind: %v", entries)
+	}
+}
+
+func TestFinish(t *testing.T) {
+	tests := []struct {
+		name    string
+		scratch bool
+		stopErr error
+		code    int
+		stdout  []string
+		not     []string
+	}{
+		{name: "file", code: 0, stdout: []string{"✓ Saved notes.md"}, not: []string{"Resume with"}},
+		{name: "scratch", scratch: true, code: 0, stdout: []string{"✓ Saved notes.md", "Saved to notes.md", "Resume with: ima notes.md"}},
+		{name: "scratch not saved", scratch: true, stopErr: errors.New("disk full"), code: 1, not: []string{"Saved", "Resume with"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr strings.Builder
+			code := finish(newUI(&stdout, false, false), &stderr, "notes.md", tt.scratch, func() error { return tt.stopErr })
+			if code != tt.code {
+				t.Errorf("code = %d", code)
+			}
+			for _, want := range tt.stdout {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("missing %q in %q", want, stdout.String())
+				}
+			}
+			for _, unwanted := range tt.not {
+				if strings.Contains(stdout.String(), unwanted) {
+					t.Errorf("unexpected %q in %q", unwanted, stdout.String())
+				}
+			}
+			if tt.stopErr != nil && !strings.Contains(stderr.String(), "could not save notes.md: disk full") {
+				t.Errorf("stderr = %q", stderr.String())
+			}
+		})
+	}
+}
+
+func readOnlyDir(t *testing.T) string {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to read-only directories")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	return dir
 }
 
 // accessServer stands in for an ima server behind Cloudflare Access: without
