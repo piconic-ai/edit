@@ -183,6 +183,7 @@ export function setCell(table: Table, row: number, col: number, value: string): 
   const { delimiter } = table
   const r = table.rows[row]
   if (!r) {
+    if (value === '') return []
     const missing = row - table.rows.length + 1
     const blank = Array.from({ length: missing - 1 }, () => '')
     const last = delimiter.repeat(col) + encode(value, delimiter)
@@ -226,8 +227,12 @@ export function deleteRow(table: Table, index: number): Edit[] {
   const r = table.rows[index]
   if (!r) return []
   const prev = table.rows[index - 1]
-  // The last row has no line break of its own: take the one before it.
-  if (r.end === r.to && prev) return [{ from: prev.to, to: r.to, insert: '' }]
+  // The last row has no line break of its own: take the one before it, unless
+  // the row before is blank, which would then stop being a row.
+  if (r.end === r.to && prev && prev.to > prev.from) {
+    return [{ from: prev.to, to: r.to, insert: '' }]
+  }
+  if (r.end === r.to) return [{ from: r.from, to: r.to, insert: '' }]
   return [{ from: r.from, to: r.end, insert: '' }]
 }
 

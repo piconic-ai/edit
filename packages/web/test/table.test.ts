@@ -109,6 +109,24 @@ describe('TableView', () => {
     expect(view.selected).toEqual({ row: 1, col: 1 })
   })
 
+  it('leaves Enter, Tab and Escape to the IME while it converts', () => {
+    const { view, editor, key } = setup('a,b\nc,d\n')
+    view.edit({ row: 0, col: 0 })
+    for (const k of ['Enter', 'Tab', 'Escape'])
+      key(editor() as HTMLElement, k, { isComposing: true })
+    key(editor() as HTMLElement, 'Enter', { keyCode: 229 })
+    expect(editor()).not.toBeNull()
+    expect(view.selected).toEqual({ row: 0, col: 0 })
+  })
+
+  it('opens a selected cell as it is when an IME starts', () => {
+    const { text, view, cell, key, editor } = setup('a,b\n')
+    view.select({ row: 0, col: 1 })
+    key(cell(0, 1), 'Process')
+    expect(editor()?.value).toBe('b')
+    expect(text.toString()).toBe('a,b\n')
+  })
+
   it('selects on the first tap and edits on the second', () => {
     const { view, cell, editor } = setup('a,b\n')
     cell(0, 1).click()

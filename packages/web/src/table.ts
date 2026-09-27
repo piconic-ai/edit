@@ -468,6 +468,10 @@ export class TableView {
       this.#undo.stopCapturing()
       this.#write('')
       this.#undo.stopCapturing()
+    } else if (isComposing(ev)) {
+      // An IME is starting: open the cell as it is, so the conversion lands in
+      // the editor. Replacing the value would clear it if it did not.
+      this.edit({ row, col })
     } else if (ev.key.length === 1 && !mod && !ev.altKey) {
       ev.preventDefault()
       this.edit({ row, col }, ev.key)
@@ -476,7 +480,9 @@ export class TableView {
 
   #onEditorKey(ev: KeyboardEvent): void {
     const at = this.#selected
-    if (!at) return
+    // Keys that confirm or cancel an IME conversion belong to the IME. Safari
+    // sends the confirming Enter just after compositionend, with keyCode 229.
+    if (!at || isComposing(ev)) return
     const mod = ev.ctrlKey || ev.metaKey
     // The text is written as you type, so the textarea's own undo would lose track.
     if (mod && (ev.key.toLowerCase() === 'z' || ev.key.toLowerCase() === 'y')) {
@@ -529,6 +535,10 @@ export class TableView {
     if (!editor) return
     editor.rows = Math.max(1, editor.value.split('\n').length)
   }
+}
+
+function isComposing(ev: KeyboardEvent): boolean {
+  return ev.isComposing || ev.key === 'Process' || ev.keyCode === 229
 }
 
 /** Replaces a textarea's value, keeping the caret on the same text around a change elsewhere. */

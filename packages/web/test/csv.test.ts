@@ -147,6 +147,11 @@ describe('setCell', () => {
     expect(change('a,b,c\nd\n', (t) => setCell(t, 1, 2, 'f'))).toBe('a,b,c\nd,,f\n')
   })
 
+  it('adds nothing for an empty value past the end', () => {
+    expect(setCell(parse(''), 0, 0, '')).toEqual([])
+    expect(setCell(parse('a\n'), 3, 1, '')).toEqual([])
+  })
+
   it('adds rows past the end', () => {
     expect(change('a,b\n', (t) => setCell(t, 2, 1, 'x'))).toBe('a,b\n\n,x\n')
     expect(change('a,b', (t) => setCell(t, 1, 0, 'x'))).toBe('a,b\nx')
@@ -182,6 +187,12 @@ describe('rows', () => {
     expect(change('a\nb\nc', (t) => deleteRow(t, 2))).toBe('a\nb')
     expect(change('a', (t) => deleteRow(t, 0))).toBe('')
     expect(change('"x\ny",z\nb\n', (t) => deleteRow(t, 0))).toBe('b\n')
+  })
+
+  it('keeps a blank row before the last one', () => {
+    const text = change('a\n\nb', (t) => deleteRow(t, 2))
+    expect(text).toBe('a\n\n')
+    expect(values(text)).toEqual([['a'], ['']])
   })
 })
 
