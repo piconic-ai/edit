@@ -13,7 +13,6 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/reearth/ygo v1.50.0
 	github.com/sergi/go-diff v1.4.0
+	golang.org/x/sys v0.35.0
 	golang.org/x/term v0.34.0
 )
-
-require golang.org/x/sys v0.35.0 // indirect

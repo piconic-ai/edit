@@ -27,8 +27,8 @@ func TestRunArgs(t *testing.T) {
 		{args: []string{"--version"}, code: 0, stdout: "dev"},
 		{args: []string{"a.md", "b.md"}, code: 2, stderr: "Usage: ima [file]"},
 		{args: []string{""}, code: 2, stderr: "Usage: ima [file]"},
-		{args: []string{"does-not-exist.md"}, code: 1, stderr: "no such file: does-not-exist.md"},
-		{args: []string{"."}, code: 1, stderr: "no such file: ."},
+		{args: []string{"does-not-exist.md"}, code: 1, stderr: "does-not-exist.md does not exist."},
+		{args: []string{"."}, code: 1, stderr: ". is a directory."},
 	}
 	for _, tt := range tests {
 		var stdout, stderr strings.Builder
