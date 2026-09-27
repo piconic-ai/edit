@@ -51,17 +51,31 @@ export function participants(states: Map<number, State>, selfId: number): Partic
   )
 }
 
-const COLORS = [
+/**
+ * Caret labels print white text on these, so each must reach 4.5:1 against
+ * white. test/themes.test.ts also checks them against every editor theme.
+ */
+export const COLORS = [
   '#1f7a64',
-  '#d96b12',
+  '#b85a0e',
   '#4254b5',
   '#b5427a',
-  '#6b8e23',
+  '#5a7a1d',
   '#8a4fbf',
-  '#c0392b',
-  '#1d7fa6',
+  '#c83d2e',
+  '#18708f',
 ]
 
 export function colorFor(seed: number): string {
   return COLORS[Math.abs(seed) % COLORS.length] ?? '#4254b5'
+}
+
+/**
+ * The alpha others see behind text this browser selects. Readers pick their
+ * own theme, so it has to work on all of them; the theme test pins the range.
+ */
+export const SELECTION_ALPHA = '36'
+
+export function selectionTint(color: string): string {
+  return `${color}${SELECTION_ALPHA}`
 }

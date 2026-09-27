@@ -6,6 +6,22 @@
     <meta name="referrer" content="no-referrer" />
     <meta name="color-scheme" content="light dark" />
     <title>ima</title>
+    <script>
+      // Applies the stored appearance before the first paint, so the page does not flash.
+      // main.ts validates it again (appearance.ts); this only has to never throw.
+      try {
+        var stored = JSON.parse(localStorage.getItem('ima:appearance') || 'null')
+        var root = document.documentElement
+        if (stored && typeof stored === 'object') {
+          if (stored.page === 'light' || stored.page === 'dark') root.dataset.scheme = stored.page
+          if (typeof stored.fontSize === 'number' && stored.fontSize >= 12 && stored.fontSize <= 24)
+            root.style.setProperty('--editor-font-size', stored.fontSize + 'px')
+          if (stored.font === 'sans') root.style.setProperty('--editor-font', 'var(--sans)')
+          if (typeof stored.lineHeight === 'number' && stored.lineHeight >= 1.2 && stored.lineHeight <= 2)
+            root.style.setProperty('--editor-line-height', String(stored.lineHeight))
+        }
+      } catch (e) {}
+    </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f7a64'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif'>今</text></svg>" />
   </head>
   <body>
