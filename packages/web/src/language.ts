@@ -14,7 +14,7 @@ export type Language =
 const overrides = new Map<string, string | null>([
   // Obsidian canvas files are JSON.
   ['canvas', 'JSON'],
-  // Tables get their own view later; highlighting would only add noise.
+  // Tables have their own view (table.ts); highlighting would only add noise.
   ['csv', null],
   ['tsv', null],
   // Not in language-data, so it would otherwise fall back to Markdown.
