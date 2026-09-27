@@ -26,8 +26,10 @@ export function viewportBox(
 
 /**
  * Keeps `--app-height` and `--app-top` on the root in step with the visual
- * viewport, and calls onResize after each change so the caller can bring the
- * cursor back into view. Returns a function that stops tracking.
+ * viewport, and calls onResize when the height changes (the keyboard opened
+ * or closed) so the caller can bring the cursor back into view. Panning only
+ * moves the page: iOS pans while the reader scrolls, and pulling them back to
+ * the cursor then would fight them. Returns a function that stops tracking.
  */
 export function trackViewport(
   root: HTMLElement,
@@ -35,12 +37,17 @@ export function trackViewport(
   onResize: () => void = () => {},
 ): () => void {
   if (!vv) return () => {}
-  let last = ''
+  // Undefined until the first update, which always applies; null while pinch-zoomed.
+  let lastHeight: number | null | undefined
+  let lastTop: number | null | undefined
   const update = () => {
     const box = viewportBox(vv)
-    const key = box ? `${box.height},${box.top}` : ''
-    if (key === last) return
-    last = key
+    const height = box?.height ?? null
+    const top = box?.top ?? null
+    if (height === lastHeight && top === lastTop) return
+    const resized = height !== lastHeight
+    lastHeight = height
+    lastTop = top
     if (box) {
       root.style.setProperty('--app-height', `${box.height}px`)
       root.style.setProperty('--app-top', `${box.top}px`)
@@ -48,7 +55,7 @@ export function trackViewport(
       root.style.removeProperty('--app-height')
       root.style.removeProperty('--app-top')
     }
-    onResize()
+    if (resized) onResize()
   }
   update()
   vv.addEventListener('resize', update)

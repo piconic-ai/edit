@@ -52,7 +52,20 @@ describe('trackViewport', () => {
     expect(vars(root)).toEqual({ height: '440px', top: '250px' })
     vv.move({ height: 800, offsetTop: 0 })
     expect(vars(root)).toEqual({ height: '800px', top: '0px' })
-    expect(onResize).toHaveBeenCalledTimes(4)
+    // Once at start, then when the keyboard opened and closed; not for the pan.
+    expect(onResize).toHaveBeenCalledTimes(3)
+  })
+
+  it('moves the page but leaves the cursor alone while the reader pans', () => {
+    const root = document.createElement('div')
+    const vv = new FakeViewport()
+    vv.move({ height: 440, offsetTop: 300 })
+    const onResize = vi.fn()
+    trackViewport(root, vv, onResize)
+    onResize.mockClear()
+    for (const offsetTop of [280, 200, 120]) vv.move({ offsetTop }, 'scroll')
+    expect(vars(root).top).toBe('120px')
+    expect(onResize).not.toHaveBeenCalled()
   })
 
   it('does not call back when nothing moved', () => {

@@ -2,10 +2,24 @@
 import { describe, expect, it } from 'vitest'
 import { expandOnTap, MAX_FACES, setMore } from '../src/people.ts'
 
+class FakeQuery extends EventTarget {
+  matches: boolean
+
+  constructor(matches: boolean) {
+    super()
+    this.matches = matches
+  }
+
+  set(matches: boolean) {
+    this.matches = matches
+    this.dispatchEvent(new Event('change'))
+  }
+}
+
 describe('expandOnTap', () => {
   it('shows and hides the names on narrow screens', () => {
     const list = document.createElement('ul')
-    expandOnTap(list, () => true)
+    expandOnTap(list, new FakeQuery(true))
     list.click()
     expect('expanded' in list.dataset).toBe(true)
     list.click()
@@ -14,13 +28,18 @@ describe('expandOnTap', () => {
 
   it('does nothing on wide screens, where the names always show', () => {
     const list = document.createElement('ul')
-    let narrow = true
-    expandOnTap(list, () => narrow)
-    list.click()
-    narrow = false
+    expandOnTap(list, new FakeQuery(false))
     list.click()
     expect('expanded' in list.dataset).toBe(false)
+  })
+
+  it('folds the row when the screen goes wide and back', () => {
+    const list = document.createElement('ul')
+    const narrow = new FakeQuery(true)
+    expandOnTap(list, narrow)
     list.click()
+    narrow.set(false)
+    narrow.set(true)
     expect('expanded' in list.dataset).toBe(false)
   })
 })

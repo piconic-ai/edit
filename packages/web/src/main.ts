@@ -10,8 +10,8 @@ import {
   type Appearance,
   applyPage,
   applyText,
-  FONT_SIZE,
   type Font,
+  fontSizeRange,
   LINE_HEIGHT,
   loadAppearance,
   pickTheme,
@@ -191,10 +191,11 @@ function addAppearanceSettings(
     editor.requestMeasure()
   }
   settings.addSection('Text')
+  const fontSize = fontSizeRange(CSS.supports('-webkit-touch-callout', 'none'))
   settings.addRange({
     label: 'Font size',
-    ...FONT_SIZE,
-    value: current.fontSize,
+    ...fontSize,
+    value: Math.max(fontSize.min, current.fontSize),
     format: (v) => `${v}px`,
     onChange: (fontSize) => setText({ ...current, fontSize }),
   })
@@ -256,7 +257,7 @@ async function joinRoom(
   const source = h('div', { className: 'source' })
   const main = h('main', { className: 'editor' }, [source])
   const narrow = matchMedia(NARROW_QUERY)
-  expandOnTap(people, () => narrow.matches)
+  expandOnTap(people, narrow)
   // Filled in below; the switch applies its first mode before the editor exists.
   let showView: (mode: ViewMode) => void = (mode) => {
     main.dataset.view = mode
