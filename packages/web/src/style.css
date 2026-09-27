@@ -806,7 +806,8 @@ main.editor[data-resizing] iframe {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-.grid :focus {
+/* Only cells: the cell editor inside keeps the cell's outline and adds none. */
+.grid [data-row]:focus {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -830,12 +831,20 @@ main.editor[data-resizing] iframe {
   text-overflow: ellipsis;
   pointer-events: none;
 }
+/* The editor lies over the cell's hidden text (.cell-mirror), so editing
+   looks like the selected cell and the column keeps its width. */
+.cell-mirror {
+  visibility: hidden;
+}
 .cell-editor {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
+  height: 100%;
   margin: 0;
-  padding: 0;
+  padding: inherit;
   border: 0;
+  overflow: hidden;
   outline: none;
   resize: none;
   background: transparent;

@@ -81,6 +81,16 @@ describe('TableView', () => {
     expect(text.toString()).toBe('name,city\nAda,"Paris"\n')
   })
 
+  it('keeps the typed text under the editor, so the cell keeps its size', () => {
+    const { view, cell, type } = setup('a,b\n')
+    view.edit({ row: 0, col: 1 })
+    const mirror = cell(0, 1).querySelector('.cell-mirror')
+    expect(mirror?.textContent).toBe('b\u200b')
+    type('longer\n')
+    expect(mirror?.textContent).toBe('longer\n\u200b')
+    expect(cell(0, 1).lastElementChild?.className).toBe('cell-editor')
+  })
+
   it('types over a selected cell, like a spreadsheet', () => {
     const { text, view, cell, key } = setup('a,b\n')
     view.select({ row: 0, col: 1 })

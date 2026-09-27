@@ -77,6 +77,8 @@ export class TableView {
   /** Where the selected cell starts in the text; null for a cell not in the file yet. */
   #anchor: Y.RelativePosition | null = null
   #editor: HTMLTextAreaElement | null = null
+  /** The edited text, hidden under the editor, so the cell keeps the size it would have. */
+  #mirror = h('span', { className: 'cell-mirror' })
 
   constructor(
     text: Y.Text,
@@ -168,7 +170,10 @@ export class TableView {
     const value = initial ?? this.#valueAt(at)
     const editor = h('textarea', { className: 'cell-editor', value, rows: 1 })
     editor.setAttribute('aria-label', 'Cell')
-    editor.addEventListener('input', () => this.#write(editor.value))
+    editor.addEventListener('input', () => {
+      this.#write(editor.value)
+      this.#fit()
+    })
     editor.addEventListener('keydown', (ev) => this.#onEditorKey(ev))
     // Redraws move the textarea to a fresh cell, which blurs it for a moment:
     // only a blur that sticks ends the edit.
@@ -178,8 +183,8 @@ export class TableView {
       })
     })
     this.#editor = editor
-    const cell = this.#cellElement(at)
-    cell?.replaceChildren(editor)
+    this.#mirror.setAttribute('aria-hidden', 'true')
+    this.#cellElement(at)?.replaceChildren(this.#mirror, editor)
     this.#fit()
     editor.focus()
     editor.setSelectionRange(value.length, value.length)
@@ -330,7 +335,7 @@ export class TableView {
       const value = this.#valueAt(this.#selected)
       if (editor.value !== value) keepCaret(editor, value)
       const { selectionStart, selectionEnd } = editor
-      this.#cellElement(this.#selected)?.replaceChildren(editor)
+      this.#cellElement(this.#selected)?.replaceChildren(this.#mirror, editor)
       this.#fit()
       if (focused && document.activeElement !== editor) {
         editor.focus()
@@ -524,16 +529,18 @@ export class TableView {
     this.#editor = null
     this.#undo.stopCapturing()
     editor.remove()
+    this.#mirror.remove()
     this.#dirty = true
     if (this.#active) this.#render()
     if (focus) this.#paintSelection(true)
   }
 
-  /** Grows the textarea with its lines. */
+  /** Sizes the cell to the text being typed; the editor fills the cell. */
   #fit(): void {
     const editor = this.#editor
     if (!editor) return
-    editor.rows = Math.max(1, editor.value.split('\n').length)
+    // The zero-width space keeps a trailing line break's empty line.
+    this.#mirror.textContent = `${editor.value}\u200b`
   }
 }
 
