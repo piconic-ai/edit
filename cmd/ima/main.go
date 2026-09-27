@@ -96,8 +96,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "ima:", err)
 		return 1
 	}
-	if st, err := os.Stat(file); err != nil || st.IsDir() {
-		fmt.Fprintf(stderr, "ima: no such file: %s\n", arg)
+	if msg := checkFile(arg); msg != "" {
+		fmt.Fprintln(stderr, msg)
 		return 1
 	}
 
