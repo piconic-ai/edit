@@ -19,6 +19,7 @@ import {
   saveAppearance,
 } from './appearance.ts'
 import { copyButton } from './copy.ts'
+import { delimiterFor } from './csv.ts'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
 import { resolveLanguage } from './language.ts'
@@ -27,6 +28,7 @@ import { expandOnTap, setMore } from './people.ts'
 import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
 import { createSettings, type Settings } from './settings.ts'
 import { Splitter } from './splitter.ts'
+import { describeError, TableView } from './table.ts'
 import {
   fallbackTheme,
   loadTheme,
@@ -309,7 +311,10 @@ async function joinRoom(
   }
   const preview = new PreviewPane(text, { onRender: followEditor })
   const splitter = new Splitter(main, { onResize: followEditor })
-  main.append(splitter.element, preview.element)
+  const table = new TableView(text, awareness, undoManager, {
+    onError: (error) => view.setTableError(error && describeError(error)),
+  })
+  main.append(splitter.element, preview.element, table.element)
   let following = 0
   editor.scrollDOM.addEventListener('scroll', () => {
     following ||= requestAnimationFrame(() => {
@@ -319,7 +324,8 @@ async function joinRoom(
   })
   showView = (mode) => {
     main.dataset.view = mode
-    preview.active = mode !== 'editor'
+    preview.active = mode === 'split' || mode === 'preview'
+    table.active = mode === 'table'
     editor.requestMeasure()
     followEditor()
   }
@@ -375,7 +381,9 @@ async function joinRoom(
     if (fileName === languageFor) return
     languageFor = fileName
     const lang = resolveLanguage(fileName)
-    view.setEnabled(lang.kind === 'markdown')
+    const delimiter = delimiterFor(fileName)
+    table.setDelimiter(delimiter)
+    view.setKind(lang.kind === 'markdown' ? 'markdown' : delimiter ? 'table' : 'plain')
     let support: Extension
     try {
       support =

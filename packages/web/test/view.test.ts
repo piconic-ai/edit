@@ -4,6 +4,7 @@ import {
   effectiveMode,
   loadViewMode,
   saveViewMode,
+  TABLE_VIEW_KEY,
   VIEW_KEY,
   type ViewMode,
   ViewSwitch,
@@ -45,6 +46,22 @@ describe('loadViewMode / saveViewMode', () => {
     expect(loadViewMode(brokenStore)).toBeNull()
     expect(() => saveViewMode('editor', brokenStore)).not.toThrow()
   })
+
+  it('keeps the table choice apart from the Markdown one', () => {
+    const store = memoryStore()
+    saveViewMode('editor', store, 'table')
+    expect(store.data.get(TABLE_VIEW_KEY)).toBe('editor')
+    expect(store.data.has(VIEW_KEY)).toBe(false)
+    expect(loadViewMode(store, 'table')).toBe('editor')
+    expect(loadViewMode(store, 'markdown')).toBeNull()
+  })
+
+  it('ignores modes that do not belong to the kind', () => {
+    const store = memoryStore({ [TABLE_VIEW_KEY]: 'preview' })
+    expect(loadViewMode(store, 'table')).toBeNull()
+    saveViewMode('table', store, 'markdown')
+    expect(store.data.has(VIEW_KEY)).toBe(false)
+  })
 })
 
 describe('effectiveMode', () => {
@@ -57,6 +74,16 @@ describe('effectiveMode', () => {
     ['preview', false, 'preview'],
   ])('%s on narrow=%s -> %s', (chosen, narrow, expected) => {
     expect(effectiveMode(chosen, narrow)).toBe(expected)
+  })
+
+  it('opens tables as a table unless the text was chosen, on any screen', () => {
+    expect(effectiveMode(null, false, 'table')).toBe('table')
+    expect(effectiveMode(null, true, 'table')).toBe('table')
+    expect(effectiveMode('editor', true, 'table')).toBe('editor')
+  })
+
+  it('always shows the editor for other files', () => {
+    expect(effectiveMode('preview', false, 'plain')).toBe('editor')
   })
 })
 
@@ -109,15 +136,57 @@ describe('ViewSwitch', () => {
     expect(button('split').hidden).toBe(false)
   })
 
-  it('stays on the editor and hides itself for files without a preview', () => {
+  it('stays on the editor and hides itself for files without another view', () => {
     const { view, applied } = setup({ stored: 'preview' })
-    view.setEnabled(false)
+    view.setKind('plain')
     expect(view.mode).toBe('editor')
     expect(view.element.hidden).toBe(true)
     expect(applied.at(-1)).toBe('editor')
 
-    view.setEnabled(true)
+    view.setKind('markdown')
     expect(view.mode).toBe('preview')
     expect(view.element.hidden).toBe(false)
+  })
+
+  it('offers Text and Table for tables, remembered apart from Markdown', () => {
+    const { view, store, button, pressed } = setup({ stored: 'preview' })
+    view.setKind('table')
+    expect(view.mode).toBe('table')
+    expect(button('editor').textContent).toBe('Text')
+    expect(button('split').hidden).toBe(true)
+    expect(button('preview').hidden).toBe(true)
+    expect(button('table').hidden).toBe(false)
+    expect(pressed()).toEqual(['table'])
+
+    button('editor').click()
+    expect(view.mode).toBe('editor')
+    expect(store.data.get(TABLE_VIEW_KEY)).toBe('editor')
+    expect(store.data.get(VIEW_KEY)).toBe('preview')
+
+    view.setKind('markdown')
+    expect(button('editor').textContent).toBe('Edit')
+    expect(button('table').hidden).toBe(true)
+    expect(view.mode).toBe('preview')
+  })
+
+  it('falls back to the text while the file does not parse, and returns after', () => {
+    const { view, button, applied } = setup()
+    view.setKind('table')
+    view.setTableError('A quoted value is never closed (line 3)')
+    expect(view.mode).toBe('editor')
+    expect(applied.at(-1)).toBe('editor')
+    expect(button('table').disabled).toBe(true)
+    expect(button('table').title).toContain('line 3')
+
+    view.setTableError(null)
+    expect(view.mode).toBe('table')
+    expect(button('table').disabled).toBe(false)
+    expect(button('table').hasAttribute('title')).toBe(false)
+  })
+
+  it('ignores a table error for Markdown files', () => {
+    const { view } = setup({ stored: 'preview' })
+    view.setTableError('broken')
+    expect(view.mode).toBe('preview')
   })
 })
