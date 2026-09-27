@@ -2,7 +2,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import html from '../index.html?raw'
 import { APPEARANCE_KEY } from '../src/appearance.ts'
-import { PALETTE_KEY, PALETTE_VARS, paletteVars } from '../src/palette.ts'
+import {
+  PALETTE_KEY,
+  PALETTE_VARS,
+  type PagePalette,
+  systemVars,
+  themeVars,
+} from '../src/palette.ts'
 import { themeInfo } from '../src/themes.ts'
 
 // The classic inline script that applies the stored appearance before the first paint.
@@ -15,7 +21,6 @@ const boot = (() => {
 
 function run(stored: string | null, palette: string | null = null) {
   const root = document.documentElement
-  root.removeAttribute('data-scheme')
   root.removeAttribute('style')
   const data = new Map<string, string>()
   if (stored !== null) data.set(APPEARANCE_KEY, stored)
@@ -30,9 +35,10 @@ afterEach(() => {
 })
 
 describe('index.html boot script', () => {
-  it('applies the stored scheme and text settings', () => {
-    const root = run(JSON.stringify({ page: 'dark', fontSize: 18, font: 'sans', lineHeight: 1.8 }))
-    expect(root.dataset.scheme).toBe('dark')
+  it('applies the stored text settings', () => {
+    const root = run(
+      JSON.stringify({ theme: 'dracula', fontSize: 18, font: 'sans', lineHeight: 1.8 }),
+    )
     expect(root.style.getPropertyValue('--editor-font-size')).toBe('18px')
     expect(root.style.getPropertyValue('--editor-font')).toBe('var(--sans)')
     expect(root.style.getPropertyValue('--editor-line-height')).toBe('1.8')
@@ -40,7 +46,6 @@ describe('index.html boot script', () => {
 
   it('leaves the defaults from style.css alone when nothing is stored', () => {
     const root = run(null)
-    expect(root.hasAttribute('data-scheme')).toBe(false)
     expect(root.getAttribute('style')).toBeNull()
   })
 
@@ -51,17 +56,23 @@ describe('index.html boot script', () => {
     ['wrong types', JSON.stringify({ page: 'sepia', fontSize: '99', lineHeight: 9, font: 1 })],
   ])('ignores %s', (_, stored) => {
     const root = run(stored)
-    expect(root.hasAttribute('data-scheme')).toBe(false)
     expect(root.getAttribute('style')).toBeNull()
   })
 
-  it('paints the page in the colours of the last themes', () => {
-    const light = themeInfo('github-light')?.page
-    const dark = themeInfo('dracula')?.page
-    if (!light || !dark) throw new Error('missing theme')
-    const vars = paletteVars(light, dark)
+  it.each([
+    ['a picked theme', () => themeVars('dark', themeInfo('dracula')?.page as PagePalette)],
+    [
+      'the defaults following the OS',
+      () =>
+        systemVars(
+          themeInfo('github-light')?.page as PagePalette,
+          themeInfo('github-dark')?.page as PagePalette,
+        ),
+    ],
+  ])('paints the page in the colours of %s', (_, make) => {
+    const vars = make()
     const root = run(null, JSON.stringify(vars))
-    for (const name of Object.values(PALETTE_VARS)) {
+    for (const name of [...Object.values(PALETTE_VARS), 'color-scheme']) {
       expect(root.style.getPropertyValue(name), name).toBe(vars[name])
     }
   })
@@ -76,6 +87,7 @@ describe('index.html boot script', () => {
         '--bg': 'url(https://example.com/x)',
         '--ink': 'light-dark(#000000, #ffffff); color: red',
         '--accent': 'red',
+        'color-scheme': 'only dark; color: red',
       }),
     ],
   ])('ignores a stored palette of %s', (_, palette) => {

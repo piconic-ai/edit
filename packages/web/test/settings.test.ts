@@ -56,47 +56,6 @@ describe('settings controls', () => {
     expect(headings).toEqual(['Appearance', 'Editor'])
   })
 
-  it('adds a radio choice that reports changes and can be set without reporting', () => {
-    const { panel, addChoice } = createSettings()
-    // Detached radios do not report changes in jsdom.
-    document.body.append(panel)
-    const changes: string[] = []
-    const choice = addChoice({
-      label: 'Page',
-      options: [
-        { value: 'system', label: 'System' },
-        { value: 'light', label: 'Light' },
-        { value: 'dark', label: 'Dark' },
-      ],
-      value: 'system',
-      onChange: (v) => changes.push(v),
-    })
-    const radios = [...panel.querySelectorAll<HTMLInputElement>('input[type=radio]')]
-    expect(panel.querySelector('legend')?.textContent).toBe('Page')
-    expect(radios.map((r) => r.checked)).toEqual([true, false, false])
-
-    radios[2]?.click()
-    expect(changes).toEqual(['dark'])
-
-    choice.set('light')
-    expect(radios.map((r) => r.checked)).toEqual([false, true, false])
-    expect(changes).toEqual(['dark'])
-  })
-
-  it('keeps separate radio groups apart', () => {
-    const { panel, addChoice } = createSettings()
-    const options = [
-      { value: 'a', label: 'A' },
-      { value: 'b', label: 'B' },
-    ]
-    addChoice({ label: 'One', options, value: 'a', onChange: () => {} })
-    addChoice({ label: 'Two', options, value: 'b', onChange: () => {} })
-    const checked = [...panel.querySelectorAll<HTMLInputElement>('input[type=radio]')].map(
-      (r) => r.checked,
-    )
-    expect(checked).toEqual([true, false, false, true])
-  })
-
   it('adds a select that reports changes and can be set without reporting', () => {
     const { panel, addSelect } = createSettings()
     const changes: string[] = []
@@ -152,98 +111,163 @@ describe('settings controls', () => {
   })
 })
 
-describe('settings listbox', () => {
+describe('settings gallery', () => {
+  function preview(name: string) {
+    return () => {
+      const el = document.createElement('span')
+      el.className = 'preview'
+      el.dataset.name = name
+      return el
+    }
+  }
+
   function gallery(value = 'b') {
     const settings = createSettings()
     document.body.append(settings.panel)
+    settings.addSection('Appearance')
     const changes: string[] = []
-    const control = settings.addListbox({
-      label: 'Editor theme',
+    const control = settings.addGallery({
+      label: 'Theme',
       groups: [
         {
           label: 'Light',
           options: [
-            { value: 'a', label: 'A', swatch: { bg: '#ffffff', fg: '#000000' } },
-            { value: 'b', label: 'B' },
+            { value: 'a', label: 'A', preview: preview('a') },
+            { value: 'b', label: 'B', preview: preview('b') },
           ],
         },
         {
           label: 'Dark',
           options: [
-            { value: 'c', label: 'C' },
-            { value: 'd', label: 'D' },
+            { value: 'c', label: 'C', preview: preview('c') },
+            { value: 'd', label: 'D', preview: preview('d') },
           ],
         },
       ],
       value,
       onChange: (v) => changes.push(v),
     })
-    const box = settings.panel.querySelector<HTMLElement>('[role=listbox]')
-    if (!box) throw new Error('no listbox rendered')
+    settings.addToggle({ label: 'Wrap', checked: true, onChange: () => {} })
+    const panel = settings.panel
+    const home = panel.querySelector<HTMLElement>('.settings-home')
+    const page = panel.querySelector<HTMLElement>('.settings-page')
+    const row = panel.querySelector<HTMLButtonElement>('.settings-nav')
+    const box = panel.querySelector<HTMLElement>('[role=listbox]')
+    const back = panel.querySelector<HTMLButtonElement>('.settings-back')
+    if (!home || !page || !row || !box || !back) throw new Error('no gallery rendered')
     const selected = () =>
       box.querySelector<HTMLElement>('[aria-selected=true]')?.dataset.value ?? null
-    const press = (key: string) => {
-      const ev = new KeyboardEvent('keydown', { key, cancelable: true })
-      box.dispatchEvent(ev)
+    const press = (key: string, target: HTMLElement = box) => {
+      const ev = new KeyboardEvent('keydown', { key, cancelable: true, bubbles: true })
+      target.dispatchEvent(ev)
       return ev
     }
-    return { ...settings, box, changes, control, selected, press }
+    return { ...settings, home, page, row, box, back, changes, control, selected, press }
   }
 
-  it('is a labelled, focusable listbox with labelled groups', () => {
-    const { box } = gallery()
-    const label = document.getElementById(box.getAttribute('aria-labelledby') ?? '')
-    expect(label?.textContent).toBe('Editor theme')
-    expect(box.tabIndex).toBe(0)
+  it('shows only the current option on the settings page', () => {
+    const { home, page, row } = gallery('b')
+    expect(home.hidden).toBe(false)
+    expect(page.hidden).toBe(true)
+    expect(row.textContent).toContain('Theme')
+    expect(row.textContent).toContain('B')
+    expect(row.getAttribute('aria-label')).toBe('Theme: B')
+    expect(row.getAttribute('aria-haspopup')).toBe('listbox')
+    expect(row.querySelector<HTMLElement>('.preview')?.dataset.name).toBe('b')
+  })
+
+  it('opens a page of cards in place of the settings, with the list focused', () => {
+    const { home, page, row, box } = gallery()
+    row.click()
+    expect(home.hidden).toBe(true)
+    expect(page.hidden).toBe(false)
+    expect(document.activeElement).toBe(box)
+    const title = document.getElementById(box.getAttribute('aria-labelledby') ?? '')
+    expect(title?.textContent).toBe('Theme')
     const groups = [...box.querySelectorAll('[role=group]')].map(
       (g) => document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent,
     )
     expect(groups).toEqual(['Light', 'Dark'])
-    const swatch = box.querySelector<HTMLElement>('.swatch')
-    expect(swatch?.style.background).toBe('rgb(255, 255, 255)')
+    const cards = [...box.querySelectorAll<HTMLElement>('[role=option]')]
+    expect(cards.map((c) => c.querySelector<HTMLElement>('.preview')?.dataset.name)).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+    ])
   })
 
-  it('applies each option as the arrow keys reach it, across groups', () => {
-    const { box, changes, selected, press } = gallery('b')
-    expect(selected()).toBe('b')
-
+  it('applies each option as the arrow keys reach it, across groups, and updates the row', () => {
+    const { box, row, changes, selected, press } = gallery('b')
+    row.click()
     expect(press('ArrowDown').defaultPrevented).toBe(true)
     expect(selected()).toBe('c')
-    press('ArrowDown')
-    press('ArrowDown') // Stays on the last option.
+    press('ArrowRight')
+    press('ArrowRight') // Stays on the last option.
+    press('ArrowLeft')
     press('ArrowUp')
     press('Home')
     press('End')
-    expect(changes).toEqual(['c', 'd', 'c', 'a', 'd'])
+    expect(changes).toEqual(['c', 'd', 'c', 'b', 'a', 'd'])
     expect(box.getAttribute('aria-activedescendant')).toBe(
       box.querySelector('[aria-selected=true]')?.id,
     )
+    expect(row.getAttribute('aria-label')).toBe('Theme: D')
+    expect(row.querySelector<HTMLElement>('.preview')?.dataset.name).toBe('d')
     expect(press('a').defaultPrevented).toBe(false)
   })
 
-  it('applies an option on click and ignores a click on the current one', () => {
-    const { box, changes, selected } = gallery('b')
+  it('applies an option on click, stays open to compare, and ignores the current one', () => {
+    const { box, page, row, changes, selected } = gallery('b')
+    row.click()
     const options = [...box.querySelectorAll<HTMLElement>('[role=option]')]
     options[0]?.click()
     options[0]?.click()
     expect(changes).toEqual(['a'])
     expect(selected()).toBe('a')
+    expect(page.hidden).toBe(false)
   })
 
-  it('closes the panel on Enter', () => {
-    const { panel, press } = gallery()
+  it.each(['Enter', 'Escape'])('goes back to the settings on %s', (key) => {
+    const { home, page, row, press } = gallery()
     let hidden = 0
-    panel.hidePopover = () => {
+    ;(page.parentElement as HTMLElement).hidePopover = () => {
       hidden++
     }
-    press('Enter')
-    expect(hidden).toBe(1)
+    row.click()
+    expect(press(key).defaultPrevented).toBe(true)
+    expect(page.hidden).toBe(true)
+    expect(home.hidden).toBe(false)
+    expect(document.activeElement).toBe(row)
+    // Escape goes back one page instead of closing the panel.
+    expect(hidden).toBe(0)
+  })
+
+  it('goes back with the back button, and leaves Escape on the settings to the popover', () => {
+    const { home, page, row, back, press } = gallery()
+    row.click()
+    expect(back.getAttribute('aria-label')).toBe('Back to settings')
+    back.click()
+    expect(home.hidden).toBe(false)
+    expect(page.hidden).toBe(true)
+    expect(press('Escape', row).defaultPrevented).toBe(false)
+  })
+
+  it('opens on the settings again after the panel closed on the gallery', () => {
+    const { panel, home, page, row } = gallery()
+    row.click()
+    const ev = new Event('beforetoggle') as Event & { newState: string }
+    ev.newState = 'open'
+    panel.dispatchEvent(ev)
+    expect(home.hidden).toBe(false)
+    expect(page.hidden).toBe(true)
   })
 
   it('can be set without reporting', () => {
-    const { changes, control, selected } = gallery('b')
+    const { changes, control, selected, row } = gallery('b')
     control.set('d')
     expect(selected()).toBe('d')
+    expect(row.getAttribute('aria-label')).toBe('Theme: D')
     expect(changes).toEqual([])
   })
 })

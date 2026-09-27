@@ -7,11 +7,12 @@ import {
   mix,
   PALETTE_KEY,
   PALETTE_VARS,
-  paletteVars,
   readable,
+  systemVars,
   TEXT_CONTRAST,
+  themeVars,
 } from '../src/palette.ts'
-import { IMA_PALETTE } from '../src/themes.ts'
+import { themeInfo } from '../src/themes.ts'
 
 function memoryStore() {
   const data = new Map<string, string>()
@@ -66,20 +67,34 @@ describe('derivePalette', () => {
   })
 })
 
-describe('paletteVars / applyPalette', () => {
-  const vars = paletteVars(IMA_PALETTE.light, IMA_PALETTE.dark)
+describe('themeVars / systemVars / applyPalette', () => {
+  const light = themeInfo('github-light')?.page
+  const dark = themeInfo('github-dark')?.page
+  if (!light || !dark) throw new Error('missing default themes')
+  const names = [...Object.values(PALETTE_VARS), 'color-scheme'].sort()
 
-  it('pairs the light and dark palettes for every page variable', () => {
-    expect(Object.keys(vars).sort()).toEqual(Object.values(PALETTE_VARS).sort())
-    expect(vars['--panel']).toBe('light-dark(#ffffff, #1a2029)')
-    expect(vars['--code-bg']).toBe('light-dark(#afb8c133, #656c7633)')
+  it('sets one theme and its scheme', () => {
+    const vars = themeVars('dark', dark)
+    expect(Object.keys(vars).sort()).toEqual(names)
+    expect(vars['color-scheme']).toBe('dark')
+    expect(vars['--panel']).toBe('#0d1117')
   })
 
-  it('sets the variables on the root and remembers them for the next first paint', () => {
+  it('pairs two themes by the OS scheme', () => {
+    const vars = systemVars(light, dark)
+    expect(Object.keys(vars).sort()).toEqual(names)
+    expect(vars['color-scheme']).toBe('light dark')
+    expect(vars['--panel']).toBe('light-dark(#ffffff, #0d1117)')
+    expect(vars['--code-bg']).toBe('light-dark(#afb8c133, #6e768166)')
+  })
+
+  it('sets the properties on the root and remembers them for the next first paint', () => {
     const root = document.createElement('html')
     const store = memoryStore()
+    const vars = themeVars('dark', dark)
     applyPalette(vars, root, store)
-    expect(root.style.getPropertyValue('--accent')).toBe('light-dark(#1f7a64, #5cc9a8)')
+    expect(root.style.getPropertyValue('--accent')).toBe('#58a6ff')
+    expect(root.style.getPropertyValue('color-scheme')).toBe('dark')
     expect(JSON.parse(store.data.get(PALETTE_KEY) ?? '')).toEqual(vars)
   })
 
@@ -91,7 +106,7 @@ describe('paletteVars / applyPalette', () => {
         throw new Error('QuotaExceededError')
       },
     }
-    expect(() => applyPalette(vars, root, store)).not.toThrow()
-    expect(root.style.getPropertyValue('--bg')).toBe('light-dark(#f6f7f9, #12161c)')
+    expect(() => applyPalette(systemVars(light, dark), root, store)).not.toThrow()
+    expect(root.style.getPropertyValue('--bg')).toBe('light-dark(#f6f8fa, #010409)')
   })
 })

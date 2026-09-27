@@ -108,11 +108,22 @@ export function derivePalette(
 }
 
 /**
- * The custom properties for the themes of both groups. `light-dark()` picks one
- * by the page scheme, so switching the OS scheme needs no script.
+ * The root properties for one theme: its palette, and its scheme so form
+ * controls and scrollbars match.
  */
-export function paletteVars(light: PagePalette, dark: PagePalette): Record<string, string> {
-  const vars: Record<string, string> = {}
+export function themeVars(scheme: Scheme, page: PagePalette): Record<string, string> {
+  const vars: Record<string, string> = { 'color-scheme': scheme }
+  for (const [key, name] of Object.entries(PALETTE_VARS))
+    vars[name] = page[key as keyof PagePalette]
+  return vars
+}
+
+/**
+ * The root properties while the page follows the OS: `light-dark()` picks the
+ * palette by the OS scheme, so switching it needs no script.
+ */
+export function systemVars(light: PagePalette, dark: PagePalette): Record<string, string> {
+  const vars: Record<string, string> = { 'color-scheme': 'light dark' }
   for (const [key, name] of Object.entries(PALETTE_VARS)) {
     const k = key as keyof PagePalette
     vars[name] = `light-dark(${light[k]}, ${dark[k]})`
@@ -122,7 +133,8 @@ export function paletteVars(light: PagePalette, dark: PagePalette): Record<strin
 
 /**
  * Stored next to the appearance so index.html can paint the page in these
- * colours before the theme registry has loaded. Keep its boot script in step.
+ * colours before the theme registry has loaded. Keep its boot script in step
+ * with the names and value forms here.
  */
 export const PALETTE_KEY = 'ima:palette'
 
@@ -135,6 +147,6 @@ export function applyPalette(
   try {
     store?.setItem(PALETTE_KEY, JSON.stringify(vars))
   } catch {
-    // Private mode or storage disabled: the next visit starts in the ima colours.
+    // Private mode or storage disabled: the next visit starts in the default colours.
   }
 }
