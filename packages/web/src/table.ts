@@ -13,6 +13,7 @@ import {
   tryParse,
 } from './csv.ts'
 import { h } from './dom.ts'
+import { ContextMenu, formatShortcut, type MenuItem, SEPARATOR } from './menu.ts'
 import { participants } from './room.ts'
 
 /** Marks the table's own edits, so the undo manager tracks them and the view knows them. */
@@ -22,6 +23,37 @@ interface Position {
   row: number
   col: number
 }
+
+/** What is selected around the cursor cell: the cell, its whole row, or its whole column. */
+export type Span = 'cell' | 'row' | 'column'
+
+/** What a right-click or long press landed on. */
+type Target =
+  | { kind: 'cell'; at: Position }
+  | { kind: 'row'; row: number }
+  | { kind: 'column'; col: number }
+
+const LONG_PRESS_MS = 550
+
+/** Spreadsheet column names: A to Z, then AA, AB and on. */
+export function columnName(index: number): string {
+  let n = index + 1
+  let name = ''
+  while (n > 0) {
+    const r = (n - 1) % 26
+    name = String.fromCharCode(65 + r) + name
+    n = Math.floor((n - 1) / 26)
+  }
+  return name
+}
+
+/** The shortcuts, as in Google Sheets. */
+export const SHORTCUTS = {
+  insert: ['Mod', 'Alt', '='],
+  remove: ['Mod', 'Alt', '-'],
+  selectRow: ['Shift', 'Space'],
+  selectColumn: ['Ctrl', 'Space'],
+} as const
 
 interface Peer {
   name: string
@@ -52,10 +84,12 @@ export function describeError(error: CsvError): string {
 }
 
 /**
- * CSV and TSV as a grid. Each change is written straight to the shared text
- * (csv.ts), so the table is only another way to look at the file.
- * The selected cell is remembered by its place in the text, so it stays put
- * when someone adds a row above it.
+ * CSV and TSV as a spreadsheet-like grid, with lettered columns and numbered
+ * rows. Each change is written straight to the shared text (csv.ts), so the
+ * table is only another way to look at the file. The selected cell is
+ * remembered by its place in the text, so it stays put when someone adds a
+ * row above it. Rows and columns are added and removed from a context menu
+ * (right-click or long press) or with Google Sheets' shortcuts.
  */
 export class TableView {
   readonly element: HTMLElement
@@ -66,7 +100,10 @@ export class TableView {
   #onError: (error: CsvError | null) => void
   #grid: HTMLTableElement
   #scroller: HTMLElement
-  #tools: Record<'addRow' | 'deleteRow' | 'addColumn' | 'deleteColumn', HTMLButtonElement>
+  #menu = new ContextMenu()
+  #span: Span = 'cell'
+  /** Set after a long press opened the menu, so the tap that ends it does not select. */
+  #swallowClick = false
   #delimiter: string | null = null
   #table: Table | null = null
   #error: CsvError | null = null
@@ -93,17 +130,6 @@ export class TableView {
     this.#schedule = options.schedule ?? ((redraw) => requestAnimationFrame(redraw))
     this.#onError = options.onError ?? (() => {})
 
-    const tool = (label: string, action: () => void) => {
-      const button = h('button', { type: 'button', textContent: label })
-      button.addEventListener('click', action)
-      return button
-    }
-    this.#tools = {
-      addRow: tool('Add row', () => this.addRow()),
-      deleteRow: tool('Delete row', () => this.deleteRow()),
-      addColumn: tool('Add column', () => this.addColumn()),
-      deleteColumn: tool('Delete column', () => this.deleteColumn()),
-    }
     this.#grid = h('table', { className: 'grid' })
     this.#grid.setAttribute('role', 'grid')
     this.#grid.addEventListener('click', (ev) => this.#onClick(ev))
@@ -112,12 +138,18 @@ export class TableView {
       if (at) this.edit(at)
     })
     this.#grid.addEventListener('keydown', (ev) => this.#onKey(ev))
+    this.#grid.addEventListener('contextmenu', (ev) => {
+      if ((ev.target as Element).closest?.('.cell-editor')) return
+      const target = this.#targetOf(ev.target)
+      if (!target) return
+      ev.preventDefault()
+      this.openMenu(target, ev.clientX, ev.clientY)
+    })
+    this.#listenForLongPress()
     this.#scroller = h('div', { className: 'table-scroll' }, [this.#grid])
     this.element = h('section', { className: 'table-view', ariaLabel: 'Table' }, [
-      h('div', { className: 'table-tools', role: 'toolbar', ariaLabel: 'Rows and columns' }, [
-        ...Object.values(this.#tools),
-      ]),
       this.#scroller,
+      this.#menu.element,
     ])
 
     text.observe((event) => this.#onChange(event.transaction.origin === TABLE_ORIGIN))
@@ -132,12 +164,23 @@ export class TableView {
 
   set active(on: boolean) {
     this.#active = on
-    if (!on) this.#finishEdit(false)
+    if (!on) {
+      this.#finishEdit(false)
+      this.#menu.close()
+    }
     this.#request()
   }
 
   get selected(): Position | null {
     return this.#selected && { ...this.#selected }
+  }
+
+  get span(): Span {
+    return this.#span
+  }
+
+  get menu(): ContextMenu {
+    return this.#menu
   }
 
   get table(): Table | null {
@@ -153,11 +196,13 @@ export class TableView {
     this.#request()
   }
 
-  select(at: Position, focus = true): void {
+  /** Moves the cursor to a cell; `span` widens the selection to its row or column. */
+  select(at: Position, focus = true, span: Span = 'cell'): void {
     const row = Math.max(0, at.row)
     const col = Math.max(0, at.col)
     if (this.#editor) this.#finishEdit(false)
     this.#selected = { row, col }
+    this.#span = span
     this.#anchor = this.#anchorFor(this.#selected)
     this.#publishCursor()
     this.#paintSelection(focus)
@@ -191,12 +236,24 @@ export class TableView {
     if (initial !== undefined) this.#write(initial)
   }
 
-  addRow(): void {
+  /** Inserts an empty row next to the cursor's and selects it. */
+  insertRow(where: 'above' | 'below'): void {
     const table = this.#table
     if (!table) return
-    const row = this.#selected ? this.#selected.row + 1 : table.rows.length
+    const at = this.#selected ?? { row: 0, col: 0 }
+    const row = where === 'above' ? at.row : at.row + 1
     this.#apply(insertRow(table, row))
-    this.select({ row, col: this.#selected?.col ?? 0 })
+    this.select({ row, col: at.col }, true, this.#span === 'row' ? 'row' : 'cell')
+  }
+
+  /** Inserts an empty column next to the cursor's and selects it. */
+  insertColumn(where: 'left' | 'right'): void {
+    const table = this.#table
+    if (!table) return
+    const at = this.#selected ?? { row: 0, col: 0 }
+    const col = where === 'left' ? at.col : at.col + 1
+    this.#apply(insertColumn(table, col))
+    this.select({ row: at.row, col }, true, this.#span === 'column' ? 'column' : 'cell')
   }
 
   deleteRow(): void {
@@ -208,21 +265,121 @@ export class TableView {
     this.select({ row: Math.min(at.row, Math.max(0, rows - 1)), col: at.col })
   }
 
-  addColumn(): void {
-    const table = this.#table
-    if (!table) return
-    const col = this.#selected ? this.#selected.col + 1 : Math.max(1, table.columns)
-    this.#apply(insertColumn(table, col))
-    this.select({ row: this.#selected?.row ?? 0, col })
-  }
-
   deleteColumn(): void {
     const table = this.#table
     const at = this.#selected
-    if (!table || !at) return
+    if (!table || !at || at.col >= table.columns) return
     this.#apply(deleteColumn(table, at.col))
     const cols = this.#table?.columns ?? 0
     this.select({ row: at.row, col: Math.min(at.col, Math.max(0, cols - 1)) })
+  }
+
+  /** Opens the row and column menu for what was right-clicked or long-pressed. */
+  openMenu(target: Target, x: number, y: number): void {
+    if (this.#editor) this.#finishEdit(false)
+    const cursor = this.#selected
+    if (target.kind === 'row') {
+      this.select({ row: target.row, col: cursor?.col ?? 0 }, true, 'row')
+    } else if (target.kind === 'column') {
+      this.select({ row: cursor?.row ?? 0, col: target.col }, true, 'column')
+    } else if (!this.#inSelection(target.at)) {
+      this.select(target.at)
+    }
+    this.#menu.show(this.#menuItems(target.kind), x, y)
+  }
+
+  #menuItems(kind: Target['kind']): (MenuItem | null)[] {
+    const table = this.#table
+    const at = this.#selected
+    const insert = formatShortcut(SHORTCUTS.insert)
+    const remove = formatShortcut(SHORTCUTS.remove)
+    // The shortcuts act on rows unless a whole column is selected.
+    const rowKeys = kind !== 'column'
+    const rows: MenuItem[] = [
+      {
+        label: 'Insert row above',
+        shortcut: rowKeys ? insert : undefined,
+        action: () => this.insertRow('above'),
+      },
+      { label: 'Insert row below', action: () => this.insertRow('below') },
+      {
+        label: 'Delete row',
+        shortcut: rowKeys ? remove : undefined,
+        disabled: !(table && at && table.rows[at.row]),
+        action: () => this.deleteRow(),
+      },
+    ]
+    const columns: MenuItem[] = [
+      {
+        label: 'Insert column left',
+        shortcut: rowKeys ? undefined : insert,
+        action: () => this.insertColumn('left'),
+      },
+      { label: 'Insert column right', action: () => this.insertColumn('right') },
+      {
+        label: 'Delete column',
+        shortcut: rowKeys ? undefined : remove,
+        disabled: !(table && at && at.col < table.columns),
+        action: () => this.deleteColumn(),
+      },
+    ]
+    if (kind === 'row') return rows
+    if (kind === 'column') return columns
+    return [...rows, SEPARATOR, ...columns]
+  }
+
+  #inSelection(at: Position): boolean {
+    const s = this.#selected
+    if (!s) return false
+    if (this.#span === 'row') return s.row === at.row
+    if (this.#span === 'column') return s.col === at.col
+    return s.row === at.row && s.col === at.col
+  }
+
+  /** Touch screens: a long press opens the menu, as a right-click does. */
+  #listenForLongPress(): void {
+    let press: { timer: ReturnType<typeof setTimeout>; x: number; y: number } | null = null
+    const cancel = () => {
+      if (press) clearTimeout(press.timer)
+      press = null
+    }
+    this.#grid.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType !== 'touch') return
+      cancel()
+      const target = this.#targetOf(ev.target)
+      if (!target || (ev.target as Element).closest?.('.cell-editor')) return
+      const { clientX: x, clientY: y } = ev
+      press = {
+        x,
+        y,
+        timer: setTimeout(() => {
+          press = null
+          // Android also sends contextmenu for a long press; one menu is enough.
+          if (this.#menu.open) return
+          this.#swallowClick = true
+          this.openMenu(target, x, y)
+        }, LONG_PRESS_MS),
+      }
+    })
+    this.#grid.addEventListener('pointermove', (ev) => {
+      if (press && Math.hypot(ev.clientX - press.x, ev.clientY - press.y) > 10) cancel()
+    })
+    this.#grid.addEventListener('pointerup', cancel)
+    this.#grid.addEventListener('pointercancel', cancel)
+  }
+
+  /** Clears every cell in the selection. */
+  #clear(): void {
+    const table = this.#table
+    const at = this.#selected
+    if (!table || !at) return
+    const cells: Position[] =
+      this.#span === 'row'
+        ? Array.from({ length: table.columns }, (_, col) => ({ row: at.row, col }))
+        : this.#span === 'column'
+          ? table.rows.map((_, row) => ({ row, col: at.col }))
+          : [at]
+    this.#apply(cells.flatMap((c) => setCell(table, c.row, c.col, '')))
   }
 
   #apply(edits: Edit[]): void {
@@ -300,34 +457,39 @@ export class TableView {
     const table = this.#table
     if (!table) {
       this.#grid.replaceChildren()
-      this.#paintTools()
       return
     }
     const columns = Math.max(1, table.columns)
     // An empty file still gets one cell to type into.
     const rows = table.rows.length > 0 ? table.rows : [{ cells: [] }]
-    const line = (cells: readonly { value: string }[], row: number, tag: 'th' | 'td') => {
-      const tr = h('tr')
+    const corner = h('th', { className: 'grid-corner' })
+    corner.setAttribute('aria-hidden', 'true')
+    const heads = Array.from({ length: columns }, (_, col) => {
+      const th = h('th', { className: 'col-head', textContent: columnName(col) })
+      th.setAttribute('role', 'columnheader')
+      th.dataset.headCol = String(col)
+      return th
+    })
+    const lines = rows.map((r, row) => {
+      const head = h('th', { className: 'row-head', textContent: String(row + 1) })
+      head.setAttribute('role', 'rowheader')
+      head.dataset.headRow = String(row)
+      const tr = h('tr', {}, [head])
       for (let col = 0; col < columns; col++) {
-        const cell = h(tag, { textContent: cells[col]?.value ?? '' })
-        cell.setAttribute('role', row === 0 ? 'columnheader' : 'gridcell')
+        const cell = h('td', { textContent: r.cells[col]?.value ?? '' })
+        cell.setAttribute('role', 'gridcell')
         cell.dataset.row = String(row)
         cell.dataset.col = String(col)
         cell.tabIndex = -1
         tr.append(cell)
       }
       return tr
-    }
-    const [head, ...body] = rows
+    })
     // Redrawing replaces the focused cell; the new one takes the focus over.
     const hadFocus = this.#grid.contains(document.activeElement)
     this.#grid.replaceChildren(
-      h('thead', {}, [line(head?.cells ?? [], 0, 'th')]),
-      h(
-        'tbody',
-        {},
-        body.map((r, i) => line(r.cells, i + 1, 'td')),
-      ),
+      h('thead', {}, [h('tr', {}, [corner, ...heads])]),
+      h('tbody', {}, lines),
     )
     const editor = this.#editor
     if (editor && this.#selected) {
@@ -346,22 +508,42 @@ export class TableView {
     this.#paintPeers()
   }
 
-  #paintTools(): void {
-    const table = this.#table
-    const at = this.#selected
-    const hasRow = !!(table && at && table.rows[at.row])
-    this.#tools.addRow.disabled = !table
-    this.#tools.addColumn.disabled = !table
-    this.#tools.deleteRow.disabled = !hasRow
-    this.#tools.deleteColumn.disabled = !(table && at && at.col < table.columns)
-  }
-
   #paintSelection(focus: boolean): void {
     for (const el of this.#grid.querySelectorAll<HTMLElement>('[aria-selected="true"]')) {
       el.removeAttribute('aria-selected')
       el.tabIndex = -1
     }
-    const cell = this.#selected ? this.#cellElement(this.#selected) : null
+    for (const el of this.#grid.querySelectorAll<HTMLElement>('[data-mark]')) {
+      delete el.dataset.mark
+    }
+    const at = this.#selected
+    if (at) {
+      // The headers of the cursor light up; a whole row or column is filled in.
+      const rowHead = this.#grid.querySelector<HTMLElement>(`[data-head-row="${at.row}"]`)
+      const colHead = this.#grid.querySelector<HTMLElement>(`[data-head-col="${at.col}"]`)
+      if (rowHead) rowHead.dataset.mark = this.#span === 'row' ? 'selected' : 'active'
+      if (colHead) colHead.dataset.mark = this.#span === 'column' ? 'selected' : 'active'
+      if (this.#span === 'column') {
+        for (const head of this.#grid.querySelectorAll<HTMLElement>('[data-head-row]')) {
+          head.dataset.mark = 'active'
+        }
+      }
+      if (this.#span === 'row') {
+        for (const head of this.#grid.querySelectorAll<HTMLElement>('[data-head-col]')) {
+          head.dataset.mark = 'active'
+        }
+      }
+      const span =
+        this.#span === 'row'
+          ? `td[data-row="${at.row}"]`
+          : this.#span === 'column'
+            ? `td[data-col="${at.col}"]`
+            : null
+      if (span) {
+        for (const el of this.#grid.querySelectorAll<HTMLElement>(span)) el.dataset.mark = 'span'
+      }
+    }
+    const cell = at ? this.#cellElement(at) : null
     // Keeps the grid reachable with Tab even before anything was selected.
     const target = cell ?? this.#grid.querySelector<HTMLElement>('[data-row]')
     if (target) target.tabIndex = 0
@@ -370,7 +552,6 @@ export class TableView {
       if (focus && !this.#editor) cell.focus()
       cell.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
     }
-    this.#paintTools()
   }
 
   #paintPeers(): void {
@@ -419,6 +600,16 @@ export class TableView {
     return this.#grid.querySelector<HTMLElement>(`[data-row="${at.row}"][data-col="${at.col}"]`)
   }
 
+  #targetOf(target: EventTarget | null): Target | null {
+    const el = (target as HTMLElement | null)?.closest?.<HTMLElement>(
+      '[data-row], [data-head-row], [data-head-col]',
+    )
+    if (!el || !this.#grid.contains(el)) return null
+    if (el.dataset.headRow !== undefined) return { kind: 'row', row: Number(el.dataset.headRow) }
+    if (el.dataset.headCol !== undefined) return { kind: 'column', col: Number(el.dataset.headCol) }
+    return { kind: 'cell', at: { row: Number(el.dataset.row), col: Number(el.dataset.col) } }
+  }
+
   #positionOf(target: EventTarget | null): Position | null {
     const cell = (target as HTMLElement | null)?.closest?.<HTMLElement>('[data-row]')
     if (!cell || !this.#grid.contains(cell)) return null
@@ -426,10 +617,24 @@ export class TableView {
   }
 
   #onClick(ev: MouseEvent): void {
+    if (this.#swallowClick) {
+      this.#swallowClick = false
+      return
+    }
     if ((ev.target as HTMLElement).closest('.cell-editor')) return
+    const target = this.#targetOf(ev.target)
+    if (target?.kind === 'row') {
+      this.select({ row: target.row, col: this.#selected?.col ?? 0 }, true, 'row')
+      return
+    }
+    if (target?.kind === 'column') {
+      this.select({ row: this.#selected?.row ?? 0, col: target.col }, true, 'column')
+      return
+    }
     const at = this.#positionOf(ev.target)
     if (!at) return
-    const again = this.#selected?.row === at.row && this.#selected.col === at.col
+    const again =
+      this.#span === 'cell' && this.#selected?.row === at.row && this.#selected.col === at.col
     // A second tap edits: phones have no double-click to spare.
     if (again) this.edit(at)
     else this.select(at)
@@ -451,6 +656,40 @@ export class TableView {
       this.#undo.redo()
       return
     }
+    // Google Sheets' keys: Ctrl+Alt+= inserts, Ctrl+Alt+- deletes (⌘⌥ on a Mac),
+    // rows unless a whole column is selected. The codes survive ⌥ changing the character.
+    if (mod && ev.altKey && (ev.code === 'Equal' || ev.code === 'Minus')) {
+      ev.preventDefault()
+      const column = this.#span === 'column'
+      if (ev.code === 'Equal') {
+        if (column) this.insertColumn('left')
+        else this.insertRow('above')
+      } else if (column) this.deleteColumn()
+      else this.deleteRow()
+      return
+    }
+    if (ev.key === ' ' && (ev.shiftKey || ev.ctrlKey) && !ev.metaKey && !ev.altKey) {
+      ev.preventDefault()
+      this.select({ row, col }, true, ev.shiftKey ? 'row' : 'column')
+      return
+    }
+    if (ev.key === 'ContextMenu' || (ev.key === 'F10' && ev.shiftKey)) {
+      ev.preventDefault()
+      const rect = this.#cellElement({ row, col })?.getBoundingClientRect()
+      const target: Target =
+        this.#span === 'row'
+          ? { kind: 'row', row }
+          : this.#span === 'column'
+            ? { kind: 'column', col }
+            : { kind: 'cell', at: { row, col } }
+      this.openMenu(target, rect?.left ?? 0, rect?.bottom ?? 0)
+      return
+    }
+    if (ev.key === 'Escape' && this.#span !== 'cell') {
+      ev.preventDefault()
+      this.select({ row, col })
+      return
+    }
     const rows = Math.max(1, this.#table?.rows.length ?? 0)
     const cols = Math.max(1, this.#table?.columns ?? 0)
     const moves: Record<string, Position> = {
@@ -470,9 +709,7 @@ export class TableView {
       this.edit({ row, col })
     } else if (ev.key === 'Delete' || ev.key === 'Backspace') {
       ev.preventDefault()
-      this.#undo.stopCapturing()
-      this.#write('')
-      this.#undo.stopCapturing()
+      this.#clear()
     } else if (isComposing(ev)) {
       // An IME is starting: open the cell as it is, so the conversion lands in
       // the editor. Replacing the value would clear it if it did not.
