@@ -2,7 +2,7 @@ import type { Compartment, Extension } from '@codemirror/state'
 import { Prec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github'
-import { derivePalette, type PagePalette, type Scheme } from './palette.ts'
+import { derivePalette, normalizeHex, type PagePalette, type Scheme } from './palette.ts'
 
 export type { Scheme }
 
@@ -26,8 +26,11 @@ function withPage(
   info: Omit<ThemeInfo, 'page'> & { accent: string; page?: Partial<PagePalette> },
 ): ThemeInfo {
   const { accent, page, ...rest } = info
-  const derived = derivePalette(info.scheme, { bg: info.bg, fg: info.fg, accent })
-  return { ...rest, page: { ...derived, ...page } }
+  const merged = { ...derivePalette(info.scheme, { bg: info.bg, fg: info.fg, accent }), ...page }
+  const normalized = Object.fromEntries(
+    Object.entries(merged).map(([key, color]) => [key, normalizeHex(color)]),
+  ) as unknown as PagePalette
+  return { ...rest, page: normalized }
 }
 
 export const THEMES: readonly ThemeInfo[] = [

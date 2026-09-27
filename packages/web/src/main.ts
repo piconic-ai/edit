@@ -110,7 +110,7 @@ interface LoadedTheme {
   extension: Extension
 }
 
-/** Offline or a stale deploy: start on the ima theme of the same scheme. */
+/** Offline or a stale deploy: start on the default theme of the same scheme. */
 function loadStartTheme(id: string): Promise<LoadedTheme> {
   return loadTheme(id).then(
     (extension) => ({ id, extension }),
@@ -162,7 +162,8 @@ function addAppearanceSettings(
       void showTheme()
     },
   })
-  // Until the reader picks a theme, the default one follows the OS.
+  // Until the reader picks a theme, the default one follows the OS. Picking is one-way by
+  // design: there is one theme, and no "follow the system" entry to go back to (#30).
   prefersDark.addEventListener('change', () => void showTheme())
 
   const setText = (next: Appearance) => {
@@ -445,7 +446,7 @@ async function start(): Promise<void> {
     ? { name: identity.name, avatar: await avatarFor(identity) }
     : { name: loadName() ?? (await askName()) }
   const loaded = await theme
-  // If the theme could not load, the page matches the ima theme the editor falls back to.
+  // If the theme could not load, the page matches the default theme the editor falls back to.
   applyPalette(pageColors(appearance, loaded.id))
   await joinRoom(room.id, room.key, me, appearance, loaded)
 }

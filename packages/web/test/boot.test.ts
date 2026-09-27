@@ -9,7 +9,7 @@ import {
   systemVars,
   themeVars,
 } from '../src/palette.ts'
-import { themeInfo } from '../src/themes.ts'
+import { THEMES, themeInfo } from '../src/themes.ts'
 
 // The classic inline script that applies the stored appearance before the first paint.
 const boot = (() => {
@@ -74,6 +74,15 @@ describe('index.html boot script', () => {
     const root = run(null, JSON.stringify(vars))
     for (const name of [...Object.values(PALETTE_VARS), 'color-scheme']) {
       expect(root.style.getPropertyValue(name), name).toBe(vars[name])
+    }
+  })
+
+  // A value the boot script rejects would flash the default colours on every load.
+  it.each(THEMES.map((t) => [t.id, t] as const))('accepts every colour of %s', (_, theme) => {
+    const vars = themeVars(theme.scheme, theme.page)
+    const root = run(null, JSON.stringify(vars))
+    for (const [name, value] of Object.entries(vars)) {
+      expect(root.style.getPropertyValue(name), name).toBe(value)
     }
   })
 

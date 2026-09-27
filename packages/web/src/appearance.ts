@@ -13,7 +13,8 @@ export type Font = 'mono' | 'sans'
 export interface Appearance {
   /**
    * The theme of the page and the editor. Null until the reader picks one:
-   * the default theme of the OS scheme then shows, following the OS.
+   * the default theme of the OS scheme then shows, following the OS. Picking
+   * is one-way by design; the settings offer themes only, not "follow the OS".
    */
   theme: string | null
   fontSize: number

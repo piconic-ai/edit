@@ -41,6 +41,15 @@ function toHex(rgb: number[]): string {
   return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`
 }
 
+/**
+ * `#rrggbb` or `#rrggbbaa` in lower case, the only forms the boot script in
+ * index.html accepts; `#FFF` and `#FDF6E3` would otherwise be dropped there.
+ */
+export function normalizeHex(color: string): string {
+  const { rgb, alpha } = parseHex(color)
+  return alpha < 1 ? `${toHex(rgb)}${toHex([alpha * 255]).slice(1)}` : toHex(rgb)
+}
+
 /** `a` moved towards `b` by `t` (0 to 1), in sRGB. */
 export function mix(a: string, b: string, t: number): string {
   const x = parseHex(a).rgb
@@ -89,7 +98,7 @@ export function derivePalette(
   scheme: Scheme,
   colors: { bg: string; fg: string; accent: string },
 ): PagePalette {
-  const panel = colors.bg
+  const panel = normalizeHex(colors.bg)
   const bg = mix(panel, '#000000', scheme === 'light' ? 0.035 : 0.3)
   // Text sits on the panels, on the page (inputs) and on its own tint (inline code).
   const ink = readable(colors.fg, (c) => [panel, bg, composite(codeBg(c), panel)], scheme)

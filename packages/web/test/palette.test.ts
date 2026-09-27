@@ -5,6 +5,7 @@ import {
   applyPalette,
   derivePalette,
   mix,
+  normalizeHex,
   PALETTE_KEY,
   PALETTE_VARS,
   readable,
@@ -28,6 +29,15 @@ describe('mix', () => {
     expect(mix('#000000', '#ffffff', 0)).toBe('#000000')
     expect(mix('#000000', '#ffffff', 1)).toBe('#ffffff')
     expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080')
+  })
+})
+
+describe('normalizeHex', () => {
+  it('writes every colour as lower-case six or eight digits', () => {
+    expect(normalizeHex('#FDF6E3')).toBe('#fdf6e3')
+    expect(normalizeHex('#FFF')).toBe('#ffffff')
+    expect(normalizeHex('#AFB8C133')).toBe('#afb8c133')
+    expect(normalizeHex('#0d1117')).toBe('#0d1117')
   })
 })
 
@@ -64,6 +74,11 @@ describe('derivePalette', () => {
     }
     expect(contrast(p.warnInk, p.warnBg)).toBeGreaterThanOrEqual(TEXT_CONTRAST)
     expect(p.codeBg).toBe(`${p.ink}1a`)
+  })
+
+  it('normalises a theme colour given in upper case, as the boot script needs', () => {
+    const p = derivePalette('light', { bg: '#FDF6E3', fg: '#657B83', accent: '#268BD2' })
+    for (const color of Object.values(p)) expect(color).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/)
   })
 })
 
