@@ -71,6 +71,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
 
 	var arg string
+	var shared bool
 	scratch := len(args) == 0
 	if scratch {
 		name, err := createScratch(".", func() string { return time.Now().Format("2006-01-02-150405") })
@@ -80,8 +81,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		arg = name
-		// Say where the text is, however ima ends.
-		defer out.scratch(arg)
+		// Say where the text is if ima ends before sharing it; finish
+		// says so once it is shared.
+		defer func() {
+			if !shared {
+				out.scratch(arg)
+			}
+		}()
 	} else {
 		arg = args[0]
 	}
@@ -143,6 +149,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	out.sharing(arg, s.URL, clipboard.Copy(s.URL), scratch)
+	shared = true
 
 	<-ctx.Done()
 	// A second signal gives up on saving.
@@ -150,13 +157,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		<-signals
 		os.Exit(130)
 	}()
+	return finish(out, stderr, arg, scratch, s.Stop)
+}
+
+// finish saves the file and closes the room. It points to a scratch file
+// only once it is saved, so a failed save never reads as a safe one.
+func finish(out *ui, stderr io.Writer, arg string, scratch bool, stop func() error) int {
 	out.stopLive()
 	out.saving(arg)
-	if err := s.Stop(); err != nil {
+	if err := stop(); err != nil {
 		fmt.Fprintf(stderr, "ima: could not save %s: %v\n", arg, err)
 		return 1
 	}
 	out.saved(arg)
+	if scratch {
+		out.scratch(arg)
+	}
 	return 0
 }
 

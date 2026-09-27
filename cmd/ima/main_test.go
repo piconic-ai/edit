@@ -88,6 +88,43 @@ func TestRunWithoutFileInReadOnlyDir(t *testing.T) {
 	}
 }
 
+func TestFinish(t *testing.T) {
+	tests := []struct {
+		name    string
+		scratch bool
+		stopErr error
+		code    int
+		stdout  []string
+		not     []string
+	}{
+		{name: "file", code: 0, stdout: []string{"✓ Saved notes.md"}, not: []string{"Resume with"}},
+		{name: "scratch", scratch: true, code: 0, stdout: []string{"✓ Saved notes.md", "Saved to notes.md", "Resume with: ima notes.md"}},
+		{name: "scratch not saved", scratch: true, stopErr: errors.New("disk full"), code: 1, not: []string{"Saved", "Resume with"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr strings.Builder
+			code := finish(newUI(&stdout, false, false), &stderr, "notes.md", tt.scratch, func() error { return tt.stopErr })
+			if code != tt.code {
+				t.Errorf("code = %d", code)
+			}
+			for _, want := range tt.stdout {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("missing %q in %q", want, stdout.String())
+				}
+			}
+			for _, unwanted := range tt.not {
+				if strings.Contains(stdout.String(), unwanted) {
+					t.Errorf("unexpected %q in %q", unwanted, stdout.String())
+				}
+			}
+			if tt.stopErr != nil && !strings.Contains(stderr.String(), "could not save notes.md: disk full") {
+				t.Errorf("stderr = %q", stderr.String())
+			}
+		})
+	}
+}
+
 func readOnlyDir(t *testing.T) string {
 	t.Helper()
 	if os.Geteuid() == 0 {

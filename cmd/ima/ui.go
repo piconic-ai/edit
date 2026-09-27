@@ -130,7 +130,7 @@ func (u *ui) sharing(file, url string, copied, scratch bool) {
 	}
 	lines = append(lines, "", u.dim("Press Ctrl+C when you are done. Everything is saved to "+file+"."), "")
 	if scratch {
-		lines = append(lines, u.scratchLines(file)...)
+		lines = append(lines, u.resume(file), "")
 	}
 	u.print(lines...)
 
@@ -174,11 +174,11 @@ func (u *ui) saved(file string) {
 
 // scratch names the scratch file ima created and how to open it again.
 func (u *ui) scratch(file string) {
-	u.print(u.scratchLines(file)...)
+	u.print("Saved to "+file, u.resume(file), "")
 }
 
-func (u *ui) scratchLines(file string) []string {
-	return []string{"Saved to " + file, "Resume with: " + u.bold("ima "+file), ""}
+func (u *ui) resume(file string) string {
+	return "Resume with: " + u.bold("ima "+file)
 }
 
 // render redraws the live line. Callers hold u.mu.

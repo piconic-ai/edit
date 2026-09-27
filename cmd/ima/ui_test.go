@@ -110,7 +110,6 @@ func TestUIScratch(t *testing.T) {
 
   Press Ctrl+C when you are done. Everything is saved to ima-2026-09-26-143012.md.
 
-  Saved to ima-2026-09-26-143012.md
   Resume with: ima ima-2026-09-26-143012.md
 
   ○ Connecting…
