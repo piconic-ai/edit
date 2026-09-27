@@ -40,10 +40,11 @@ func getVersion() string {
 
 const defaultServer = "https://ima.piconic.ai"
 
-const usage = `Usage: ima <file>
+const usage = `Usage: ima [file]
 
 Share a local text file and co-edit it with others in their browser.
 Edits are written back to the file. Press Ctrl+C to finish.
+Without a file, ima starts on a new empty ima-<time>.md in the current directory.
 
 Environment:
   IMA_SERVER  ima server URL (default: ` + defaultServer + `)
@@ -63,11 +64,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, getVersion())
 		return 0
 	}
-	if len(args) != 1 || args[0] == "" {
+	if len(args) > 1 || (len(args) == 1 && args[0] == "") {
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
-	arg := args[0]
+	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
+
+	var arg string
+	scratch := len(args) == 0
+	if scratch {
+		name, err := createScratch(".", func() string { return time.Now().Format("2006-01-02-150405") })
+		if err != nil {
+			dir, _ := os.Getwd()
+			fmt.Fprintf(stderr, "ima: could not create a scratch file in %s: %v\nRun ima <file> to share an existing file instead.\n", dir, err)
+			return 1
+		}
+		arg = name
+		// Say where the text is, however ima ends.
+		defer out.scratch(arg)
+	} else {
+		arg = args[0]
+	}
 	file, err := filepath.Abs(arg)
 	if err != nil {
 		fmt.Fprintln(stderr, "ima:", err)
@@ -82,8 +99,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if server == "" {
 		server = defaultServer
 	}
-	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
-
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,7 +142,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	out.sharing(arg, s.URL, clipboard.Copy(s.URL))
+	out.sharing(arg, s.URL, clipboard.Copy(s.URL), scratch)
 
 	<-ctx.Done()
 	// A second signal gives up on saving.

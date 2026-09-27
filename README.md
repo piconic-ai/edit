@@ -8,6 +8,8 @@ ima notes.md
 
 `ima` prints a link (and copies it to your clipboard). Paste it into Slack or wherever; whoever opens it edits the file with you in their browser. No install or account for them. Edits land in your local file about a second later. Press Ctrl+C to finish: the final state is written and the room closes.
 
+No file in mind yet? Run `ima` on its own: it creates an empty `ima-<time>.md` (for example `ima-2026-09-26-143012.md`) in the current directory and shares that. It never overwrites a file, and when you finish it tells you the name so you can resume later with `ima ima-2026-09-26-143012.md`. `ima <file>` itself only shares files that already exist.
+
 Any UTF-8 text file works, not only Markdown: `ima main.go`, `ima data.csv` or `ima board.canvas`. The editor picks syntax highlighting from the file extension and falls back to Markdown when there is none or it is unknown; `.txt`, `.csv` and `.tsv` stay plain text.
 
 Markdown files open with a rendered preview next to the editor (preview only on phones); switch between Edit, Split and Preview in the header. The preview shows images and videos from absolute URLs already in the document, and plays bare YouTube and Vimeo links. Images at relative paths show their alt text, since they live on your disk.
