@@ -169,3 +169,46 @@ describe('vimExtension', () => {
     expect(text.toString()).toBe('mine theirs')
   })
 })
+
+function pressTab(view: EditorView, shiftKey = false): boolean {
+  const event = new KeyboardEvent('keydown', {
+    key: 'Tab',
+    code: 'Tab',
+    keyCode: 9,
+    shiftKey,
+    bubbles: true,
+    cancelable: true,
+  })
+  view.contentDOM.dispatchEvent(event)
+  return event.defaultPrevented
+}
+
+describe('Tab in Vim mode', () => {
+  it('indents and dedents in insert mode instead of moving focus', async () => {
+    const { undoManager, vimMode, view } = setup('line')
+    await new VimToggle(view, vimMode, () => vimExtension(undoManager), memoryStore()).set(true)
+    const cm = getCM(view) as CodeMirrorV
+    Vim.handleKey(cm, 'i', 'user')
+
+    expect(pressTab(view)).toBe(true)
+    expect(view.state.doc.toString()).toBe('  line')
+
+    expect(pressTab(view, true)).toBe(true)
+    expect(view.state.doc.toString()).toBe('line')
+  })
+
+  it('indents the line in normal mode', async () => {
+    const { undoManager, vimMode, view } = setup('line')
+    await new VimToggle(view, vimMode, () => vimExtension(undoManager), memoryStore()).set(true)
+
+    expect(pressTab(view)).toBe(true)
+    expect(view.state.doc.toString()).toBe('  line')
+  })
+
+  it('leaves Tab to the browser when Vim is off', () => {
+    const { view } = setup('line')
+
+    expect(pressTab(view)).toBe(false)
+    expect(view.state.doc.toString()).toBe('line')
+  })
+})

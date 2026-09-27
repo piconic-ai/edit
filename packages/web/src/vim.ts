@@ -1,5 +1,6 @@
+import { indentWithTab } from '@codemirror/commands'
 import type { Compartment, Extension } from '@codemirror/state'
-import type { EditorView } from '@codemirror/view'
+import { type EditorView, keymap } from '@codemirror/view'
 import type * as Y from 'yjs'
 import { defaultStore, type Store } from './storage.ts'
 
@@ -29,6 +30,9 @@ export function saveVimMode(on: boolean, store: Store | null = defaultStore()): 
  * The extension undoes through CodeMirror's own history, which would also
  * revert edits made by others. `u` and `Ctrl-r` go through the shared
  * UndoManager instead, which only tracks this browser's edits.
+ *
+ * Tab indents instead of moving focus, as it does in Vim. Escape then Tab
+ * still leaves the editor.
  */
 export async function vimExtension(undoManager: Y.UndoManager): Promise<Extension> {
   const { CodeMirror, Vim, vim } = await import('@replit/codemirror-vim')
@@ -44,7 +48,7 @@ export async function vimExtension(undoManager: Y.UndoManager): Promise<Extensio
   // The ex commands copied the original functions when the module loaded.
   Vim.defineEx('undo', 'u', undo)
   Vim.defineEx('redo', 'red', redo)
-  return vim({ status: true })
+  return [vim({ status: true }), keymap.of([indentWithTab])]
 }
 
 /**
