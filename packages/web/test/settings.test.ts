@@ -267,7 +267,7 @@ describe('settings panel position', () => {
   })
 
   it('scrolls inside the panel rather than running off the bottom', () => {
-    expect(openAt(1270, 40, 1280).maxHeight).toBe('calc(100dvh - 54px)')
+    expect(openAt(1270, 40, 1280).maxHeight).toBe('calc(var(--app-height, 100dvh) - 54px)')
   })
 
   it('keeps the panel on screen when the gear wraps to the left', () => {
