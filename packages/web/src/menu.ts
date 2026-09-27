@@ -2,8 +2,8 @@ import { h } from './dom.ts'
 
 export interface MenuItem {
   label: string
-  /** The key combination that does the same, shown on the right. */
-  shortcut?: string
+  /** The keys that do the same, like ['Mod', 'Alt', '=']; shown on the right. */
+  keys?: readonly string[]
   disabled?: boolean
   action: () => void
 }
@@ -22,13 +22,17 @@ export function isMac(nav: Pick<Navigator, 'userAgent'> = navigator): boolean {
 export function formatShortcut(keys: readonly string[], mac = isMac()): string {
   const names: Record<string, [string, string]> = {
     Mod: ['⌘', 'Ctrl'],
-    Ctrl: ['⌃', 'Ctrl'],
     Alt: ['⌥', 'Alt'],
     Shift: ['⇧', 'Shift'],
-    Space: ['Space', 'Space'],
   }
   const parts = keys.map((k) => names[k]?.[mac ? 0 : 1] ?? k)
   return mac ? parts.join('') : parts.join('+')
+}
+
+/** The same keys as aria-keyshortcuts wants them: KeyboardEvent.key names joined by +. */
+export function ariaShortcut(keys: readonly string[], mac = isMac()): string {
+  const names: Record<string, [string, string]> = { Mod: ['Meta', 'Control'] }
+  return keys.map((k) => names[k]?.[mac ? 0 : 1] ?? k).join('+')
 }
 
 /**
@@ -37,12 +41,14 @@ export function formatShortcut(keys: readonly string[], mac = isMac()): string {
  */
 export class ContextMenu {
   readonly element: HTMLElement
+  #mac: boolean
   #returnFocus: HTMLElement | null = null
   #onOutside = (ev: Event) => {
     if (!this.element.contains(ev.target as Node)) this.close()
   }
 
-  constructor() {
+  constructor(mac = isMac()) {
+    this.#mac = mac
     this.element = h('div', { className: 'context-menu', role: 'menu', hidden: true })
     this.element.addEventListener('keydown', (ev) => this.#onKey(ev))
     this.element.addEventListener('contextmenu', (ev) => ev.preventDefault())
@@ -64,9 +70,9 @@ export class ContextMenu {
           disabled: item.disabled ?? false,
         })
         button.append(h('span', { textContent: item.label }))
-        if (item.shortcut) {
-          button.append(h('kbd', { textContent: item.shortcut }))
-          button.setAttribute('aria-keyshortcuts', item.shortcut)
+        if (item.keys) {
+          button.append(h('kbd', { textContent: formatShortcut(item.keys, this.#mac) }))
+          button.setAttribute('aria-keyshortcuts', ariaShortcut(item.keys, this.#mac))
         }
         button.addEventListener('click', () => {
           this.close()

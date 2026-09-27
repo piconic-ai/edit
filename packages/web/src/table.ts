@@ -13,7 +13,7 @@ import {
   tryParse,
 } from './csv.ts'
 import { h } from './dom.ts'
-import { ContextMenu, formatShortcut, type MenuItem, SEPARATOR } from './menu.ts'
+import { ContextMenu, type MenuItem, SEPARATOR } from './menu.ts'
 import { participants } from './room.ts'
 
 /** Marks the table's own edits, so the undo manager tracks them and the view knows them. */
@@ -51,8 +51,6 @@ export function columnName(index: number): string {
 export const SHORTCUTS = {
   insert: ['Mod', 'Alt', '='],
   remove: ['Mod', 'Alt', '-'],
-  selectRow: ['Shift', 'Space'],
-  selectColumn: ['Ctrl', 'Space'],
 } as const
 
 interface Peer {
@@ -262,7 +260,10 @@ export class TableView {
     if (!table || !at || !table.rows[at.row]) return
     this.#apply(deleteRow(table, at.row))
     const rows = this.#table?.rows.length ?? 0
-    this.select({ row: Math.min(at.row, Math.max(0, rows - 1)), col: at.col })
+    // The row that takes its place stays selected the same way, so pressing
+    // the delete keys again goes on deleting rows.
+    const span = this.#span === 'row' ? 'row' : 'cell'
+    this.select({ row: Math.min(at.row, Math.max(0, rows - 1)), col: at.col }, true, span)
   }
 
   deleteColumn(): void {
@@ -271,7 +272,8 @@ export class TableView {
     if (!table || !at || at.col >= table.columns) return
     this.#apply(deleteColumn(table, at.col))
     const cols = this.#table?.columns ?? 0
-    this.select({ row: at.row, col: Math.min(at.col, Math.max(0, cols - 1)) })
+    const span = this.#span === 'column' ? 'column' : 'cell'
+    this.select({ row: at.row, col: Math.min(at.col, Math.max(0, cols - 1)) }, true, span)
   }
 
   /** Opens the row and column menu for what was right-clicked or long-pressed. */
@@ -291,20 +293,19 @@ export class TableView {
   #menuItems(kind: Target['kind']): (MenuItem | null)[] {
     const table = this.#table
     const at = this.#selected
-    const insert = formatShortcut(SHORTCUTS.insert)
-    const remove = formatShortcut(SHORTCUTS.remove)
+    const { insert, remove } = SHORTCUTS
     // The shortcuts act on rows unless a whole column is selected.
     const rowKeys = kind !== 'column'
     const rows: MenuItem[] = [
       {
         label: 'Insert row above',
-        shortcut: rowKeys ? insert : undefined,
+        keys: rowKeys ? insert : undefined,
         action: () => this.insertRow('above'),
       },
       { label: 'Insert row below', action: () => this.insertRow('below') },
       {
         label: 'Delete row',
-        shortcut: rowKeys ? remove : undefined,
+        keys: rowKeys ? remove : undefined,
         disabled: !(table && at && table.rows[at.row]),
         action: () => this.deleteRow(),
       },
@@ -312,13 +313,13 @@ export class TableView {
     const columns: MenuItem[] = [
       {
         label: 'Insert column left',
-        shortcut: rowKeys ? undefined : insert,
+        keys: rowKeys ? undefined : insert,
         action: () => this.insertColumn('left'),
       },
       { label: 'Insert column right', action: () => this.insertColumn('right') },
       {
         label: 'Delete column',
-        shortcut: rowKeys ? undefined : remove,
+        keys: rowKeys ? undefined : remove,
         disabled: !(table && at && at.col < table.columns),
         action: () => this.deleteColumn(),
       },
@@ -344,6 +345,9 @@ export class TableView {
       press = null
     }
     this.#grid.addEventListener('pointerdown', (ev) => {
+      // The click that ends a long press, if the platform sends one, always
+      // comes before the next press: a flag still set here was never used.
+      this.#swallowClick = false
       if (ev.pointerType !== 'touch') return
       cancel()
       const target = this.#targetOf(ev.target)

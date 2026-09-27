@@ -301,6 +301,20 @@ describe('TableView', () => {
     expect(view.span).toBe('cell')
   })
 
+  it('keeps deleting columns, or rows, when the delete keys are pressed again', () => {
+    const { text, view, head, cell, key } = setup('a,b,c\nd,e,f\n')
+    head('col', 1).click()
+    key(cell(0, 1), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    key(cell(0, 1), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    expect(text.toString()).toBe('a\nd\n')
+    expect(view.span).toBe('column')
+
+    head('row', 0).click()
+    key(cell(0, 0), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    expect(view.span).toBe('row')
+    expect(text.toString()).toBe('d\n')
+  })
+
   it('clears a whole selected row with Delete', () => {
     const { text, view, head, cell, key } = setup('a,b\nc,d\n')
     head('row', 0).click()
@@ -339,6 +353,16 @@ describe('TableView', () => {
       cell(1, 1).click()
       // The finger lifting is not a second tap: nothing opens for editing.
       expect(view.element.querySelector('.cell-editor')).toBeNull()
+
+      // Without a click after the long press, the next real tap still counts.
+      press('pointerdown')
+      vi.advanceTimersByTime(600)
+      view.menu.close()
+      press('pointerup')
+      press('pointerdown')
+      press('pointerup')
+      cell(0, 0).click()
+      expect(view.selected).toEqual({ row: 0, col: 0 })
     } finally {
       vi.useRealTimers()
     }

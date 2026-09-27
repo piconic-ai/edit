@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
-import { ContextMenu, formatShortcut, isMac, SEPARATOR } from '../src/menu.ts'
+import { ariaShortcut, ContextMenu, formatShortcut, isMac, SEPARATOR } from '../src/menu.ts'
 
 describe('formatShortcut', () => {
   it('writes symbols on a Mac and names elsewhere', () => {
     expect(formatShortcut(['Mod', 'Alt', '='], true)).toBe('⌘⌥=')
     expect(formatShortcut(['Mod', 'Alt', '='], false)).toBe('Ctrl+Alt+=')
     expect(formatShortcut(['Shift', 'Space'], false)).toBe('Shift+Space')
+  })
+
+  it('names keys for aria-keyshortcuts as KeyboardEvent.key does', () => {
+    expect(ariaShortcut(['Mod', 'Alt', '='], true)).toBe('Meta+Alt+=')
+    expect(ariaShortcut(['Mod', 'Alt', '-'], false)).toBe('Control+Alt+-')
   })
 
   it('tells a Mac from its user agent', () => {
@@ -17,13 +22,13 @@ describe('formatShortcut', () => {
 
 describe('ContextMenu', () => {
   function open() {
-    const menu = new ContextMenu()
+    const menu = new ContextMenu(false)
     document.body.append(menu.element)
     const first = vi.fn()
     const second = vi.fn()
     menu.show(
       [
-        { label: 'First', shortcut: 'Ctrl+1', action: first },
+        { label: 'First', keys: ['Mod', '1'], action: first },
         SEPARATOR,
         { label: 'Off', disabled: true, action: vi.fn() },
         { label: 'Second', action: second },
@@ -38,6 +43,7 @@ describe('ContextMenu', () => {
   it('lists items with shortcuts and separators, focusing the first', () => {
     const { menu, items } = open()
     expect(items.map((b) => b.textContent)).toEqual(['FirstCtrl+1', 'Off', 'Second'])
+    expect(items[0]?.getAttribute('aria-keyshortcuts')).toBe('Control+1')
     expect(menu.element.querySelectorAll('[role="separator"]')).toHaveLength(1)
     expect(document.activeElement).toBe(items[0])
     menu.close()
