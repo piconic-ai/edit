@@ -124,6 +124,17 @@ func TestCheckFileDirectoryWithManyFiles(t *testing.T) {
 	}
 }
 
+func TestTextFilesStopsPastLimit(t *testing.T) {
+	files := map[string]os.FileMode{}
+	for _, n := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		files[n+".md"] = 0o644
+	}
+	inDir(t, files)
+	if got := textFiles(".", 2); len(got) != 3 {
+		t.Fatalf("textFiles = %q, want 3 names", got)
+	}
+}
+
 func TestCheckFilePermissions(t *testing.T) {
 	skipIfRoot(t)
 	inDir(t, map[string]os.FileMode{"secret.md": 0o200, "readonly.md": 0o444, "locked/notes.md": 0o644})

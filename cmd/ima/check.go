@@ -65,7 +65,7 @@ const maxListed = 5
 
 func directory(arg string) string {
 	msg := "ima: " + arg + " is a directory. ima shares a single file."
-	names := textFiles(arg)
+	names := textFiles(arg, maxListed)
 	if len(names) == 0 || len(names) > maxListed {
 		return msg
 	}
@@ -81,7 +81,9 @@ func directory(arg string) string {
 }
 
 // textFiles lists the regular files directly in dir that look like text.
-func textFiles(dir string) []string {
+// It stops after limit+1, which is enough to tell there are too many, so a
+// large directory is not read through.
+func textFiles(dir string, limit int) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -93,6 +95,9 @@ func textFiles(dir string) []string {
 		}
 		if st, err := os.Stat(filepath.Join(dir, e.Name())); err == nil && st.Mode().IsRegular() && isText(filepath.Join(dir, e.Name())) {
 			names = append(names, e.Name())
+			if len(names) > limit {
+				break
+			}
 		}
 	}
 	return names
