@@ -1,5 +1,6 @@
+import { paletteVars } from './palette.ts'
 import { defaultStore, type Store } from './storage.ts'
-import { DEFAULT_THEME, type Scheme, themeInfo } from './themes.ts'
+import { DEFAULT_THEME, pagePalette, type Scheme, themeInfo } from './themes.ts'
 
 /**
  * Stored as JSON under one key. index.html reads the same key before the first
@@ -10,10 +11,8 @@ export const APPEARANCE_KEY = 'ima:appearance'
 export type Font = 'mono' | 'sans'
 
 export interface Appearance {
-  /** The page chrome. */
+  /** Which group of themes the page and the editor show. */
   page: 'system' | Scheme
-  /** Which group of themes the editor shows; 'page' follows the chrome. */
-  editor: 'page' | Scheme
   /** The last theme picked in each group. */
   light: string
   dark: string
@@ -35,7 +34,6 @@ export const LINE_HEIGHT = { min: 1.2, max: 2, step: 0.1 } as const
 
 export const DEFAULT_APPEARANCE: Appearance = {
   page: 'system',
-  editor: 'page',
   light: DEFAULT_THEME.light,
   dark: DEFAULT_THEME.dark,
   fontSize: 15,
@@ -65,9 +63,10 @@ function themeIn(scheme: Scheme, value: unknown): string {
 export function parseAppearance(raw: unknown): Appearance {
   const a = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
   const d = DEFAULT_APPEARANCE
+  const isScheme = (v: unknown): v is Scheme => v === 'light' || v === 'dark'
   return {
-    page: a.page === 'light' || a.page === 'dark' ? a.page : d.page,
-    editor: a.editor === 'light' || a.editor === 'dark' ? a.editor : d.editor,
+    // Earlier versions could pin the editor to the other scheme; the page now shows what it showed.
+    page: isScheme(a.editor) ? a.editor : isScheme(a.page) ? a.page : d.page,
     light: themeIn('light', a.light),
     dark: themeIn('dark', a.dark),
     fontSize: clamp(a.fontSize, FONT_SIZE, d.fontSize),
@@ -95,27 +94,25 @@ export function saveAppearance(a: Appearance, store: Store | null = defaultStore
 }
 
 export interface Resolved {
-  page: Scheme
-  editorScheme: Scheme
-  editorTheme: string
+  scheme: Scheme
+  theme: string
 }
 
 export function resolveAppearance(a: Appearance, prefersDark: boolean): Resolved {
-  const page = a.page === 'system' ? (prefersDark ? 'dark' : 'light') : a.page
-  const editorScheme = a.editor === 'page' ? page : a.editor
-  return { page, editorScheme, editorTheme: a[editorScheme] }
+  const scheme = a.page === 'system' ? (prefersDark ? 'dark' : 'light') : a.page
+  return { scheme, theme: a[scheme] }
 }
 
 /**
- * Remembers a theme in its group. A theme of the page's scheme follows the
- * page from then on; one of the other scheme pins the editor to it, so what
- * was clicked is always what is shown.
+ * Remembers a theme in its group. Picking one of the other scheme switches the
+ * page to that scheme, so what was clicked is always what is shown; one of the
+ * current scheme leaves the page setting, and so following the OS, alone.
  */
 export function pickTheme(a: Appearance, id: string, prefersDark: boolean): Appearance {
   const scheme = themeInfo(id)?.scheme
   if (!scheme) return a
-  const { page } = resolveAppearance(a, prefersDark)
-  return { ...a, [scheme]: id, editor: scheme === page ? 'page' : scheme }
+  const current = resolveAppearance(a, prefersDark).scheme
+  return { ...a, [scheme]: id, page: scheme === current ? a.page : scheme }
 }
 
 /** The page scheme is left to the OS unless the reader chose one. */
@@ -128,4 +125,16 @@ export function applyText(a: Appearance, root: HTMLElement = document.documentEl
   root.style.setProperty('--editor-font-size', `${a.fontSize}px`)
   root.style.setProperty('--editor-font', a.font === 'sans' ? 'var(--sans)' : 'var(--mono)')
   root.style.setProperty('--editor-line-height', String(a.lineHeight))
+}
+
+/**
+ * The page colours for the theme of each group. `shown` is the theme the
+ * editor ended up with; it differs from the pick when that could not load, and
+ * the page then matches the fallback rather than the pick.
+ */
+export function pageColors(a: Appearance, shown?: string): Record<string, string> {
+  const ids: Record<Scheme, string> = { light: a.light, dark: a.dark }
+  const scheme = shown ? themeInfo(shown)?.scheme : undefined
+  if (shown && scheme) ids[scheme] = shown
+  return paletteVars(pagePalette(ids.light, 'light'), pagePalette(ids.dark, 'dark'))
 }

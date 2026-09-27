@@ -20,6 +20,16 @@
           if (typeof stored.lineHeight === 'number' && stored.lineHeight >= 1.2 && stored.lineHeight <= 2)
             root.style.setProperty('--editor-line-height', String(stored.lineHeight))
         }
+        // The page colours of the reader's themes, as palette.ts last applied them.
+        var palette = JSON.parse(localStorage.getItem('ima:palette') || 'null')
+        var names = ['--bg', '--panel', '--ink', '--muted', '--line', '--accent', '--code-bg', '--warn-bg', '--warn-ink']
+        var color = /^light-dark\(#[0-9a-f]{6}([0-9a-f]{2})?, #[0-9a-f]{6}([0-9a-f]{2})?\)$/
+        if (palette && typeof palette === 'object') {
+          for (var i = 0; i < names.length; i++) {
+            var value = palette[names[i]]
+            if (typeof value === 'string' && color.test(value)) root.style.setProperty(names[i], value)
+          }
+        }
       } catch (e) {}
     </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f7a64'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white' font-family='sans-serif'>今</text></svg>" />

@@ -1,5 +1,6 @@
 :root {
-  /* Follows the OS unless the reader picked a scheme (data-scheme, set by appearance.ts). */
+  /* Follows the OS unless the reader picked a scheme (data-scheme, set by appearance.ts).
+     The colours are the ima themes'; the reader's themes replace them from palette.ts. */
   color-scheme: light dark;
   --bg: light-dark(#f6f7f9, #12161c);
   --panel: light-dark(#ffffff, #1a2029);
@@ -9,7 +10,7 @@
   --accent: light-dark(#1f7a64, #5cc9a8);
   --warn-bg: light-dark(#fdf0e3, #33241a);
   --warn-ink: light-dark(#8a4308, #f5c08a);
-  --code-bg: light-dark(rgb(175 184 193 / 0.2), rgb(101 108 118 / 0.2));
+  --code-bg: light-dark(#afb8c133, #656c7633);
   --sans: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
   --mono:
     ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;

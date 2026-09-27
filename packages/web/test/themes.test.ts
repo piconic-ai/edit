@@ -9,6 +9,7 @@ import { yCollab } from 'y-codemirror.next'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { composite, contrast } from '../src/contrast.ts'
+import { PALETTE_VARS, type PagePalette } from '../src/palette.ts'
 import { COLORS, selectionTint } from '../src/room.ts'
 import {
   CARET_HALO,
@@ -16,6 +17,7 @@ import {
   fallbackTheme,
   IMA_PALETTE,
   IMA_SYNTAX,
+  pagePalette,
   readerTheme,
   THEMES,
   ThemeSwitcher,
@@ -70,16 +72,15 @@ describe('ima themes', () => {
   const css = readFileSync(resolve(import.meta.dirname, '../src/style.css'), 'utf8')
   // `--panel: light-dark(#ffffff, #1a2029);` and so on.
   const fromCss = (name: string) => {
-    const m = new RegExp(`--${name}:\\s*light-dark\\((#[0-9a-f]{6}),\\s*(#[0-9a-f]{6})\\)`).exec(
-      css,
-    )
-    if (!m) throw new Error(`--${name} not found in style.css`)
+    const hex = '(#[0-9a-f]{6}(?:[0-9a-f]{2})?)'
+    const m = new RegExp(`${name}:\\s*light-dark\\(${hex},\\s*${hex}\\)`).exec(css)
+    if (!m) throw new Error(`${name} not found in style.css`)
     return { light: m[1], dark: m[2] }
   }
 
-  it.each(Object.keys(IMA_PALETTE.light))('uses the page palette for --%s', (name) => {
-    const key = name as keyof typeof IMA_PALETTE.light
-    expect(fromCss(name)).toEqual({ light: IMA_PALETTE.light[key], dark: IMA_PALETTE.dark[key] })
+  it.each(Object.entries(PALETTE_VARS))('uses the page palette for %s', (key, name) => {
+    const k = key as keyof PagePalette
+    expect(fromCss(name)).toEqual({ light: IMA_PALETTE.light[k], dark: IMA_PALETTE.dark[k] })
   })
 
   it.each(['light', 'dark'] as const)('keeps %s syntax colours readable on the panel', (scheme) => {
@@ -89,6 +90,32 @@ describe('ima themes', () => {
       expect(contrast(color, panel), color).toBeGreaterThanOrEqual(4.5)
     }
     expect(contrast(ink, selection)).toBeGreaterThanOrEqual(4.5)
+  })
+})
+
+describe('page palettes', () => {
+  it.each(THEMES.map((t) => [t.id, t] as const))(
+    'match the editor and keep the page readable on %s',
+    (_, theme) => {
+      const p = theme.page
+      expect(p.panel).toBe(theme.bg)
+      // Text, secondary text, links, and the panel colour on accent buttons.
+      for (const color of [p.ink, p.muted, p.accent]) {
+        expect(contrast(color, p.panel), color).toBeGreaterThanOrEqual(4.5)
+      }
+      expect(contrast(p.ink, p.bg)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(p.ink, composite(p.codeBg, p.panel))).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(p.warnInk, p.warnBg)).toBeGreaterThanOrEqual(4.5)
+      // Borders and the panels stand apart from what surrounds them.
+      expect(contrast(p.line, p.panel)).toBeGreaterThan(1.1)
+      expect(p.bg).not.toBe(p.panel)
+    },
+  )
+
+  it('falls back to the ima palette for unknown ids and ids of the other scheme', () => {
+    expect(pagePalette('nord', 'dark')).toBe(IMA_PALETTE.dark)
+    expect(pagePalette('dracula', 'light')).toBe(IMA_PALETTE.light)
+    expect(pagePalette('dracula', 'dark')).toBe(themeInfo('dracula')?.page)
   })
 })
 

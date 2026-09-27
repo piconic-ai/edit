@@ -14,6 +14,7 @@ import {
   fontSizeRange,
   LINE_HEIGHT,
   loadAppearance,
+  pageColors,
   pickTheme,
   resolveAppearance,
   saveAppearance,
@@ -22,6 +23,7 @@ import { copyButton } from './copy.ts'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
 import { resolveLanguage } from './language.ts'
+import { applyPalette } from './palette.ts'
 import { PreviewPane } from './pane.ts'
 import { expandOnTap, setMore } from './people.ts'
 import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
@@ -143,10 +145,10 @@ function addAppearanceSettings(
     saveAppearance(next)
   }
   const showTheme = async () => {
-    const { editorTheme } = resolveAppearance(current, prefersDark.matches)
-    gallery.set(editorTheme)
-    if (editorTheme === themes.id) return
-    if (!(await themes.set(editorTheme))) gallery.set(themes.id)
+    const { theme } = resolveAppearance(current, prefersDark.matches)
+    gallery.set(theme)
+    if (theme !== themes.id && !(await themes.set(theme))) gallery.set(themes.id)
+    applyPalette(pageColors(current, themes.id))
   }
   const swatches = (scheme: ThemeInfo['scheme']) =>
     THEMES.filter((t) => t.scheme === scheme).map((t) => ({
@@ -156,8 +158,8 @@ function addAppearanceSettings(
     }))
 
   settings.addSection('Appearance')
-  settings.addChoice({
-    label: 'Page',
+  const scheme = settings.addChoice({
+    label: 'Scheme',
     options: [
       { value: 'system', label: 'System' },
       { value: 'light', label: 'Light' },
@@ -171,7 +173,7 @@ function addAppearanceSettings(
     },
   })
   const gallery = settings.addListbox({
-    label: 'Editor theme',
+    label: 'Theme',
     groups: [
       { label: 'Light', options: swatches('light') },
       { label: 'Dark', options: swatches('dark') },
@@ -179,10 +181,13 @@ function addAppearanceSettings(
     value: themes.id,
     onChange: (id) => {
       update(pickTheme(current, id, prefersDark.matches))
+      // Picking a theme of the other scheme switches the page too.
+      scheme.set(current.page)
+      applyPage(current)
       void showTheme()
     },
   })
-  // A theme that follows the page moves to the reader's pick for the other scheme.
+  // Following the OS, the page moves to the reader's pick for the other scheme.
   prefersDark.addEventListener('change', () => void showTheme())
 
   const setText = (next: Appearance) => {
@@ -443,6 +448,7 @@ async function start(): Promise<void> {
   const appearance = loadAppearance()
   applyPage(appearance)
   applyText(appearance)
+  applyPalette(pageColors(appearance))
   if (location.pathname === '/' || location.pathname === '') {
     showLanding()
     return
@@ -455,15 +461,16 @@ async function start(): Promise<void> {
     return
   }
   // Fetch the editor theme meanwhile, so the editor paints in it from the start.
-  const theme = loadStartTheme(
-    resolveAppearance(appearance, matchMedia(DARK_QUERY).matches).editorTheme,
-  )
+  const theme = loadStartTheme(resolveAppearance(appearance, matchMedia(DARK_QUERY).matches).theme)
   // Behind Cloudflare Access we already know who you are.
   const identity = await fetchIdentity()
   const me: Me = identity
     ? { name: identity.name, avatar: await avatarFor(identity) }
     : { name: loadName() ?? (await askName()) }
-  await joinRoom(room.id, room.key, me, appearance, await theme)
+  const loaded = await theme
+  // If the theme could not load, the page matches the ima theme the editor falls back to.
+  applyPalette(pageColors(appearance, loaded.id))
+  await joinRoom(room.id, room.key, me, appearance, loaded)
 }
 
 void start()

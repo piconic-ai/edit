@@ -2,8 +2,9 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { type Compartment, type Extension, Prec } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
+import { derivePalette, type PagePalette, type Scheme } from './palette.ts'
 
-export type Scheme = 'light' | 'dark'
+export type { Scheme }
 
 export interface ThemeInfo {
   id: string
@@ -12,7 +13,15 @@ export interface ThemeInfo {
   /** The editor background and text colours, for swatches and the contrast test. */
   bg: string
   fg: string
+  /** The colours of the rest of the page, so it matches the editor. */
+  page: PagePalette
   load(): Promise<Extension>
+}
+
+/** A third-party theme; its page palette comes from its colours and one accent of its own. */
+function thirdParty(info: Omit<ThemeInfo, 'page'> & { accent: string }): ThemeInfo {
+  const { accent, ...rest } = info
+  return { ...rest, page: derivePalette(info.scheme, { bg: info.bg, fg: info.fg, accent }) }
 }
 
 /**
@@ -27,6 +36,9 @@ export const IMA_PALETTE = {
     muted: '#5b6675',
     line: '#d6dce3',
     accent: '#1f7a64',
+    codeBg: '#afb8c133',
+    warnBg: '#fdf0e3',
+    warnInk: '#8a4308',
   },
   dark: {
     bg: '#12161c',
@@ -35,8 +47,11 @@ export const IMA_PALETTE = {
     muted: '#9aa5b3',
     line: '#2f3844',
     accent: '#5cc9a8',
+    codeBg: '#656c7633',
+    warnBg: '#33241a',
+    warnInk: '#f5c08a',
   },
-} as const
+} as const satisfies Record<Scheme, PagePalette>
 
 /** Extra hues for code, chosen to read on the ima panels. */
 export const IMA_SYNTAX = {
@@ -107,112 +122,126 @@ export const THEMES: readonly ThemeInfo[] = [
     scheme: 'light',
     bg: IMA_PALETTE.light.panel,
     fg: IMA_PALETTE.light.ink,
+    page: IMA_PALETTE.light,
     load: async () => imaLight,
   },
-  {
+  thirdParty({
     id: 'github-light',
     label: 'GitHub Light',
     scheme: 'light',
     bg: '#ffffff',
     fg: '#24292e',
+    accent: '#0969da',
     load: async () => (await import('@uiw/codemirror-theme-github')).githubLight,
-  },
-  {
+  }),
+  thirdParty({
     id: 'solarized-light',
     label: 'Solarized Light',
     scheme: 'light',
     bg: '#fdf6e3',
     fg: '#657b83',
+    accent: '#268bd2',
     load: async () => (await import('@uiw/codemirror-theme-solarized')).solarizedLight,
-  },
-  {
+  }),
+  thirdParty({
     id: 'gruvbox-light',
     label: 'Gruvbox Light',
     scheme: 'light',
     bg: '#fbf1c7',
     fg: '#3c3836',
+    accent: '#076678',
     load: async () => (await import('@uiw/codemirror-theme-gruvbox-dark')).gruvboxLight,
-  },
-  {
+  }),
+  thirdParty({
     id: 'catppuccin-latte',
     label: 'Catppuccin Latte',
     scheme: 'light',
     bg: '#eff1f5',
     fg: '#4c4f69',
+    accent: '#8839ef',
     load: async () => (await import('@catppuccin/codemirror')).catppuccinLatte,
-  },
-  {
+  }),
+  thirdParty({
     id: 'tokyo-night-day',
     label: 'Tokyo Night Day',
     scheme: 'light',
     bg: '#e1e2e7',
     fg: '#3760bf',
+    accent: '#2e7de9',
     load: async () => (await import('@uiw/codemirror-theme-tokyo-night-day')).tokyoNightDay,
-  },
+  }),
   {
     id: 'ima-dark',
     label: 'ima Dark',
     scheme: 'dark',
     bg: IMA_PALETTE.dark.panel,
     fg: IMA_PALETTE.dark.ink,
+    page: IMA_PALETTE.dark,
     load: async () => imaDark,
   },
-  {
+  thirdParty({
     id: 'github-dark',
     label: 'GitHub Dark',
     scheme: 'dark',
     bg: '#0d1117',
     fg: '#c9d1d9',
+    accent: '#58a6ff',
     load: async () => (await import('@uiw/codemirror-theme-github')).githubDark,
-  },
-  {
+  }),
+  thirdParty({
     id: 'solarized-dark',
     label: 'Solarized Dark',
     scheme: 'dark',
     bg: '#002b36',
     fg: '#839496',
+    accent: '#268bd2',
     load: async () => (await import('@uiw/codemirror-theme-solarized')).solarizedDark,
-  },
-  {
+  }),
+  thirdParty({
     id: 'gruvbox-dark',
     label: 'Gruvbox Dark',
     scheme: 'dark',
     bg: '#282828',
     fg: '#ebdbb2',
+    accent: '#83a598',
     load: async () => (await import('@uiw/codemirror-theme-gruvbox-dark')).gruvboxDark,
-  },
-  {
+  }),
+  thirdParty({
     id: 'catppuccin-mocha',
     label: 'Catppuccin Mocha',
     scheme: 'dark',
     bg: '#1e1e2e',
     fg: '#cdd6f4',
+    accent: '#cba6f7',
     load: async () => (await import('@catppuccin/codemirror')).catppuccinMocha,
-  },
-  {
+  }),
+  thirdParty({
     id: 'tokyo-night',
     label: 'Tokyo Night',
     scheme: 'dark',
     bg: '#1a1b26',
     fg: '#787c99',
+    accent: '#7aa2f7',
     load: async () => (await import('@uiw/codemirror-theme-tokyo-night')).tokyoNight,
-  },
-  {
+  }),
+  thirdParty({
     id: 'one-dark',
     label: 'One Dark',
     scheme: 'dark',
     bg: '#282c34',
     fg: '#abb2bf',
+    accent: '#61afef',
     load: async () => (await import('@codemirror/theme-one-dark')).oneDark,
-  },
-  {
+  }),
+  thirdParty({
     id: 'dracula',
     label: 'Dracula',
     scheme: 'dark',
     bg: '#282a36',
     fg: '#f8f8f2',
+    accent: '#bd93f9',
     load: async () => (await import('@uiw/codemirror-theme-dracula')).dracula,
-  },
+  }),
 ]
 
 export const DEFAULT_THEME: Record<Scheme, string> = { light: 'ima-light', dark: 'ima-dark' }
@@ -310,4 +339,10 @@ export class ThemeSwitcher {
     this.#view.dispatch({ effects: this.#compartment.reconfigure(extension) })
     return loaded
   }
+}
+
+/** The page palette for a theme id; unknown ids get the ima palette of the scheme. */
+export function pagePalette(id: string, scheme: Scheme): PagePalette {
+  const info = themeInfo(id)
+  return info?.scheme === scheme ? info.page : IMA_PALETTE[scheme]
 }
