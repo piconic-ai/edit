@@ -32,6 +32,7 @@ type harness struct {
 
 	mu    sync.Mutex
 	blobs map[string][]byte // URL path → body
+	stall map[string]bool   // URL paths whose requests hang until cancelled
 	gets  int
 	saved []string
 	errs  []error
@@ -50,11 +51,27 @@ func newHarness(t *testing.T) *harness {
 		keys:  keys,
 		sent:  make(chan protocol.Attachment, 16),
 		blobs: map[string][]byte{},
+		stall: map[string]bool{},
 	}
 	// Stands in for the Worker's blob store.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Cf-Access-Token") != "token" {
 			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		h.mu.Lock()
+		stall := h.stall[r.URL.Path]
+		h.mu.Unlock()
+		if stall {
+			// A GET stalls mid-body, a PUT before answering. The server notices
+			// the client giving up only once the request body is read.
+			_, _ = io.ReadAll(r.Body)
+			if r.Method == http.MethodGet {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("partial"))
+				w.(http.Flusher).Flush()
+			}
+			<-r.Context().Done()
 			return
 		}
 		h.mu.Lock()
@@ -178,6 +195,51 @@ func TestSavesAnnouncedImages(t *testing.T) {
 	defer h.mu.Unlock()
 	if h.gets != 1 || len(h.saved) != 1 || h.saved[0] != want.Path {
 		t.Fatalf("gets=%d saved=%v", h.gets, h.saved)
+	}
+}
+
+func TestSavesAgainAnImageMovedAway(t *testing.T) {
+	h := newHarness(t)
+	hash := h.announce(png, "image/png")
+	h.next()
+	path := filepath.Join(filepath.Dir(h.file), "assets", hash+".png")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentAnnounce, Hash: hash, Mime: "image/png"})
+	if m := h.next(); m.Kind != protocol.AttachmentStored {
+		t.Fatalf("got %+v", m)
+	}
+	if got, err := os.ReadFile(path); err != nil || !bytes.Equal(got, png) {
+		t.Fatalf("file = %q, %v", got, err)
+	}
+}
+
+func TestGivesUpOnStalledRequests(t *testing.T) {
+	h := newHarness(t)
+	h.a.timeout = 100 * time.Millisecond
+	stalled := protocol.ContentHash(jpeg)
+	h.mu.Lock()
+	h.stall[h.blobPath(stalled)] = true
+	h.mu.Unlock()
+
+	// A download that stalls mid-body, then an upload that never gets an answer.
+	h.upload(stalled, jpeg)
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentAnnounce, Hash: stalled, Mime: "image/jpeg"})
+	dir := filepath.Join(filepath.Dir(h.file), "assets")
+	_ = os.Mkdir(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, stalled+".jpg"), jpeg, 0o644)
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{stalled}})
+
+	// Messages after them are still handled.
+	hash := h.announce(png, "image/png")
+	if m := h.next(); m.Kind != protocol.AttachmentStored || m.Hash != hash {
+		t.Fatalf("got %+v", m)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.errs) != 2 {
+		t.Fatalf("errors = %v", h.errs)
 	}
 }
 

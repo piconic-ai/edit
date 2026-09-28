@@ -40,6 +40,10 @@ const (
 	// resendInterval is how long a re-upload for one hash is good for: peers
 	// asking again sooner get nothing, since the blob is already there.
 	resendInterval = 5 * time.Second
+	// requestTimeout bounds one blob request, body included, so a stalled one
+	// cannot hold up every message after it. It leaves room for 10 MiB on a
+	// slow uplink.
+	requestTimeout = 2 * time.Minute
 )
 
 // Reasons sent in Rejected messages.
@@ -96,11 +100,12 @@ type Attachments struct {
 	done   chan struct{}
 
 	// Touched only by the worker goroutine.
-	total  int64
-	count  int
-	stored map[string]string // hash → path
-	served map[string]time.Time
-	now    func() time.Time
+	total   int64
+	count   int
+	stored  map[string]string // hash → path
+	served  map[string]time.Time
+	now     func() time.Time
+	timeout time.Duration
 }
 
 func New(opts Options) *Attachments {
@@ -112,14 +117,15 @@ func New(opts Options) *Attachments {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &Attachments{
-		opts:   opts,
-		queue:  make(chan protocol.Attachment, queueSize),
-		ctx:    ctx,
-		cancel: cancel,
-		done:   make(chan struct{}),
-		stored: map[string]string{},
-		served: map[string]time.Time{},
-		now:    time.Now,
+		opts:    opts,
+		queue:   make(chan protocol.Attachment, queueSize),
+		ctx:     ctx,
+		cancel:  cancel,
+		done:    make(chan struct{}),
+		stored:  map[string]string{},
+		served:  map[string]time.Time{},
+		now:     time.Now,
+		timeout: requestTimeout,
 	}
 	go a.run()
 	return a
@@ -166,8 +172,12 @@ func (a *Attachments) announced(hash, mime string) {
 		return
 	}
 	if path, ok := a.stored[hash]; ok {
-		a.send(protocol.Attachment{Kind: protocol.AttachmentStored, Hash: hash, Path: path})
-		return
+		// Unless someone moved the file away meanwhile.
+		if info, err := os.Stat(filepath.Join(filepath.Dir(a.opts.File), filepath.FromSlash(path))); err == nil && info.Mode().IsRegular() {
+			a.send(protocol.Attachment{Kind: protocol.AttachmentStored, Hash: hash, Path: path})
+			return
+		}
+		delete(a.stored, hash)
 	}
 	content, err := a.fetch(hash)
 	switch {
@@ -254,12 +264,14 @@ func (a *Attachments) blobURL(hash string) (string, error) {
 	return strings.TrimRight(a.opts.Server, "/") + "/api/rooms/" + a.opts.Room + "/blobs/" + id, nil
 }
 
-func (a *Attachments) request(method, hash string, body []byte) (*http.Response, error) {
+// request sends a blob request bounded by ctx, which must also cover reading
+// the response body.
+func (a *Attachments) request(ctx context.Context, method, hash string, body []byte) (*http.Response, error) {
 	url, err := a.blobURL(hash)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(a.ctx, method, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +283,9 @@ func (a *Attachments) request(method, hash string, body []byte) (*http.Response,
 
 // fetch downloads and decrypts an attachment, checking it against its hash.
 func (a *Attachments) fetch(hash string) ([]byte, error) {
-	res, err := a.request(http.MethodGet, hash, nil)
+	ctx, cancel := context.WithTimeout(a.ctx, a.timeout)
+	defer cancel()
+	res, err := a.request(ctx, http.MethodGet, hash, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch an attachment: %w", err)
 	}
@@ -301,7 +315,9 @@ func (a *Attachments) fetch(hash string) ([]byte, error) {
 
 // upload encrypts an attachment and stores it in the room.
 func (a *Attachments) upload(hash string, content []byte) error {
-	res, err := a.request(http.MethodPut, hash, a.opts.Keys.Encrypt(content))
+	ctx, cancel := context.WithTimeout(a.ctx, a.timeout)
+	defer cancel()
+	res, err := a.request(ctx, http.MethodPut, hash, a.opts.Keys.Encrypt(content))
 	if err != nil {
 		return fmt.Errorf("failed to upload an attachment: %w", err)
 	}
