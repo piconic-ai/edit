@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@barefootjs/client": "0.38.0",
     "@catppuccin/codemirror": "^1.0.3",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
@@ -35,6 +36,9 @@
     "yjs": "^13.6.33"
   },
   "devDependencies": {
+    "@barefootjs/jsx": "0.38.0",
+    "@barefootjs/test": "0.38.0",
+    "@barefootjs/vite": "0.38.0",
     "@types/jsdom": "^30.0.0",
     "jsdom": "^30.1.1",
     "vite": "^8.3.1"

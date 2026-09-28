@@ -64,7 +64,7 @@ IMA_SERVER=http://localhost:8787 go run ./cmd/ima notes.md
 | `cmd/ima`, `internal/` | The `ima` command (Go). `internal/protocol` mirrors `packages/protocol` on top of [ygo](https://github.com/reearth/ygo) |
 | `packages/protocol` | Encryption, message framing and the Yjs room client used by the web editor |
 | `packages/worker` | Hono Worker + `Room` Durable Object (WebSocket Hibernation API); also serves the web editor |
-| `packages/web` | CodeMirror 6 editor for collaborators |
+| `packages/web` | CodeMirror 6 editor for collaborators; UI components in BarefootJS |
 
 The wire format (AES-GCM frames, message types, y-protocols sync and awareness)
 is shared by both implementations: change them together.

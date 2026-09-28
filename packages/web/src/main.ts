@@ -1,3 +1,4 @@
+import { render } from '@barefootjs/client/runtime'
 import { markdown } from '@codemirror/lang-markdown'
 import { Compartment, EditorState, type Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
@@ -17,7 +18,6 @@ import {
   resolveTheme,
   saveAppearance,
 } from './appearance.ts'
-import { copyButton } from './copy.ts'
 import { delimiterFor } from './csv.ts'
 import { h } from './dom.ts'
 import { avatarFor, fetchIdentity, initials } from './identity.ts'
@@ -28,12 +28,14 @@ import { expandOnTap, setMore } from './people.ts'
 import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
 import { createSettings, type Settings } from './settings.ts'
 import { Splitter } from './splitter.ts'
+import { Store } from './store.ts'
 import { describeError, TableView } from './table.ts'
 import { themePreview } from './theme-preview.ts'
 import { fallbackTheme, loadTheme, readerTheme, THEMES, ThemeSwitcher } from './themes.ts'
 import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { trackViewport } from './viewport.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
+import './components/EndedBanner.tsx'
 import './style.css'
 
 const NAME_KEY = 'ima:name'
@@ -224,17 +226,14 @@ async function joinRoom(
   const status = h('span', { className: 'status' }, [h('span', { className: 'dot' }), h('span')])
   const file = h('span', { className: 'file' })
   const people = h('ul', { className: 'people', ariaLabel: 'Participants' })
+  const roomStatus = new Store<RoomStatus>('connecting')
   // The room closes as soon as the host leaves (or was never there).
-  const reconnect = h('button', { type: 'button', textContent: 'Reconnect' })
-  reconnect.addEventListener('click', () => location.reload())
-  const banner = h('div', { className: 'banner', role: 'status', hidden: true }, [
-    h('span', {
-      textContent:
-        'This session has ended: the host is not connected. You can still copy the text.',
-    }),
-    copyButton(() => text.toString()),
-    reconnect,
-  ])
+  const banner = h('div')
+  render(banner, 'EndedBanner', {
+    status: roomStatus,
+    text: () => text.toString(),
+    onReconnect: () => location.reload(),
+  })
   const settings = createSettings()
   // CodeMirror forces display on .cm-editor, so the panes are hidden through a wrapper.
   const source = h('div', { className: 'source' })
@@ -340,6 +339,7 @@ async function joinRoom(
   if (vimOn) void setVim(true)
 
   const setStatus = (s: RoomStatus) => {
+    roomStatus.set(s)
     status.dataset.status = s
     const label = status.lastElementChild as HTMLElement
     label.textContent =
@@ -351,7 +351,6 @@ async function joinRoom(
             ? 'Ended'
             : 'Offline'
     if (s === 'closed') {
-      banner.hidden = false
       editor.dispatch({ effects: editable.reconfigure(readOnly) })
     }
   }

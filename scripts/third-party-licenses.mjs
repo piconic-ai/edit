@@ -9,6 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url))
  * copied from their repositories and keyed by the `repository` URL.
  */
 const VENDORED = {
+  'https://github.com/piconic-ai/barefootjs': 'barefootjs.txt',
   'https://github.com/uiwjs/react-codemirror': 'uiwjs-react-codemirror.txt',
 }
 
