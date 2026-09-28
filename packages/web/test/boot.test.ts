@@ -36,11 +36,8 @@ afterEach(() => {
 
 describe('index.html boot script', () => {
   it('applies the stored text settings', () => {
-    const root = run(
-      JSON.stringify({ theme: 'dracula', fontSize: 18, font: 'sans', lineHeight: 1.8 }),
-    )
+    const root = run(JSON.stringify({ theme: 'dracula', fontSize: 18, lineHeight: 1.8 }))
     expect(root.style.getPropertyValue('--editor-font-size')).toBe('18px')
-    expect(root.style.getPropertyValue('--editor-font')).toBe('var(--sans)')
     expect(root.style.getPropertyValue('--editor-line-height')).toBe('1.8')
   })
 
@@ -53,7 +50,7 @@ describe('index.html boot script', () => {
     ['garbage', '{not json'],
     ['a number', '42'],
     ['null', 'null'],
-    ['wrong types', JSON.stringify({ page: 'sepia', fontSize: '99', lineHeight: 9, font: 1 })],
+    ['wrong types', JSON.stringify({ page: 'sepia', fontSize: '99', lineHeight: 9 })],
   ])('ignores %s', (_, stored) => {
     const root = run(stored)
     expect(root.getAttribute('style')).toBeNull()

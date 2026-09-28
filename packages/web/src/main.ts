@@ -10,7 +10,6 @@ import * as Y from 'yjs'
 import {
   type Appearance,
   applyText,
-  type Font,
   fontSizeRange,
   LINE_HEIGHT,
   loadAppearance,
@@ -125,7 +124,6 @@ function settingsModel(
   const fontSizes = fontSizeRange(CSS.supports('-webkit-touch-callout', 'none'))
   const theme = new Store(themes.id)
   const fontSize = new Store(Math.max(fontSizes.min, initial.fontSize))
-  const font = new Store<Font>(initial.font)
   const lineHeight = new Store(initial.lineHeight)
   const wrap = new Store(initial.wrap)
   const vimOn = new Store(vim.on)
@@ -160,11 +158,6 @@ function settingsModel(
     setFontSize: (size) => {
       fontSize.set(size)
       setText({ ...current, fontSize: size })
-    },
-    font,
-    setFont: (next) => {
-      font.set(next)
-      setText({ ...current, font: next })
     },
     lineHeightRange: LINE_HEIGHT,
     lineHeight,

@@ -1,7 +1,6 @@
 'use client'
 
 import { createEffect, createMemo, createSignal, onCleanup, onMount } from '@barefootjs/client'
-import type { Font } from '../appearance.ts'
 import {
   CHEVRON_LEFT,
   CHEVRON_RIGHT,
@@ -24,7 +23,6 @@ export function Settings(props: { model: SettingsModel }) {
   const m = props.model
   const theme = () => m.theme.get()
   const fontSize = () => m.fontSize.get()
-  const font = () => m.font.get()
   const lineHeight = () => m.lineHeight.get()
   const wrap = () => m.wrap.get()
   const vim = () => m.vim.get()
@@ -182,13 +180,6 @@ export function Settings(props: { model: SettingsModel }) {
                 onInput={(e) => m.setFontSize(Number(e.target.value))}
               />
               <output>{`${fontSize()}px`}</output>
-            </label>
-            <label className="settings-field">
-              <span>Font</span>
-              <select value={font()} onChange={(e) => m.setFont(e.target.value as Font)}>
-                <option value="mono">Monospace</option>
-                <option value="sans">Proportional</option>
-              </select>
             </label>
             <label className="settings-field settings-range">
               <span>Line height</span>

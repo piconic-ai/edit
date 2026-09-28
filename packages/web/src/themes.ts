@@ -177,7 +177,7 @@ function buildReaderTheme(): Extension {
         // --editor-font-floor keeps iOS from zooming in when the editor gets focus (style.css).
         '&': { fontSize: 'max(var(--editor-font-floor, 0px), var(--editor-font-size))' },
         '.cm-scroller': {
-          fontFamily: 'var(--editor-font)',
+          fontFamily: 'var(--mono)',
           lineHeight: 'var(--editor-line-height)',
         },
       }),
@@ -195,8 +195,8 @@ function buildReaderTheme(): Extension {
 // it runs, and style-mod never releases a mounted module (see its own
 // StyleModule doc comment: themes "should be created once and stored...
 // to avoid leaking rules"), so recreating this per settings change would
-// leak another permanent <style> rule on every font size/family/line
-// height edit for the life of the page.
+// leak another permanent <style> rule on every font size or line height
+// edit for the life of the page.
 const readerThemeA: Extension = buildReaderTheme()
 const readerThemeB: Extension = buildReaderTheme()
 let useReaderThemeA = true
@@ -211,8 +211,8 @@ let useReaderThemeA = true
  * holding this is reconfigured with a value that counts as a change; a
  * memoized constant would not, and the gutter would drift out of sync with
  * the text. Callers must put this behind a Compartment and reconfigure it
- * through `dispatch` on every font size/family/line height change, the same
- * way ThemeSwitcher reconfigures the colour theme.
+ * through `dispatch` on every font size or line height change, the same way
+ * ThemeSwitcher reconfigures the colour theme.
  */
 export function readerTheme(): Extension {
   useReaderThemeA = !useReaderThemeA

@@ -89,18 +89,6 @@ describe('Settings', () => {
     await vi.waitFor(() => expect(vim.checked).toBe(false))
   })
 
-  it('reports the font, and shows the one the model holds', () => {
-    // Not the first option, so the browser's own default cannot pass for it.
-    const { input, calls, stores } = mount({ font: 'sans' })
-    const select = input('Font') as unknown as HTMLSelectElement
-    expect(select.value).toBe('sans')
-    select.value = 'mono'
-    select.dispatchEvent(new Event('change'))
-    expect(calls).toEqual([['font', 'mono']])
-    stores.font.set('sans')
-    expect(select.value).toBe('sans')
-  })
-
   it('reports every step of a range with a formatted value', () => {
     const { input, field, calls } = mount()
     const size = input('Font size')
