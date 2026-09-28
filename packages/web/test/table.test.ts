@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import type { CsvError } from '../src/csv.ts'
-import { describeError, keepCaret, TableView } from '../src/table.ts'
+import { columnName, describeError, keepCaret, TableView } from '../src/table.ts'
 
 const views: TableView[] = []
 
@@ -28,8 +28,8 @@ function setup(content: string, delimiter = ',') {
   view.setDelimiter(delimiter)
   view.active = true
   const grid = () =>
-    [...view.element.querySelectorAll('tr')].map((tr) =>
-      [...tr.querySelectorAll('th, td')].map((c) => c.firstChild?.textContent ?? ''),
+    [...view.element.querySelectorAll('tbody tr')].map((tr) =>
+      [...tr.querySelectorAll('td')].map((c) => c.firstChild?.textContent ?? ''),
     )
   const cell = (row: number, col: number) => {
     const el = view.element.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`)
@@ -45,24 +45,66 @@ function setup(content: string, delimiter = ',') {
   }
   const key = (target: Element, k: string, init: KeyboardEventInit = {}) =>
     target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...init }))
-  const tool = (label: string) => {
-    const b = [...view.element.querySelectorAll<HTMLButtonElement>('.table-tools button')].find(
-      (x) => x.textContent === label,
+  const rightClick = (target: Element) =>
+    target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 10, clientY: 10 }))
+  const menuItems = () =>
+    [...view.element.querySelectorAll<HTMLButtonElement>('.context-menu [role="menuitem"]')].map(
+      (b) => b.firstChild?.textContent,
     )
+  const pick = (label: string) => {
+    const b = [
+      ...view.element.querySelectorAll<HTMLButtonElement>('.context-menu [role="menuitem"]'),
+    ].find((x) => x.firstChild?.textContent === label)
     if (!b) throw new Error(`no ${label}`)
-    return b
+    b.click()
   }
-  return { doc, text, awareness, undoManager, view, errors, grid, cell, editor, type, key, tool }
+  const head = (kind: 'row' | 'col', index: number) => {
+    const attr = kind === 'row' ? 'data-head-row' : 'data-head-col'
+    const el = view.element.querySelector<HTMLElement>(`[${attr}="${index}"]`)
+    if (!el) throw new Error(`no ${kind} head ${index}`)
+    return el
+  }
+  const marks = () =>
+    [...view.element.querySelectorAll<HTMLElement>('[data-mark]')].map(
+      (el) =>
+        `${el.dataset.row === undefined ? el.textContent : `${el.dataset.row}:${el.dataset.col}`}=${el.dataset.mark}`,
+    )
+  return {
+    doc,
+    text,
+    awareness,
+    undoManager,
+    view,
+    errors,
+    grid,
+    cell,
+    editor,
+    type,
+    key,
+    rightClick,
+    menuItems,
+    pick,
+    head,
+    marks,
+  }
 }
 
 describe('TableView', () => {
-  it('shows the first row as the header and pads short rows', () => {
+  it('shows every row under lettered columns and numbered rows, padding short rows', () => {
     const { grid, view } = setup('name,city,zip\nAda,London\n')
     expect(grid()).toEqual([
       ['name', 'city', 'zip'],
       ['Ada', 'London', ''],
     ])
-    expect(view.element.querySelectorAll('thead th')).toHaveLength(3)
+    const text = (sel: string) => [...view.element.querySelectorAll(sel)].map((e) => e.textContent)
+    expect(text('.col-head')).toEqual(['A', 'B', 'C'])
+    expect(text('.row-head')).toEqual(['1', '2'])
+  })
+
+  it('lights up the headers of the selected cell', () => {
+    const { view, marks } = setup('a,b\nc,d\n')
+    view.select({ row: 1, col: 1 })
+    expect(marks()).toEqual(['B=active', '2=active'])
   })
 
   it('reads TSV with tabs', () => {
@@ -137,13 +179,68 @@ describe('TableView', () => {
     expect(text.toString()).toBe('a,b\n')
   })
 
-  it('selects on the first tap and edits on the second', () => {
+  it('edits on a second tap on a touch screen', () => {
     const { view, cell, editor } = setup('a,b\n')
-    cell(0, 1).click()
+    const tap = () => {
+      const down = new MouseEvent('pointerdown', { bubbles: true })
+      Object.defineProperty(down, 'pointerType', { value: 'touch' })
+      cell(0, 1).dispatchEvent(down)
+      cell(0, 1).click()
+    }
+    tap()
     expect(view.selected).toEqual({ row: 0, col: 1 })
     expect(editor()).toBeNull()
-    cell(0, 1).click()
+    tap()
     expect(editor()?.value).toBe('b')
+  })
+
+  it('edits on a double-click, not a second click, with a mouse', () => {
+    const { cell, editor } = setup('a,b\n')
+    cell(0, 1).click()
+    cell(0, 1).click()
+    expect(editor()).toBeNull()
+    cell(0, 1).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    expect(editor()?.value).toBe('b')
+  })
+
+  it('leaves nothing behind after Escape, even after a pause, in a short row', async () => {
+    const { text, view, type, editor, key, cell } = setup('a,b\nc\n')
+    view.edit({ row: 1, col: 1 })
+    type('x')
+    // Longer than the undo manager's capture window.
+    await new Promise((r) => setTimeout(r, 600))
+    type('xy')
+    key(editor() as HTMLElement, 'Escape')
+    expect(text.toString()).toBe('a,b\nc\n')
+    key(cell(1, 1), 'z', { ctrlKey: true })
+    expect(text.toString()).toBe('a,b\nc\n')
+    key(cell(1, 1), 'y', { ctrlKey: true })
+    expect(text.toString()).toBe('a,b\nc\n')
+  })
+
+  it('puts the value back on Escape and moves up on Shift+Enter, as a spreadsheet does', () => {
+    const { text, view, type, editor, key } = setup('a\nb\nc\n')
+    view.edit({ row: 1, col: 0 })
+    type('changed')
+    expect(text.toString()).toBe('a\nchanged\nc\n')
+    key(editor() as HTMLElement, 'Escape')
+    expect(text.toString()).toBe('a\nb\nc\n')
+    expect(editor()).toBeNull()
+    expect(view.selected).toEqual({ row: 1, col: 0 })
+
+    view.edit({ row: 1, col: 0 })
+    key(editor() as HTMLElement, 'Enter', { shiftKey: true })
+    expect(view.selected).toEqual({ row: 0, col: 0 })
+  })
+
+  it('breaks the line in a cell with Alt+Enter or Ctrl+Enter', () => {
+    const { text, view, editor, key } = setup('ab\n')
+    view.edit({ row: 0, col: 0 })
+    const e = editor() as HTMLTextAreaElement
+    e.setSelectionRange(1, 1)
+    key(e, 'Enter', { ctrlKey: true })
+    expect(text.toString()).toBe('"a\nb"\n')
+    expect(editor()).not.toBeNull()
   })
 
   it('keeps the keyboard focus on the selected cell through a redraw', () => {
@@ -172,19 +269,173 @@ describe('TableView', () => {
     expect(e.isConnected).toBe(true)
   })
 
-  it('adds and deletes rows and columns next to the selection', () => {
-    const { text, view, tool } = setup('a,b\nc,d\n')
-    view.select({ row: 0, col: 0 })
-    tool('Add row').click()
-    expect(text.toString()).toBe('a,b\n,\nc,d\n')
+  it('has no toolbar: rows and columns live in the context menu', () => {
+    const { view } = setup('a\n')
+    expect(view.element.querySelector('.table-tools')).toBeNull()
+  })
+
+  it('offers row and column actions on a right-clicked cell', () => {
+    const { text, view, cell, rightClick, menuItems, pick } = setup('a,b\nc,d\n')
+    rightClick(cell(1, 0))
     expect(view.selected).toEqual({ row: 1, col: 0 })
-    tool('Delete row').click()
+    expect(view.menu.open).toBe(true)
+    expect(menuItems()).toEqual([
+      'Insert row above',
+      'Insert row below',
+      'Delete row',
+      'Insert column left',
+      'Insert column right',
+      'Delete column',
+    ])
+    pick('Insert row below')
+    expect(view.menu.open).toBe(false)
+    expect(text.toString()).toBe('a,b\nc,d\n,\n')
+    expect(view.selected).toEqual({ row: 2, col: 0 })
+
+    rightClick(cell(0, 1))
+    pick('Insert column left')
+    expect(text.toString()).toBe('a,,b\nc,,d\n,,\n')
+    rightClick(cell(0, 1))
+    pick('Delete column')
+    rightClick(cell(2, 0))
+    pick('Delete row')
     expect(text.toString()).toBe('a,b\nc,d\n')
-    tool('Add column').click()
-    expect(text.toString()).toBe('a,,b\nc,,d\n')
+  })
+
+  it('offers only row actions on a row number, and selects the row', () => {
+    const { text, view, head, rightClick, menuItems, pick, marks } = setup('a,b\nc,d\n')
+    rightClick(head('row', 0))
+    expect(menuItems()).toEqual(['Insert row above', 'Insert row below', 'Delete row'])
+    expect(view.span).toBe('row')
+    expect(marks()).toContain('1=selected')
+    expect(marks()).toContain('0:1=span')
+    pick('Insert row above')
+    expect(text.toString()).toBe(',\na,b\nc,d\n')
+    expect(view.span).toBe('row')
+  })
+
+  it('offers only column actions on a column letter, and selects the column', () => {
+    const { text, view, head, rightClick, menuItems, pick } = setup('a,b\nc,d\n')
+    rightClick(head('col', 1))
+    expect(menuItems()).toEqual(['Insert column left', 'Insert column right', 'Delete column'])
+    expect(view.span).toBe('column')
+    pick('Delete column')
+    expect(text.toString()).toBe('a\nc\n')
+  })
+
+  it('selects a row or a column by clicking its header', () => {
+    const { view, head, marks } = setup('a,b\nc,d\n')
+    head('col', 1).click()
+    expect(view.span).toBe('column')
+    expect(view.selected?.col).toBe(1)
+    expect(marks().sort()).toEqual(['0:1=span', '1:1=span', '1=active', '2=active', 'B=selected'])
+    head('row', 1).click()
+    expect(view.span).toBe('row')
     expect(view.selected).toEqual({ row: 1, col: 1 })
-    tool('Delete column').click()
+  })
+
+  it('inserts and deletes with Google Sheets shortcuts on a whole row or column', () => {
+    const { text, view, cell, key } = setup('a,b\nc,d\n')
+    view.select({ row: 1, col: 0 })
+    // On a single cell Sheets asks what to insert; here the keys do nothing.
+    key(cell(1, 0), '=', { code: 'Equal', ctrlKey: true, altKey: true })
+    key(cell(1, 0), '-', { code: 'Minus', ctrlKey: true, altKey: true })
     expect(text.toString()).toBe('a,b\nc,d\n')
+    key(cell(1, 0), ' ', { shiftKey: true })
+    key(cell(1, 0), '=', { code: 'Equal', ctrlKey: true, altKey: true })
+    expect(text.toString()).toBe('a,b\n,\nc,d\n')
+    key(cell(1, 0), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    expect(text.toString()).toBe('a,b\nc,d\n')
+    // Ctrl+Space selects the column; then the same keys act on columns.
+    key(cell(1, 0), ' ', { ctrlKey: true })
+    expect(view.span).toBe('column')
+    key(cell(1, 0), '≠', { code: 'Equal', metaKey: true, altKey: true })
+    expect(text.toString()).toBe(',a,b\n,c,d\n')
+    key(cell(1, 0), '–', { code: 'Minus', metaKey: true, altKey: true })
+    expect(text.toString()).toBe('a,b\nc,d\n')
+    // Shift+Space selects the row; an arrow key goes back to a single cell.
+    key(cell(1, 0), ' ', { shiftKey: true })
+    expect(view.span).toBe('row')
+    key(cell(1, 0), 'ArrowUp')
+    expect(view.span).toBe('cell')
+  })
+
+  it('shows the shortcuts only in the row and column menus, where they apply', () => {
+    const { view, cell, head, rightClick } = setup('a,b\n')
+    const kbd = () => [...view.element.querySelectorAll('.context-menu kbd')].length
+    rightClick(cell(0, 0))
+    expect(kbd()).toBe(0)
+    rightClick(head('row', 0))
+    expect(kbd()).toBe(2)
+    rightClick(head('col', 0))
+    expect(kbd()).toBe(2)
+  })
+
+  it('keeps deleting columns, or rows, when the delete keys are pressed again', () => {
+    const { text, view, head, cell, key } = setup('a,b,c\nd,e,f\n')
+    head('col', 1).click()
+    key(cell(0, 1), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    key(cell(0, 1), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    expect(text.toString()).toBe('a\nd\n')
+    expect(view.span).toBe('column')
+
+    head('row', 0).click()
+    key(cell(0, 0), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    expect(view.span).toBe('row')
+    expect(text.toString()).toBe('d\n')
+  })
+
+  it('clears a whole selected row with Delete', () => {
+    const { text, view, head, cell, key } = setup('a,b\nc,d\n')
+    head('row', 0).click()
+    key(cell(0, 0), 'Delete')
+    expect(text.toString()).toBe(',\nc,d\n')
+  })
+
+  it('opens the menu from the keyboard and closes it with Escape', () => {
+    const { view, cell, key } = setup('a,b\n')
+    view.select({ row: 0, col: 1 })
+    key(cell(0, 1), 'F10', { shiftKey: true })
+    expect(view.menu.open).toBe(true)
+    const first = document.activeElement as HTMLElement
+    expect(first.textContent).toContain('Insert row above')
+    key(first, 'ArrowDown')
+    expect(document.activeElement?.textContent).toContain('Insert row below')
+    key(document.activeElement as HTMLElement, 'Escape')
+    expect(view.menu.open).toBe(false)
+    expect(document.activeElement).toBe(cell(0, 1))
+  })
+
+  it('opens the menu on a long press and ignores the tap that ends it', () => {
+    vi.useFakeTimers()
+    try {
+      const { view, cell } = setup('a,b\nc,d\n')
+      const press = (type: string) => {
+        const ev = new MouseEvent(type, { bubbles: true, clientX: 5, clientY: 5 })
+        Object.defineProperty(ev, 'pointerType', { value: 'touch' })
+        cell(1, 1).dispatchEvent(ev)
+      }
+      press('pointerdown')
+      vi.advanceTimersByTime(600)
+      expect(view.menu.open).toBe(true)
+      expect(view.selected).toEqual({ row: 1, col: 1 })
+      press('pointerup')
+      cell(1, 1).click()
+      // The finger lifting is not a second tap: nothing opens for editing.
+      expect(view.element.querySelector('.cell-editor')).toBeNull()
+
+      // Without a click after the long press, the next real tap still counts.
+      press('pointerdown')
+      vi.advanceTimersByTime(600)
+      view.menu.close()
+      press('pointerup')
+      press('pointerdown')
+      press('pointerup')
+      cell(0, 0).click()
+      expect(view.selected).toEqual({ row: 0, col: 0 })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('gives an empty file one cell to type into', () => {
@@ -280,5 +531,19 @@ describe('keepCaret', () => {
     e.setSelectionRange(6, 6)
     keepCaret(e, 'ab')
     expect(e.selectionStart).toBe(2)
+  })
+})
+
+describe('columnName', () => {
+  it.each([
+    [0, 'A'],
+    [25, 'Z'],
+    [26, 'AA'],
+    [51, 'AZ'],
+    [52, 'BA'],
+    [701, 'ZZ'],
+    [702, 'AAA'],
+  ])('%i -> %s', (index, name) => {
+    expect(columnName(index)).toBe(name)
   })
 })
