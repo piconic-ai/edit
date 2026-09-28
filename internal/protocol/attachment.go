@@ -48,6 +48,10 @@ type Attachment struct {
 
 var errTruncated = errors.New("truncated attachment message")
 
+// ErrUnknownAttachmentKind marks an attachment kind this version does not
+// know, from a newer peer. Clients skip such messages instead of reporting them.
+var ErrUnknownAttachmentKind = errors.New("unknown attachment kind")
+
 func EncodeAttachment(a Attachment) ([]byte, error) {
 	if err := a.validate(); err != nil {
 		return nil, err
@@ -74,7 +78,8 @@ func EncodeAttachment(a Attachment) ([]byte, error) {
 	return enc.Bytes(), nil
 }
 
-// DecodeAttachment fails on malformed payloads and on kinds this version does not know.
+// DecodeAttachment fails on malformed payloads, and with ErrUnknownAttachmentKind
+// on kinds this version does not know.
 func DecodeAttachment(payload []byte) (Attachment, error) {
 	dec := encoding.NewDecoder(payload)
 	var err error
@@ -97,10 +102,7 @@ func DecodeAttachment(payload []byte) (Attachment, error) {
 			err = errTruncated
 			return ""
 		}
-		if !utf8.Valid(b) {
-			err = errors.New("attachment message is not valid UTF-8")
-		}
-		return string(b)
+		return string(b) // validate checks UTF-8
 	}
 
 	a := Attachment{Kind: AttachmentKind(readUint())}
@@ -123,7 +125,7 @@ func DecodeAttachment(payload []byte) (Attachment, error) {
 	case AttachmentRejected:
 		a.Hash, a.Reason = readString(), readString()
 	default:
-		return Attachment{}, fmt.Errorf("unknown attachment kind: %d", a.Kind)
+		return Attachment{}, fmt.Errorf("%w: %d", ErrUnknownAttachmentKind, a.Kind)
 	}
 	if err != nil {
 		return Attachment{}, err
@@ -145,7 +147,9 @@ func (a Attachment) validate() error {
 		return nil
 	}
 	text := func(s string, limit int, what string) error {
-		if len(s) == 0 || len(s) > limit {
+		// Go strings can hold invalid UTF-8 (a path from a file name, say):
+		// fail here rather than on every receiver.
+		if len(s) == 0 || len(s) > limit || !utf8.ValidString(s) {
 			return fmt.Errorf("invalid %s", what)
 		}
 		return nil

@@ -3,7 +3,12 @@ import * as encoding from 'lib0/encoding'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as syncProtocol from 'y-protocols/sync'
 import type * as Y from 'yjs'
-import { type Attachment, decodeAttachment, encodeAttachment } from './attachment.ts'
+import {
+  type Attachment,
+  decodeAttachment,
+  encodeAttachment,
+  UnknownAttachmentKindError,
+} from './attachment.ts'
 import { decrypt, encrypt } from './cipher.ts'
 import { ROOM_CLOSED } from './close.ts'
 import {
@@ -164,7 +169,15 @@ export class RoomClient {
         this,
       )
     } else {
-      this.opts.onAttachment?.(decodeAttachment(message.payload))
+      let attachment: Attachment
+      try {
+        attachment = decodeAttachment(message.payload)
+      } catch (error) {
+        // Likewise for attachment kinds.
+        if (error instanceof UnknownAttachmentKindError) return
+        throw error
+      }
+      this.opts.onAttachment?.(attachment)
     }
   }
 

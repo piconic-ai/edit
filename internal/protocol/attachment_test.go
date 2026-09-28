@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"bytes"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -53,6 +54,7 @@ func TestAttachmentRejectsInvalid(t *testing.T) {
 		{Kind: protocol.AttachmentWant, Hashes: make([]string, protocol.MaxWantHashes+1)},
 		{Kind: protocol.AttachmentStored, Hash: hashA, Path: strings.Repeat("a", 1025)},
 		{Kind: protocol.AttachmentRejected, Hash: hashA},
+		{Kind: protocol.AttachmentStored, Hash: hashA, Path: "assets/\xff.png"},
 		{Kind: 9, Hash: hashA},
 	} {
 		if _, err := protocol.EncodeAttachment(a); err == nil {
@@ -61,16 +63,18 @@ func TestAttachmentRejectsInvalid(t *testing.T) {
 	}
 
 	valid, _ := protocol.EncodeAttachment(protocol.Attachment{Kind: protocol.AttachmentAnnounce, Hash: hashA, Mime: "image/png"})
+	if _, err := protocol.DecodeAttachment([]byte{9}); !errors.Is(err, protocol.ErrUnknownAttachmentKind) {
+		t.Errorf("DecodeAttachment(unknown kind) = %v, want ErrUnknownAttachmentKind", err)
+	}
 	for name, data := range map[string][]byte{
 		"empty":         {},
-		"unknown kind":  {9},
 		"truncated":     valid[:len(valid)-1],
 		"trailing":      append(append([]byte{}, valid...), 0),
 		"too many":      {1, 0x81, 0x02}, // 257 hashes
 		"invalid utf-8": append(append([]byte{3, 32}, hashA...), 2, 0xff, 0xfe),
 	} {
-		if _, err := protocol.DecodeAttachment(data); err == nil {
-			t.Errorf("DecodeAttachment(%s) should fail", name)
+		if _, err := protocol.DecodeAttachment(data); err == nil || errors.Is(err, protocol.ErrUnknownAttachmentKind) {
+			t.Errorf("DecodeAttachment(%s) = %v, want a malformed error", name, err)
 		}
 	}
 }

@@ -52,7 +52,25 @@ export function encodeAttachment(a: Attachment): Uint8Array {
   return encoding.toUint8Array(encoder)
 }
 
-/** Throws on malformed payloads and on kinds this version does not know. */
+/**
+ * An attachment kind this version does not know, from a newer peer. Clients
+ * skip such messages instead of reporting them.
+ */
+export class UnknownAttachmentKindError extends Error {
+  // Not a parameter property: Node.js strips types but cannot run those.
+  readonly attachmentKind: number
+
+  constructor(attachmentKind: number) {
+    super(`unknown attachment kind: ${attachmentKind}`)
+    this.name = 'UnknownAttachmentKindError'
+    this.attachmentKind = attachmentKind
+  }
+}
+
+/**
+ * Throws on malformed payloads, and UnknownAttachmentKindError on kinds this
+ * version does not know.
+ */
 export function decodeAttachment(payload: Uint8Array): Attachment {
   // lib0 can read past the end without complaint, so check around every read.
   const decoder = decoding.createDecoder(payload)
@@ -86,7 +104,7 @@ export function decodeAttachment(payload: Uint8Array): Attachment {
       a = { kind: 'rejected', hash: str(), reason: str() }
       break
     default:
-      throw new Error(`unknown attachment kind: ${kind}`)
+      throw new UnknownAttachmentKindError(kind)
   }
   if (decoder.pos !== payload.length) throw new Error('trailing bytes in attachment message')
   validate(a)

@@ -255,6 +255,9 @@ func (c *Client) receive(data []byte) error {
 	}
 	if t == MessageAttachment {
 		a, err := DecodeAttachment(payload)
+		if errors.Is(err, ErrUnknownAttachmentKind) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}

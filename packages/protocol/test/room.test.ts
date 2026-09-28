@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import { type Attachment, encrypt, generateKey, importKey, RoomClient } from '../src/index.ts'
+import {
+  type Attachment,
+  encrypt,
+  generateKey,
+  importKey,
+  MessageType,
+  RoomClient,
+} from '../src/index.ts'
 import { Relay } from '../src/testing.ts'
 
 const clients: RoomClient[] = []
@@ -160,7 +167,9 @@ describe('RoomClient', () => {
     await vi.waitFor(() => expect(b.status).toBe('connected'))
     const newer = relay.create('ws://test')
     await vi.waitFor(() => expect(newer.readyState).toBe(1))
+    // A message type, then an attachment kind, that b does not know.
     newer.send(await encrypt(key, new Uint8Array([9, 1, 2, 3])))
+    newer.send(await encrypt(key, new Uint8Array([MessageType.Attachment, 9, 1, 2, 3])))
     await join(relay, key, 'after')
     await vi.waitFor(() => expect(text(b)).toBe('after'))
     expect(errors).toEqual([])

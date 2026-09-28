@@ -195,7 +195,7 @@ func TestAttachments(t *testing.T) {
 	}
 }
 
-func TestIgnoresUnknownMessageTypes(t *testing.T) {
+func TestSkipsMessagesFromNewerPeers(t *testing.T) {
 	relay := prototest.NewRelay(false)
 	key := protocol.GenerateKey()
 	var mu sync.Mutex
@@ -207,7 +207,8 @@ func TestIgnoresUnknownMessageTypes(t *testing.T) {
 	}})
 	prototest.WaitFor(t, wait, func() bool { return b.Status() == protocol.StatusConnected }, "b connected")
 
-	// A newer peer sends a type b does not know, then an edit.
+	// A newer peer sends a message type and an attachment kind b does not
+	// know, then an edit.
 	raw, _ := protocol.DecodeKey(key)
 	c, _ := protocol.NewCipher(raw)
 	conn, err := relay.Dial(t.Context(), "ws://test", nil)
@@ -215,8 +216,13 @@ func TestIgnoresUnknownMessageTypes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if err := conn.Write(t.Context(), c.Encrypt(protocol.EncodeMessage(9, []byte{1, 2, 3}))); err != nil {
-		t.Fatal(err)
+	for _, m := range [][]byte{
+		protocol.EncodeMessage(9, []byte{1, 2, 3}),
+		protocol.EncodeMessage(protocol.MessageAttachment, []byte{9, 1, 2, 3}),
+	} {
+		if err := conn.Write(t.Context(), c.Encrypt(m)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	a := join(t, relay, key, joinOpts{init: "after"})
 	prototest.WaitFor(t, wait, func() bool { return b.String() == "after" && a.String() == "after" }, "b to keep syncing")

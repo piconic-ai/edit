@@ -4,6 +4,7 @@ import {
   decodeAttachment,
   encodeAttachment,
   MAX_WANT_HASHES,
+  UnknownAttachmentKindError,
 } from '../src/index.ts'
 
 const hashA = '0123456789abcdef0123456789abcdef'
@@ -45,7 +46,6 @@ describe('attachment', () => {
     const valid = encodeAttachment({ kind: 'announce', hash: hashA, mime: 'image/png' })
     const malformed: Record<string, number[]> = {
       empty: [],
-      'unknown kind': [9],
       truncated: [...valid.subarray(0, -1)],
       trailing: [...valid, 0],
       'too many': [1, 0x81, 0x02], // 257 hashes
@@ -53,6 +53,13 @@ describe('attachment', () => {
     }
     for (const [name, data] of Object.entries(malformed)) {
       expect(() => decodeAttachment(new Uint8Array(data)), name).toThrow()
+      expect(() => decodeAttachment(new Uint8Array(data)), name).not.toThrow(
+        UnknownAttachmentKindError,
+      )
     }
+  })
+
+  it('tells unknown kinds apart from malformed payloads', () => {
+    expect(() => decodeAttachment(new Uint8Array([9]))).toThrow(UnknownAttachmentKindError)
   })
 })
