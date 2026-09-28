@@ -30,6 +30,7 @@ import {
   parseRoomLocation,
   participants,
   roomSocketUrl,
+  sanitizeUser,
   selectionTint,
 } from './room.ts'
 import { createSettings, type Settings } from './settings.ts'
@@ -227,6 +228,13 @@ async function joinRoom(
   const doc = new Y.Doc()
   const text = doc.getText('content')
   const awareness = new Awareness(doc)
+  // Before the editor subscribes, so remote cursors never see a hostile colour.
+  awareness.on('change', ({ added, updated }: { added: number[]; updated: number[] }) => {
+    for (const id of [...added, ...updated]) {
+      const state = awareness.getStates().get(id)
+      if (state) sanitizeUser(state, id)
+    }
+  })
   const color = colorFor(doc.clientID)
   awareness.setLocalState({ user: { ...me, color, colorLight: selectionTint(color) } })
 

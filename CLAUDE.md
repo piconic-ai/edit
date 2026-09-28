@@ -14,7 +14,7 @@ The name comes from the Japanese 居間 (living room) and 今 (now).
 - cmd/ima, internal/: the `ima` command (Go, single binary). internal/protocol mirrors packages/protocol on top of reearth/ygo; keep the wire format in sync
 - packages/protocol: encryption, message format and room client for the web (pnpm workspace)
 - packages/worker: Hono + Durable Objects (WebSocket Hibernation API). Also serves the web assets.
-- packages/web: editor built on CodeMirror 6 + y-codemirror.next. UI components are BarefootJS (`src/components/*.tsx`, client-side rendering only: the server never sees content). Write new UI as components with signals; do not use BarefootJS's ready-made UI components, keep ima's own CSS. State from outside (room status, Yjs) reaches components through `Store` (`src/store.ts`), read with `watch()` (`src/watch.ts`). Export only components from `src/components/*.tsx`: any other export makes the CSR adapter emit a template and fails the build
+- packages/web: editor built on CodeMirror 6 + y-codemirror.next. UI components are BarefootJS (`src/components/*.tsx`, client-side rendering only: the server never sees content). Write new UI as components with signals; do not use BarefootJS's ready-made UI components, keep ima's own CSS. State from outside (room status, Yjs) reaches components through `Store` (`src/store.ts`), followed with `createSignal(store.get())` plus `follow(store, set)` (`src/watch.ts`; see there why the signal is not created in a helper). Export only components from `src/components/*.tsx`: any other export makes the CSR adapter emit a template and fails the build
 
 ## Stack
 CLI: Go / ygo (pure-Go Yjs) / coder/websocket

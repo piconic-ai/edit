@@ -511,7 +511,7 @@ header {
 }
 
 /* Narrow screens: one header row. Participants show as overlapping faces,
-   and a tap on them shows the names (people.ts). */
+   and a tap on them shows the names (components/Header.tsx). */
 @media (max-width: 720px) {
   header {
     gap: 8px;
@@ -525,7 +525,7 @@ header {
   }
   .status span:last-child,
   .people:not([data-expanded]) li > span:last-child,
-  /* Keep in step with MAX_FACES in people.ts. */
+  /* Keep in step with MAX_FACES in components/Header.tsx. */
   .people:not([data-expanded]) li:nth-child(n + 4) {
     position: absolute;
     width: 1px;

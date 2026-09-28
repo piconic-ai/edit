@@ -16,11 +16,24 @@ function person(clientId: number, name: string, extra: Partial<Participant> = {}
   return { clientId, name, color: '#1f7a64', isHost: false, isSelf: false, ...extra }
 }
 
+/** Counts live subscriptions, to catch any the component never releases. */
+class Counted<T> extends Store<T> {
+  active = 0
+  override subscribe(fn: (value: T) => void): () => void {
+    this.active++
+    const stop = super.subscribe(fn)
+    return () => {
+      this.active--
+      stop()
+    }
+  }
+}
+
 function mount() {
-  const file = new Store<string | null>(null)
-  const status = new Store<RoomStatus>('connecting')
-  const people = new Store<readonly Participant[]>([])
-  const narrow = new Store(false)
+  const file = new Counted<string | null>(null)
+  const status = new Counted<RoomStatus>('connecting')
+  const people = new Counted<readonly Participant[]>([])
+  const narrow = new Counted(false)
   const modes: string[] = []
   const view = new ViewSwitch({ narrow: false, onApply: (m) => modes.push(m), store: null })
   const settingsButton = document.createElement('button')
@@ -38,6 +51,11 @@ function mount() {
 }
 
 describe('Header', () => {
+  it('subscribes to each store once per render', () => {
+    const { file, status, people, narrow } = mount()
+    expect([file, status, people, narrow].map((s) => s.active)).toEqual([1, 1, 1, 1])
+  })
+
   it('shows the file name once the host tells it', () => {
     const { file, q } = mount()
     expect(q('.file')?.textContent).toBe('')
