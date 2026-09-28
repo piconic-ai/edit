@@ -10,7 +10,6 @@ import {
   panelBox,
   type SettingsModel,
 } from '../settings.ts'
-import { follow } from '../watch.ts'
 import { ThemePreview } from './ThemePreview.tsx'
 
 /**
@@ -23,18 +22,12 @@ import { ThemePreview } from './ThemePreview.tsx'
  */
 export function Settings(props: { model: SettingsModel }) {
   const m = props.model
-  const [theme, setTheme] = createSignal(m.theme.get())
-  const [fontSize, setFontSize] = createSignal(m.fontSize.get())
-  const [font, setFont] = createSignal(m.font.get())
-  const [lineHeight, setLineHeight] = createSignal(m.lineHeight.get())
-  const [wrap, setWrap] = createSignal(m.wrap.get())
-  const [vim, setVim] = createSignal(m.vim.get())
-  follow(m.theme, setTheme)
-  follow(m.fontSize, setFontSize)
-  follow(m.font, setFont)
-  follow(m.lineHeight, setLineHeight)
-  follow(m.wrap, setWrap)
-  follow(m.vim, setVim)
+  const theme = () => m.theme.get()
+  const fontSize = () => m.fontSize.get()
+  const font = () => m.font.get()
+  const lineHeight = () => m.lineHeight.get()
+  const wrap = () => m.wrap.get()
+  const vim = () => m.vim.get()
 
   const [gallery, setGallery] = createSignal(false)
   const current = createMemo(() => m.themes.find((t) => t.id === theme()))

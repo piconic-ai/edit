@@ -1,8 +1,7 @@
 'use client'
 
-import { createMemo, createSignal } from '@barefootjs/client'
+import { createMemo } from '@barefootjs/client'
 import { columnName, type TableView } from '../table.ts'
-import { follow } from '../watch.ts'
 
 /**
  * Draws a TableView (table.ts) as a spreadsheet: lettered columns, numbered
@@ -11,16 +10,11 @@ import { follow } from '../watch.ts'
  */
 export function TableGrid(props: { view: TableView }) {
   const v = props.view
-  const [table, setTable] = createSignal(v.shown.get())
-  const [selection, setSelection] = createSignal(v.selection.get())
-  const [editing, setEditing] = createSignal(v.editing.get())
-  const [mirror, setMirror] = createSignal(v.mirror.get())
-  const [peers, setPeers] = createSignal(v.peers.get())
-  follow(v.shown, setTable)
-  follow(v.selection, setSelection)
-  follow(v.editing, setEditing)
-  follow(v.mirror, setMirror)
-  follow(v.peers, setPeers)
+  const table = () => v.shown.get()
+  const selection = () => v.selection.get()
+  const editing = () => v.editing.get()
+  const mirror = () => v.mirror.get()
+  const peers = () => v.peers.get()
 
   const columns = createMemo(() => {
     const t = table()

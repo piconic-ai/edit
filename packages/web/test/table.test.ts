@@ -152,6 +152,33 @@ describe('TableView', () => {
     expect(cell(1, 0).textContent).toBe('cats')
   })
 
+  it("republishes others' cells only when someone moves, not on an edit elsewhere", () => {
+    const { doc, awareness, text, view, cell } = setup('a,b\nc,d\n')
+    const other = new Awareness(new Y.Doc())
+    const putGraceAt = (index: number) => {
+      const pos = Y.createRelativePositionFromTypeIndex(doc.getText('content'), index)
+      other.setLocalState({
+        user: { name: 'Grace', color: '#4254b5' },
+        cursor: { anchor: Y.relativePositionToJSON(pos), head: Y.relativePositionToJSON(pos) },
+      })
+      applyAwarenessUpdate(awareness, encodeAwarenessUpdate(other, [other.clientID]), 'remote')
+    }
+    putGraceAt(6) // in "d"
+    let publishes = 0
+    view.peers.subscribe(() => publishes++)
+
+    // An edit in another cell leaves Grace in place.
+    text.insert(0, 'x')
+    expect(publishes).toBe(0)
+    expect(cell(1, 1).dataset.peers).toBe('Grace')
+
+    // Grace moves to "c": that is published.
+    putGraceAt(5)
+    expect(publishes).toBe(1)
+    expect(cell(1, 0).dataset.peers).toBe('Grace')
+    expect(cell(1, 1).dataset.peers).toBeUndefined()
+  })
+
   it('types over a selected cell, like a spreadsheet', () => {
     const { text, view, cell, key } = setup('a,b\n')
     view.select({ row: 0, col: 1 })
