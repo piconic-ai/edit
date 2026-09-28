@@ -175,7 +175,12 @@ describe('readerTheme', () => {
     expect(new Set(calls).size).toBe(2)
   })
 
-  it('reconfigures through a Compartment keeping the document and selection, like a theme switch', () => {
+  it('reconfiguring through a Compartment changes themeClasses every time, keeping the document and selection', () => {
+    // themeClasses is what EditorView.update actually compares (it embeds
+    // the theme facet) to decide whether to remeasure; asserting on it,
+    // rather than on our own wrapper reference, would catch a "fresh array
+    // around one cached theme" regression that still looks different by
+    // `.not.toBe` but never changes what CodeMirror sees.
     const doc = new Y.Doc()
     const text = doc.getText('content')
     const font = new Compartment()
@@ -183,7 +188,12 @@ describe('readerTheme', () => {
     doc.transact(() => text.insert(0, 'shared text'), 'remote')
     view.dispatch({ selection: EditorSelection.single(2, 6) })
 
-    view.dispatch({ effects: font.reconfigure(readerTheme()) })
+    let previous = view.themeClasses
+    for (let i = 0; i < 5; i++) {
+      view.dispatch({ effects: font.reconfigure(readerTheme()) })
+      expect(view.themeClasses).not.toBe(previous)
+      previous = view.themeClasses
+    }
 
     expect(view.state.doc.toString()).toBe('shared text')
     expect(view.state.selection.main).toMatchObject({ from: 2, to: 6 })
