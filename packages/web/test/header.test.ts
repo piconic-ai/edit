@@ -1,0 +1,153 @@
+// @vitest-environment jsdom
+import { render } from '@barefootjs/client/runtime'
+import type { RoomStatus } from '@ima/protocol'
+import { afterEach, describe, expect, it } from 'vitest'
+import '../src/components/Header.tsx'
+import type { Participant } from '../src/room.ts'
+import { Store } from '../src/store.ts'
+import { ViewSwitch } from '../src/view.ts'
+
+const mounted: HTMLElement[] = []
+afterEach(() => {
+  for (const el of mounted.splice(0)) el.remove()
+})
+
+function person(clientId: number, name: string, extra: Partial<Participant> = {}): Participant {
+  return { clientId, name, color: '#1f7a64', isHost: false, isSelf: false, ...extra }
+}
+
+/** Counts live subscriptions, to catch any the component never releases. */
+class Counted<T> extends Store<T> {
+  active = 0
+  override subscribe(fn: (value: T) => void): () => void {
+    this.active++
+    const stop = super.subscribe(fn)
+    return () => {
+      this.active--
+      stop()
+    }
+  }
+}
+
+function mount() {
+  const file = new Counted<string | null>(null)
+  const status = new Counted<RoomStatus>('connecting')
+  const people = new Counted<readonly Participant[]>([])
+  const narrow = new Counted(false)
+  const modes: string[] = []
+  const view = new ViewSwitch({ narrow: false, onApply: (m) => modes.push(m), store: null })
+  const settingsButton = document.createElement('button')
+  settingsButton.className = 'icon'
+  const container = document.createElement('div')
+  document.body.append(container)
+  mounted.push(container)
+  render(container, 'Header', { file, status, people, narrow, view, settingsButton })
+  const q = <T extends Element = HTMLElement>(sel: string) => container.querySelector<T>(sel)
+  const list = () => q('.people') as HTMLElement
+  const names = () => [...list().querySelectorAll('li')].map((li) => li.title)
+  const button = (mode: string) =>
+    q<HTMLButtonElement>(`[data-mode="${mode}"]`) as HTMLButtonElement
+  return { file, status, people, narrow, view, modes, settingsButton, q, list, names, button }
+}
+
+describe('Header', () => {
+  it('subscribes to each store once per render', () => {
+    const { file, status, people, narrow } = mount()
+    expect([file, status, people, narrow].map((s) => s.active)).toEqual([1, 1, 1, 1])
+  })
+
+  it('shows the file name once the host tells it', () => {
+    const { file, q } = mount()
+    expect(q('.file')?.textContent).toBe('')
+    file.set('notes.md')
+    expect(q('.file')?.textContent).toBe('notes.md')
+  })
+
+  it('shows the connection status', () => {
+    const { status, q } = mount()
+    const el = q('.status') as HTMLElement
+    expect(el.dataset.status).toBe('connecting')
+    expect(el.textContent).toBe('Connecting…')
+    status.set('connected')
+    expect(el.dataset.status).toBe('connected')
+    expect(el.textContent).toBe('Connected')
+    status.set('disconnected')
+    expect(el.textContent).toBe('Offline')
+    status.set('closed')
+    expect(el.textContent).toBe('Ended')
+  })
+
+  it('lists participants with the host and you marked, and their colours', () => {
+    const { people, names, list } = mount()
+    people.set([
+      person(1, 'Ada Lovelace', { isHost: true, color: '#b85a0e' }),
+      person(2, 'Grace', { isSelf: true }),
+    ])
+    expect(names()).toEqual(['Ada Lovelace (host)', 'Grace (you)'])
+    const first = list().querySelector('li') as HTMLElement
+    expect(first.style.getPropertyValue('--c')).toBe('#b85a0e')
+    expect(first.querySelector('.avatar')?.textContent).toBe('AL')
+    people.set([person(2, 'Grace', { isSelf: true })])
+    expect(names()).toEqual(['Grace (you)'])
+  })
+
+  it('drops an avatar image that fails to load, keeping the initials', () => {
+    const { people, list } = mount()
+    people.set([person(1, 'Ada', { avatar: 'https://www.gravatar.com/avatar/x?d=404' })])
+    const img = list().querySelector('img') as HTMLImageElement
+    expect(img.getAttribute('referrerpolicy')).toBe('no-referrer')
+    img.dispatchEvent(new Event('error'))
+    expect(list().querySelector('img')).toBeNull()
+    expect(list().querySelector('.avatar')?.textContent).toBe('A')
+  })
+
+  it('counts the people past the faces a narrow row shows', () => {
+    const { people, list } = mount()
+    people.set([1, 2, 3].map((i) => person(i, `P${i}`)))
+    expect(list().dataset.more).toBeUndefined()
+    people.set([1, 2, 3, 4, 5].map((i) => person(i, `P${i}`)))
+    expect(list().dataset.more).toBe('+2')
+  })
+
+  it('shows the names on a tap on narrow screens, and folds on a width change', () => {
+    const { narrow, list } = mount()
+    list().click()
+    expect('expanded' in list().dataset).toBe(false)
+    narrow.set(true)
+    list().click()
+    expect('expanded' in list().dataset).toBe(true)
+    list().click()
+    expect('expanded' in list().dataset).toBe(false)
+    list().click()
+    narrow.set(false)
+    narrow.set(true)
+    expect('expanded' in list().dataset).toBe(false)
+  })
+
+  it('draws the view buttons and switches on click', () => {
+    const { view, modes, button, q } = mount()
+    expect(button('editor').textContent).toBe('Edit')
+    expect(button('split').getAttribute('aria-pressed')).toBe('true')
+    expect(button('table').hidden).toBe(true)
+    button('preview').click()
+    expect(view.mode).toBe('preview')
+    expect(modes.at(-1)).toBe('preview')
+    expect(button('preview').getAttribute('aria-pressed')).toBe('true')
+    expect(button('split').getAttribute('aria-pressed')).toBe('false')
+
+    view.setKind('table')
+    expect(button('editor').textContent).toBe('Text')
+    expect(button('table').hidden).toBe(false)
+    view.setTableError('line 3 is not valid CSV')
+    expect(button('table').disabled).toBe(true)
+    expect(button('table').title).toBe('line 3 is not valid CSV')
+
+    view.setKind('plain')
+    expect((q('.view-switch') as HTMLElement).hidden).toBe(true)
+  })
+
+  it('holds the settings button', () => {
+    const { settingsButton, q } = mount()
+    expect(q('header')?.contains(settingsButton)).toBe(true)
+  })
+})

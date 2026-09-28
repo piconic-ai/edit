@@ -30,6 +30,33 @@ export interface Participant {
 
 type State = { [key: string]: unknown }
 
+/**
+ * A colour a peer chose, if it is a plain hex colour like colorFor() makes.
+ * Peers set their own awareness, and the colour ends up in style attributes,
+ * so anything else (another declaration, a url()) must not get through.
+ */
+export function safeColor(value: unknown): string | null {
+  return typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : null
+}
+
+/**
+ * Replaces a peer's colours that are not plain hex colours, in place, before
+ * anything draws them. y-codemirror.next reads user.color and user.colorLight
+ * straight from awareness for remote cursors, so they are cleaned where they
+ * arrive. Returns whether anything changed.
+ */
+export function sanitizeUser(state: State, clientId: number): boolean {
+  const user = state.user
+  if (!user || typeof user !== 'object') return false
+  const u = user as { color?: unknown; colorLight?: unknown }
+  const color = safeColor(u.color)
+  const light = safeColor(u.colorLight)
+  if ((u.color === undefined || color) && (u.colorLight === undefined || light)) return false
+  const fallback = color ?? colorFor(clientId)
+  state.user = { ...u, color: fallback, colorLight: light ?? selectionTint(fallback) }
+  return true
+}
+
 export function participants(states: Map<number, State>, selfId: number): Participant[] {
   const list: Participant[] = []
   for (const [clientId, state] of states) {
@@ -40,7 +67,7 @@ export function participants(states: Map<number, State>, selfId: number): Partic
     list.push({
       clientId,
       name: typeof name === 'string' && name ? name : 'anonymous',
-      color: typeof user.color === 'string' ? user.color : isHost ? '#1f7a64' : '#7a828d',
+      color: safeColor(user.color) ?? (isHost ? '#1f7a64' : '#7a828d'),
       ...(avatar && { avatar }),
       isHost,
       isSelf: clientId === selfId,

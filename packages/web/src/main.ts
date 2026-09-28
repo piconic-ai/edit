@@ -20,12 +20,19 @@ import {
 } from './appearance.ts'
 import { delimiterFor } from './csv.ts'
 import { h } from './dom.ts'
-import { avatarFor, fetchIdentity, initials } from './identity.ts'
+import { avatarFor, fetchIdentity } from './identity.ts'
 import { resolveLanguage } from './language.ts'
 import { applyPalette } from './palette.ts'
 import { PreviewPane } from './pane.ts'
-import { expandOnTap, setMore } from './people.ts'
-import { colorFor, parseRoomLocation, participants, roomSocketUrl, selectionTint } from './room.ts'
+import {
+  colorFor,
+  type Participant,
+  parseRoomLocation,
+  participants,
+  roomSocketUrl,
+  sanitizeUser,
+  selectionTint,
+} from './room.ts'
 import { createSettings, type Settings } from './settings.ts'
 import { Splitter } from './splitter.ts'
 import { Store } from './store.ts'
@@ -36,6 +43,7 @@ import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { trackViewport } from './viewport.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
 import './components/EndedBanner.tsx'
+import './components/Header.tsx'
 import './style.css'
 
 const NAME_KEY = 'ima:name'
@@ -220,13 +228,19 @@ async function joinRoom(
   const doc = new Y.Doc()
   const text = doc.getText('content')
   const awareness = new Awareness(doc)
+  // Before the editor subscribes, so remote cursors never see a hostile colour.
+  awareness.on('change', ({ added, updated }: { added: number[]; updated: number[] }) => {
+    for (const id of [...added, ...updated]) {
+      const state = awareness.getStates().get(id)
+      if (state) sanitizeUser(state, id)
+    }
+  })
   const color = colorFor(doc.clientID)
   awareness.setLocalState({ user: { ...me, color, colorLight: selectionTint(color) } })
 
-  const status = h('span', { className: 'status' }, [h('span', { className: 'dot' }), h('span')])
-  const file = h('span', { className: 'file' })
-  const people = h('ul', { className: 'people', ariaLabel: 'Participants' })
   const roomStatus = new Store<RoomStatus>('connecting')
+  const fileName = new Store<string | null>(null)
+  const people = new Store<readonly Participant[]>([])
   // The room closes as soon as the host leaves (or was never there).
   const banner = h('div')
   render(banner, 'EndedBanner', {
@@ -239,26 +253,26 @@ async function joinRoom(
   const source = h('div', { className: 'source' })
   const main = h('main', { className: 'editor' }, [source])
   const narrow = matchMedia(NARROW_QUERY)
-  expandOnTap(people, narrow)
+  const isNarrow = new Store(narrow.matches)
   // Filled in below; the switch applies its first mode before the editor exists.
   let showView: (mode: ViewMode) => void = (mode) => {
     main.dataset.view = mode
   }
   const view = new ViewSwitch({ narrow: narrow.matches, onApply: (mode) => showView(mode) })
-  narrow.addEventListener('change', () => view.setNarrow(narrow.matches))
-  app.replaceChildren(
-    h('header', {}, [
-      h('span', { className: 'brand', textContent: 'ima' }),
-      file,
-      status,
-      people,
-      view.element,
-      settings.button,
-    ]),
-    settings.panel,
-    banner,
-    main,
-  )
+  narrow.addEventListener('change', () => {
+    isNarrow.set(narrow.matches)
+    view.setNarrow(narrow.matches)
+  })
+  const header = h('div', { className: 'header-slot' })
+  render(header, 'Header', {
+    file: fileName,
+    status: roomStatus,
+    people,
+    narrow: isNarrow,
+    view,
+    settingsButton: settings.button,
+  })
+  app.replaceChildren(header, settings.panel, banner, main)
 
   const vimMode = new Compartment()
   const editable = new Compartment()
@@ -340,16 +354,6 @@ async function joinRoom(
 
   const setStatus = (s: RoomStatus) => {
     roomStatus.set(s)
-    status.dataset.status = s
-    const label = status.lastElementChild as HTMLElement
-    label.textContent =
-      s === 'connected'
-        ? 'Connected'
-        : s === 'connecting'
-          ? 'Connecting…'
-          : s === 'closed'
-            ? 'Ended'
-            : 'Offline'
     if (s === 'closed') {
       editor.dispatch({ effects: editable.reconfigure(readOnly) })
     }
@@ -382,27 +386,11 @@ async function joinRoom(
   }
 
   const renderPeople = () => {
-    const list = participants(awareness.getStates(), doc.clientID)
-    people.replaceChildren(
-      ...list.map((p) => {
-        const face = h('span', { className: 'avatar', textContent: initials(p.name) })
-        if (p.avatar) {
-          const img = h('img', { src: p.avatar, alt: '', referrerPolicy: 'no-referrer' })
-          // Unknown to Gravatar (d=404) or blocked: keep the initials.
-          img.addEventListener('error', () => img.remove())
-          face.append(img)
-        }
-        const label = `${p.name}${p.isHost ? ' (host)' : ''}${p.isSelf ? ' (you)' : ''}`
-        const li = h('li', { title: label }, [face, h('span', { textContent: label })])
-        li.style.setProperty('--c', p.color)
-        return li
-      }),
-    )
-    setMore(people, list.length)
+    people.set(participants(awareness.getStates(), doc.clientID))
     const host = [...awareness.getStates().values()].find((s) => s.role === 'host')
     // Keep showing the file name after the host has gone.
     if (typeof host?.file === 'string') {
-      file.textContent = host.file
+      fileName.set(host.file)
       document.title = `${host.file} · ima`
       void applyLanguage(host.file)
     }

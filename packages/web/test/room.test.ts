@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { parseRoomLocation, participants, roomSocketUrl } from '../src/room.ts'
+import {
+  colorFor,
+  parseRoomLocation,
+  participants,
+  roomSocketUrl,
+  safeColor,
+  sanitizeUser,
+  selectionTint,
+} from '../src/room.ts'
 
 const id = 'AAAAAAAAAAAAAAAAAAAAAA'
 const key = 'k'.repeat(43)
@@ -50,5 +58,54 @@ describe('participants', () => {
     const [a, b] = participants(states, 0)
     expect(a?.avatar).toBe('https://gravatar.com/avatar/x')
     expect(b && 'avatar' in b).toBe(false)
+  })
+})
+
+const HOSTILE = 'red; position: fixed; inset: 0; background: url(https://evil.example/t)'
+
+describe('safeColor', () => {
+  it.each(['#1f7a64', '#abc', '#1F7A6436'])('accepts %s', (c) => {
+    expect(safeColor(c)).toBe(c)
+  })
+
+  it.each([HOSTILE, 'red', 'url(x)', '#12', '#1234567890', 42, null])('refuses %j', (c) => {
+    expect(safeColor(c)).toBeNull()
+  })
+})
+
+describe('participants and hostile colours', () => {
+  it('never passes on a colour that is not a plain hex colour', () => {
+    const states = new Map([
+      [1, { role: 'host', user: { name: 'Host', color: HOSTILE } }],
+      [2, { user: { name: 'Peer', color: 'url(https://evil.example/t)' } }],
+    ])
+    expect(participants(states, 3).map((p) => p.color)).toEqual(['#1f7a64', '#7a828d'])
+  })
+})
+
+describe('sanitizeUser', () => {
+  it('replaces hostile colours in place, with the colours ima would pick', () => {
+    const state: Record<string, unknown> = {
+      user: { name: 'Mallory', color: HOSTILE, colorLight: HOSTILE },
+    }
+    expect(sanitizeUser(state, 7)).toBe(true)
+    expect(state.user).toEqual({
+      name: 'Mallory',
+      color: colorFor(7),
+      colorLight: selectionTint(colorFor(7)),
+    })
+  })
+
+  it('keeps a good colour and only fixes the bad one', () => {
+    const state: Record<string, unknown> = { user: { color: '#4254b5', colorLight: HOSTILE } }
+    sanitizeUser(state, 1)
+    expect(state.user).toEqual({ color: '#4254b5', colorLight: selectionTint('#4254b5') })
+  })
+
+  it('leaves good or missing colours alone', () => {
+    const good = { user: { color: '#4254b5', colorLight: '#4254b536' } }
+    expect(sanitizeUser(good, 1)).toBe(false)
+    expect(sanitizeUser({ role: 'host' }, 1)).toBe(false)
+    expect(sanitizeUser({ user: { name: 'x' } }, 1)).toBe(false)
   })
 })
