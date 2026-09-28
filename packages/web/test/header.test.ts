@@ -6,6 +6,7 @@ import '../src/components/Header.tsx'
 import type { Participant } from '../src/room.ts'
 import { Store } from '../src/store.ts'
 import { ViewSwitch } from '../src/view.ts'
+import { fakeSettings } from './support/settings-model.ts'
 
 const mounted: HTMLElement[] = []
 afterEach(() => {
@@ -36,18 +37,17 @@ function mount() {
   const narrow = new Counted(false)
   const modes: string[] = []
   const view = new ViewSwitch({ narrow: false, onApply: (m) => modes.push(m), store: null })
-  const settingsButton = document.createElement('button')
-  settingsButton.className = 'icon'
+  const { model: settings } = fakeSettings()
   const container = document.createElement('div')
   document.body.append(container)
   mounted.push(container)
-  render(container, 'Header', { file, status, people, narrow, view, settingsButton })
+  render(container, 'Header', { file, status, people, narrow, view, settings })
   const q = <T extends Element = HTMLElement>(sel: string) => container.querySelector<T>(sel)
   const list = () => q('.people') as HTMLElement
   const names = () => [...list().querySelectorAll('li')].map((li) => li.title)
   const button = (mode: string) =>
     q<HTMLButtonElement>(`[data-mode="${mode}"]`) as HTMLButtonElement
-  return { file, status, people, narrow, view, modes, settingsButton, q, list, names, button }
+  return { file, status, people, narrow, view, modes, q, list, names, button }
 }
 
 describe('Header', () => {
@@ -146,8 +146,9 @@ describe('Header', () => {
     expect((q('.view-switch') as HTMLElement).hidden).toBe(true)
   })
 
-  it('holds the settings button', () => {
-    const { settingsButton, q } = mount()
-    expect(q('header')?.contains(settingsButton)).toBe(true)
+  it('ends with the settings gear and its panel', () => {
+    const { q } = mount()
+    expect(q('header .settings-slot button.icon')?.getAttribute('aria-label')).toBe('Settings')
+    expect(q('header .settings')?.hasAttribute('popover')).toBe(true)
   })
 })

@@ -33,11 +33,10 @@ import {
   sanitizeUser,
   selectionTint,
 } from './room.ts'
-import { createSettings, type Settings } from './settings.ts'
+import type { SettingsModel } from './settings.ts'
 import { Splitter } from './splitter.ts'
 import { Store } from './store.ts'
 import { describeError, TableView } from './table.ts'
-import { themePreview } from './theme-preview.ts'
 import { fallbackTheme, loadTheme, readerTheme, THEMES, ThemeSwitcher } from './themes.ts'
 import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { trackViewport } from './viewport.ts'
@@ -134,46 +133,37 @@ function lineWrapping(on: boolean): Extension {
   return on ? EditorView.lineWrapping : []
 }
 
-/** The Appearance and Text sections of the settings panel. */
-function addAppearanceSettings(
-  settings: Settings,
+/**
+ * The settings panel's model: what it shows, and what each control does to
+ * the editor and the page. A change that fails puts the control back.
+ */
+function settingsModel(
   editor: EditorView,
   themes: ThemeSwitcher,
-  wrap: Compartment,
+  wrapMode: Compartment,
+  vim: VimToggle,
   initial: Appearance,
-): void {
+): SettingsModel {
   const prefersDark = matchMedia(DARK_QUERY)
   let current = initial
   const update = (next: Appearance) => {
     current = next
     saveAppearance(next)
   }
+  const fontSizes = fontSizeRange(CSS.supports('-webkit-touch-callout', 'none'))
+  const theme = new Store(themes.id)
+  const fontSize = new Store(Math.max(fontSizes.min, initial.fontSize))
+  const font = new Store<Font>(initial.font)
+  const lineHeight = new Store(initial.lineHeight)
+  const wrap = new Store(initial.wrap)
+  const vimOn = new Store(vim.on)
+
   const showTheme = async () => {
-    const theme = resolveTheme(current, prefersDark.matches)
-    gallery.set(theme)
-    if (theme !== themes.id && !(await themes.set(theme))) gallery.set(themes.id)
+    const id = resolveTheme(current, prefersDark.matches)
+    theme.set(id)
+    if (id !== themes.id && !(await themes.set(id))) theme.set(themes.id)
     applyPalette(pageColors(current, themes.id))
   }
-  const cards = (scheme: 'light' | 'dark') =>
-    THEMES.filter((t) => t.scheme === scheme).map((t) => ({
-      value: t.id,
-      label: t.label,
-      preview: () => themePreview(t),
-    }))
-
-  settings.addSection('Appearance')
-  const gallery = settings.addGallery({
-    label: 'Theme',
-    groups: [
-      { label: 'Light', options: cards('light') },
-      { label: 'Dark', options: cards('dark') },
-    ],
-    value: themes.id,
-    onChange: (theme) => {
-      update({ ...current, theme })
-      void showTheme()
-    },
-  })
   // Until the reader picks a theme, the default one follows the OS. Picking is one-way by
   // design: there is one theme, and no "follow the system" entry to go back to (#30).
   prefersDark.addEventListener('change', () => void showTheme())
@@ -183,39 +173,44 @@ function addAppearanceSettings(
     applyText(current)
     editor.requestMeasure()
   }
-  settings.addSection('Text')
-  const fontSize = fontSizeRange(CSS.supports('-webkit-touch-callout', 'none'))
-  settings.addRange({
-    label: 'Font size',
-    ...fontSize,
-    value: Math.max(fontSize.min, current.fontSize),
-    format: (v) => `${v}px`,
-    onChange: (fontSize) => setText({ ...current, fontSize }),
-  })
-  settings.addSelect<Font>({
-    label: 'Font',
-    options: [
-      { value: 'mono', label: 'Monospace' },
-      { value: 'sans', label: 'Proportional' },
-    ],
-    value: current.font,
-    onChange: (font) => setText({ ...current, font }),
-  })
-  settings.addRange({
-    label: 'Line height',
-    ...LINE_HEIGHT,
-    value: current.lineHeight,
-    format: (v) => v.toFixed(1),
-    onChange: (lineHeight) => setText({ ...current, lineHeight }),
-  })
-  settings.addToggle({
-    label: 'Wrap long lines',
-    checked: current.wrap,
-    onChange: (on) => {
-      update({ ...current, wrap: on })
-      editor.dispatch({ effects: wrap.reconfigure(lineWrapping(on)) })
+  return {
+    themes: THEMES,
+    theme,
+    setTheme: (id) => {
+      update({ ...current, theme: id })
+      void showTheme()
     },
-  })
+    fontSizeRange: fontSizes,
+    fontSize,
+    setFontSize: (size) => {
+      fontSize.set(size)
+      setText({ ...current, fontSize: size })
+    },
+    font,
+    setFont: (next) => {
+      font.set(next)
+      setText({ ...current, font: next })
+    },
+    lineHeightRange: LINE_HEIGHT,
+    lineHeight,
+    setLineHeight: (height) => {
+      lineHeight.set(height)
+      setText({ ...current, lineHeight: height })
+    },
+    wrap,
+    setWrap: (on) => {
+      wrap.set(on)
+      update({ ...current, wrap: on })
+      editor.dispatch({ effects: wrapMode.reconfigure(lineWrapping(on)) })
+    },
+    vim: vimOn,
+    setVim: (on) => {
+      vimOn.set(on)
+      void vim.set(on).then((ok) => {
+        if (!ok) vimOn.set(vim.on)
+      })
+    },
+  }
 }
 
 async function joinRoom(
@@ -248,7 +243,6 @@ async function joinRoom(
     text: () => text.toString(),
     onReconnect: () => location.reload(),
   })
-  const settings = createSettings()
   // CodeMirror forces display on .cm-editor, so the panes are hidden through a wrapper.
   const source = h('div', { className: 'source' })
   const main = h('main', { className: 'editor' }, [source])
@@ -263,16 +257,9 @@ async function joinRoom(
     isNarrow.set(narrow.matches)
     view.setNarrow(narrow.matches)
   })
+  // Drawn once the editor exists, since the settings act on it.
   const header = h('div', { className: 'header-slot' })
-  render(header, 'Header', {
-    file: fileName,
-    status: roomStatus,
-    people,
-    narrow: isNarrow,
-    view,
-    settingsButton: settings.button,
-  })
-  app.replaceChildren(header, settings.panel, banner, main)
+  app.replaceChildren(header, banner, main)
 
   const vimMode = new Compartment()
   const editable = new Compartment()
@@ -331,26 +318,23 @@ async function joinRoom(
     editor.dispatch({ effects: EditorView.scrollIntoView(editor.state.selection.main.head) })
   })
 
-  addAppearanceSettings(
-    settings,
+  const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
+  const settings = settingsModel(
     editor,
     new ThemeSwitcher(editor, themeMode, theme.id),
     wrap,
+    vim,
     appearance,
   )
-  settings.addSection('Editor')
-  const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
-  const setVim = async (on: boolean) => {
-    if (!(await vim.set(on))) vimToggle.set(vim.on)
-  }
-  const vimOn = loadVimMode()
-  const vimToggle = settings.addToggle({
-    label: 'Vim keybindings',
-    hint: 'Only in this browser.',
-    checked: vimOn,
-    onChange: (on) => void setVim(on),
+  if (loadVimMode()) settings.setVim(true)
+  render(header, 'Header', {
+    file: fileName,
+    status: roomStatus,
+    people,
+    narrow: isNarrow,
+    view,
+    settings,
   })
-  if (vimOn) void setVim(true)
 
   const setStatus = (s: RoomStatus) => {
     roomStatus.set(s)

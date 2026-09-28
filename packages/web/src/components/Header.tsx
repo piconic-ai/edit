@@ -4,9 +4,11 @@ import { createEffect, createMemo, createSignal } from '@barefootjs/client'
 import type { RoomStatus } from '@ima/protocol'
 import { initials } from '../identity.ts'
 import type { Participant } from '../room.ts'
+import type { SettingsModel } from '../settings.ts'
 import type { Readable } from '../store.ts'
 import type { ViewSwitch } from '../view.ts'
 import { follow } from '../watch.ts'
+import { Settings } from './Settings.tsx'
 
 /** How many faces the collapsed row of participants shows before "+N". */
 const MAX_FACES = 3
@@ -26,8 +28,7 @@ export interface HeaderProps {
   /** Whether the screen is narrow (NARROW_QUERY). */
   narrow: Readable<boolean>
   view: ViewSwitch
-  /** The settings button, until the settings panel is a component too. */
-  settingsButton: HTMLElement
+  settings: SettingsModel
 }
 
 function label(p: Participant): string {
@@ -117,7 +118,7 @@ export function Header(props: HeaderProps) {
           </button>
         ))}
       </div>
-      <span className="settings-slot" ref={(el) => el.replaceChildren(props.settingsButton)} />
+      <Settings model={props.settings} />
     </header>
   )
 }
