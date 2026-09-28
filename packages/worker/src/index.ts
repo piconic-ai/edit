@@ -55,7 +55,7 @@ app.get('/api/rooms/:id/ws', async (c) => {
 
 // Encrypted attachments, stored while the room's host is connected. Anyone in
 // the room may read and write them, as they may join the WebSocket.
-app.on(['GET', 'PUT'], '/api/rooms/:id/blobs/:blobId', async (c) => {
+app.all('/api/rooms/:id/blobs/:blobId', async (c) => {
   const id = c.req.param('id')
   if (!ROOM_ID.test(id) || !BLOB_ID.test(c.req.param('blobId'))) {
     return c.text('invalid room or blob id', 400)

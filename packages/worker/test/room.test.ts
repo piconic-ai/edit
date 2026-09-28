@@ -167,6 +167,22 @@ const putBlob = (room: Room, id: string, body: Uint8Array<ArrayBuffer>) =>
 
 const getBlob = (room: Room, id: string) => exports.default.fetch(blobUrl(room, id))
 
+/** A PUT whose body arrives only when finish() is called. */
+function slowPut(room: Room, id: string, size: number) {
+  const { readable, writable } = new FixedLengthStream(size)
+  const res = exports.default.fetch(blobUrl(room, id), { method: 'PUT', body: readable })
+  return {
+    // Give the request time to reach the room and claim the id.
+    started: () => new Promise((r) => setTimeout(r, 50)),
+    finish: async () => {
+      const writer = writable.getWriter()
+      await writer.write(new Uint8Array(size))
+      await writer.close()
+      return res
+    },
+  }
+}
+
 // Blobs live under the room's Durable Object id.
 async function roomBlobs(room: Room): Promise<string[]> {
   const prefix = `rooms/${env.ROOM.idFromName(room.id).toString()}/`
@@ -216,9 +232,41 @@ describe('blobs', () => {
     expect((await exports.default.fetch(blobUrl(room, 'short'))).status).toBe(400)
     expect((await exports.default.fetch(blobUrl('nope', blobId(1)))).status).toBe(400)
     const del = await exports.default.fetch(blobUrl(room, blobId(1)), { method: 'DELETE' })
-    expect(del.status).toBe(404)
+    expect(del.status).toBe(405)
     const big = await putBlob(room, blobId(1), new Uint8Array(MAX_BLOB_BYTES + 1))
     expect(big.status).toBe(413)
+    // A stream of unknown length is sent without Content-Length.
+    const { readable, writable } = new TransformStream()
+    const unsized = exports.default.fetch(blobUrl(room, blobId(1)), {
+      method: 'PUT',
+      body: readable,
+    })
+    await writable.close()
+    expect((await unsized).status).toBe(411)
+  })
+
+  it('refuses a second upload of an id while the first is in flight', async () => {
+    const room = await createRoom()
+    await host(room)
+    const first = slowPut(room, blobId(1), 4)
+    await first.started()
+    expect((await putBlob(room, blobId(1), new Uint8Array(4))).status).toBe(409)
+    expect((await first.finish()).status).toBe(201)
+    expect((await putBlob(room, blobId(1), new Uint8Array(4))).status).toBe(200)
+  })
+
+  it('drops an upload that outlives its session', async () => {
+    const room = await createRoom()
+    const h = await host(room)
+    const upload = slowPut(room, blobId(1), 90)
+    await upload.started()
+    h.ws.close(1000, 'bye')
+    await new Promise((r) => setTimeout(r, 50))
+    await host(room)
+    expect((await upload.finish()).status).toBe(410)
+    expect(await roomBlobs(room)).toEqual([])
+    // The ended session's reservation does not count against the new one.
+    expect((await putBlob(room, blobId(2), new Uint8Array(90))).status).toBe(201)
   })
 
   it('enforces the room quota', async () => {

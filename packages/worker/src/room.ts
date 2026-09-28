@@ -37,6 +37,13 @@ interface Usage {
 export class Room extends DurableObject<Env> {
   // Blob ids being uploaded right now, so two uploads of one id cannot race.
   private readonly uploading = new Set<string>()
+  // Deleting the blobs of a session that just ended. A reconnecting host must
+  // not start using blobs before it finishes.
+  private cleaning: Promise<void> = Promise.resolve()
+  // Bumped by every cleanup, so an upload that spans one knows its quota
+  // reservation belonged to the session that ended. In memory only: nothing
+  // is in flight while the room hibernates.
+  private generation = 0
 
   override async fetch(request: Request): Promise<Response> {
     const blob = BLOB_PATH.exec(new URL(request.url).pathname)?.[1]
@@ -99,10 +106,15 @@ export class Room extends DurableObject<Env> {
     for (const peer of this.ctx.getWebSockets()) {
       if (peer !== ws) safeClose(peer, ROOM_CLOSED, 'the host left')
     }
-    await this.deleteBlobs()
+    // End the session at once: its quota and uploads no longer count.
+    this.generation++
+    this.ctx.storage.kv.delete(USAGE_KEY)
+    this.cleaning = this.cleaning.then(() => this.deleteBlobs())
+    await this.cleaning
   }
 
   private async blob(request: Request, id: string): Promise<Response> {
+    await this.cleaning
     if (this.hosts().length === 0) return new Response('room is closed', { status: 410 })
     const key = this.blobPrefix() + id
     if (request.method === 'GET') {
@@ -127,34 +139,50 @@ export class Room extends DurableObject<Env> {
       return new Response('Content-Length required', { status: 411 })
     }
     if (length > MAX_BLOB_BYTES) return new Response('blob too large', { status: 413 })
+    // Claim the id before awaiting anything.
+    if (this.uploading.has(key)) return new Response('upload in progress', { status: 409 })
+    this.uploading.add(key)
+    try {
+      return await this.upload(request, key, length)
+    } finally {
+      this.uploading.delete(key)
+    }
+  }
+
+  private async upload(request: Request, key: string, length: number): Promise<Response> {
+    const generation = this.generation
+    const ended = () => this.generation !== generation
+    const closed = () => new Response('room is closed', { status: 410 })
+
     // The first upload under an id wins; receivers check the content anyway.
     if (await this.env.BLOBS.head(key)) return new Response(null, { status: 200 })
-    if (this.uploading.has(key)) return new Response('upload in progress', { status: 409 })
+    if (ended()) return closed()
 
-    // Reserve the quota before awaiting anything, so concurrent uploads cannot
-    // all squeeze in under it.
+    // Reserve the quota before awaiting anything else, so concurrent uploads
+    // cannot all squeeze in under it.
     const usage = this.usage()
     const quota = this.quota()
     if (usage.bytes + length > quota.bytes || usage.count + 1 > quota.count) {
       return new Response('room quota exceeded', { status: 429 })
     }
     this.setUsage({ bytes: usage.bytes + length, count: usage.count + 1 })
-    this.uploading.add(key)
     try {
       const body = await request.arrayBuffer()
       if (body.byteLength !== length) throw new Error('body does not match Content-Length')
       await this.env.BLOBS.put(key, body)
     } catch {
-      const now = this.usage()
-      this.setUsage({ bytes: now.bytes - length, count: now.count - 1 })
+      // A reservation of a session that ended was dropped with it.
+      if (!ended()) {
+        const now = this.usage()
+        this.setUsage({ bytes: now.bytes - length, count: now.count - 1 })
+      }
       return new Response('upload failed', { status: 400 })
-    } finally {
-      this.uploading.delete(key)
     }
-    // The host may have left while we were uploading, after its blobs were deleted.
-    if (this.hosts().length === 0) {
+    // The session may have ended while we were uploading, and its cleanup may
+    // have missed this blob.
+    if (ended()) {
       await this.env.BLOBS.delete(key)
-      return new Response('room is closed', { status: 410 })
+      return closed()
     }
     return new Response(null, { status: 201 })
   }
@@ -169,7 +197,6 @@ export class Room extends DurableObject<Env> {
         if (page.objects.length > 0) await this.env.BLOBS.delete(page.objects.map((o) => o.key))
         cursor = page.truncated ? page.cursor : undefined
       } while (cursor)
-      this.ctx.storage.kv.delete(USAGE_KEY)
     } catch (error) {
       console.error('failed to delete blobs', error)
     }
