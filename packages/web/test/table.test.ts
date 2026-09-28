@@ -138,6 +138,20 @@ describe('TableView', () => {
     expect(cell(0, 1).lastElementChild?.className).toBe('cell-editor')
   })
 
+  it('leaves the grid alone while typing in a cell, and shows the value after', () => {
+    const { view, type, editor, key, cell } = setup('a,b\nc,d\n')
+    view.edit({ row: 1, col: 0 })
+    let redraws = 0
+    view.shown.subscribe(() => redraws++)
+    let moves = 0
+    view.selection.subscribe(() => moves++)
+    type('cat')
+    type('cats')
+    expect([redraws, moves]).toEqual([0, 0])
+    key(editor() as HTMLElement, 'Enter')
+    expect(cell(1, 0).textContent).toBe('cats')
+  })
+
   it('types over a selected cell, like a spreadsheet', () => {
     const { text, view, cell, key } = setup('a,b\n')
     view.select({ row: 0, col: 1 })

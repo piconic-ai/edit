@@ -437,6 +437,9 @@ export class TableView {
     if (local) {
       // Our own edit: the selection has not moved, but a new cell now has a place.
       if (this.#selected) this.#anchor = this.#anchorFor(this.#selected)
+      // Typing in the open cell changes nothing else on screen: the editor shows
+      // the text and the mirror sizes the cell, so the grid waits for the edit to end.
+      if (this.#editor) return
     } else {
       this.#follow()
     }
@@ -484,7 +487,11 @@ export class TableView {
     const onCell = !!(focused as Element | null)?.closest?.('.grid [data-row]')
     this.shown.set(this.#table)
     const at = this.#selected
-    if (at) this.selection.set({ at: { ...at }, span: this.#span })
+    const was = this.selection.get()
+    // Only a moved selection is published, so the cells' selection effects stay put.
+    if (at && (was?.at.row !== at.row || was.at.col !== at.col || was.span !== this.#span)) {
+      this.selection.set({ at: { ...at }, span: this.#span })
+    }
     if (at && this.#editor) {
       const moved = this.editing.get()
       // Someone else moved the cell being edited, e.g. by adding a row above:
@@ -740,6 +747,8 @@ export class TableView {
     this.#editor = null
     this.#undo.stopCapturing()
     this.editing.set(null)
+    // The grid skipped our own typing; show the cell as it is now.
+    this.#show()
     if (focus) this.#reveal(true)
   }
 
