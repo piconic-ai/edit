@@ -404,7 +404,7 @@ header {
   color: var(--accent);
 }
 
-/* A miniature page in a theme's colours (theme-preview.ts). Sized in em, so the
+/* A miniature page in a theme's colours (components/ThemePreview.tsx). Sized in em, so the
    font size of its container scales it: the settings row shows a small one. */
 .theme-preview {
   display: flex;
