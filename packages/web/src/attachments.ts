@@ -249,10 +249,12 @@ export class Attachments implements ImageResolver {
     for (const [hash, p] of this.#pending) {
       this.#opts.send({ kind: 'announce', hash, mime: p.mime })
     }
+    // The host may have uploaded them while we were away, so look in the
+    // room first; a 404 wants them again.
     for (const [hash, timer] of [...this.#wanted]) {
       clearTimeout(timer)
       this.#wanted.delete(hash)
-      this.#want(hash)
+      void this.#load(hash)
     }
     if (this.#failed.size > 0) {
       this.#failed.clear()

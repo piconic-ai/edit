@@ -420,6 +420,19 @@ describe('Attachments as the preview sees them', () => {
     expect(attachments.lookup(src)).toBe('loading')
   })
 
+  it('looks in the room first for what it wanted, after reconnecting', async () => {
+    const { attachments, sent, put } = await viewer()
+    const hash = await contentHash(STRIPPED)
+    const src = `assets/${hash}.png`
+    attachments.lookup(src)
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    // Uploaded and announced while we were offline: the announce is lost.
+    await put(STRIPPED)
+    attachments.reconnected()
+    await vi.waitFor(() => expect(attachments.lookup(src)).toEqual({ url: expect.any(String) }))
+    expect(sent).toHaveLength(1)
+  })
+
   it('fetches again when the image is announced during its own fetch', async () => {
     const { attachments, sent, put, gets } = await viewer({ gate: true })
     const hash = await contentHash(STRIPPED)
