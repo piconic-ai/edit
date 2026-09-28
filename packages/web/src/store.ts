@@ -1,4 +1,4 @@
-/** A value that changes over time, which components turn into a signal (see watch.ts). */
+/** A value that changes over time, which components turn into a signal. */
 export interface Readable<T> {
   get(): T
   /** Calls `fn` with each new value; returns a function that stops. */
