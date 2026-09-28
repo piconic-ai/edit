@@ -3,10 +3,12 @@ import {
   type BlobKeys,
   blobIdFor,
   contentHash,
+  decryptBlob,
   encryptBlob,
+  MAX_WANT_HASHES,
   type RoomStatus,
 } from '@ima/protocol'
-import { ImageError, prepareImage, type Shrink } from './image.ts'
+import { ImageError, type ImageType, prepareImage, type Shrink, sniff } from './image.ts'
 import { Store } from './store.ts'
 
 /** What the host's ima says about saving images, from its awareness state. */
@@ -90,6 +92,27 @@ export interface AttachmentsOptions {
   storedTimeoutMs?: number
   /** How long to wait before retrying an upload someone else is making. */
   retryDelayMs?: number
+  /** How long to gather missing images into one `want`. */
+  wantDelayMs?: number
+  /** How long the host has to upload a wanted image before it counts as missing. */
+  wantTimeoutMs?: number
+  /** How many bytes of images to keep in memory. */
+  cacheBytes?: number
+}
+
+/** What the preview shows for an image link (see preview.ts). */
+export type ImageLookup = { url: string } | 'loading' | null
+
+export interface ImageResolver {
+  /** An attachment link's image, 'loading', or null for any other link. */
+  lookup(src: string): ImageLookup
+  /** Whether a URL is one of the images lookup handed out. */
+  owns(url: string): boolean
+}
+
+interface Cached {
+  url: string
+  size: number
 }
 
 interface Pending {
@@ -100,25 +123,73 @@ interface Pending {
 }
 
 const RETRIES = 5
+const CACHE_BYTES = 64 * 1024 * 1024
+const EXTENSIONS = new Set(['png', 'jpg', 'gif', 'webp'])
 
 /**
  * Adds images to the room: uploads them encrypted, tells the room, and waits
  * for the host to save them. Only then does the link go into the document,
  * so it never points at a file that is not there.
+ *
+ * It also finds the images the document links to, for the preview: from
+ * memory, from the room's blob store, or by asking the host to upload them
+ * from its disk. They stay in memory only, and only for this page.
  */
-export class Attachments {
+export class Attachments implements ImageResolver {
   /** Images being added right now. */
   readonly uploading = new Store(0)
-  /** Set from the host's awareness state; null while it does not save images. */
-  host: HostAttachments | null = null
+  /** Bumped whenever an image arrives, so the preview can show it. */
+  readonly version = new Store(0)
 
   #opts: AttachmentsOptions
   #fetch: typeof fetch
   #pending = new Map<string, Pending>()
+  #host: HostAttachments | null = null
+  // Kept after the host leaves, so links still resolve from memory.
+  #dir = 'assets'
+  // In least recently used order.
+  #cache = new Map<string, Cached>()
+  #cachedBytes = 0
+  #urls = new Set<string>()
+  #loading = new Set<string>()
+  // Asked the host for; hashes it did not upload in time are missing.
+  #wanted = new Map<string, ReturnType<typeof setTimeout>>()
+  #missing = new Set<string>()
+  #wantQueue = new Set<string>()
+  #wantTimer: ReturnType<typeof setTimeout> | undefined
 
   constructor(opts: AttachmentsOptions) {
     this.#opts = opts
     this.#fetch = opts.fetch ?? ((...args) => fetch(...args))
+  }
+
+  /** From the host's awareness state; null while it does not save images. */
+  get host(): HostAttachments | null {
+    return this.#host
+  }
+
+  set host(host: HostAttachments | null) {
+    this.#host = host
+    if (host) this.#dir = host.dir
+  }
+
+  lookup(src: string): ImageLookup {
+    const match = new RegExp(`^${escapeRegExp(this.#dir)}/([0-9a-f]{32})\\.([a-z]+)$`).exec(src)
+    const hash = match?.[1]
+    if (!hash || !EXTENSIONS.has(match[2] ?? '')) return null
+    const cached = this.#cache.get(hash)
+    if (cached) {
+      this.#cache.delete(hash)
+      this.#cache.set(hash, cached)
+      return { url: cached.url }
+    }
+    if (this.#missing.has(hash)) return null
+    void this.#load(hash)
+    return 'loading'
+  }
+
+  owns(url: string): boolean {
+    return this.#urls.has(url)
   }
 
   /** Adds an image; resolves with its path relative to the shared file. */
@@ -133,7 +204,15 @@ export class Attachments {
 
   /** Handles an attachment message from the room. */
   handle(attachment: Attachment): void {
-    if (attachment.kind === 'stored') {
+    if (attachment.kind === 'announce') {
+      // Uploaded for someone who wanted it, maybe us.
+      if (this.#wanted.has(attachment.hash) || this.#missing.has(attachment.hash)) {
+        clearTimeout(this.#wanted.get(attachment.hash))
+        this.#wanted.delete(attachment.hash)
+        this.#missing.delete(attachment.hash)
+        void this.#load(attachment.hash)
+      }
+    } else if (attachment.kind === 'stored') {
       this.#pending.get(attachment.hash)?.resolve(attachment.path)
     } else if (attachment.kind === 'rejected') {
       const reason = REJECTED[attachment.reason] ?? 'refused'
@@ -169,7 +248,77 @@ export class Attachments {
     // Another upload of the same image may have got here first.
     const announced = this.#pending.get(hash)
     if (announced) return announced.promise
-    return this.#announce(hash, image.type)
+    const path = await this.#announce(hash, image.type)
+    // Show it right away: no need to fetch what we just uploaded.
+    this.#remember(hash, image.bytes, image.type)
+    return path
+  }
+
+  async #load(hash: string): Promise<void> {
+    if (this.#loading.has(hash) || this.#wanted.has(hash)) return
+    this.#loading.add(hash)
+    try {
+      const url = `/api/rooms/${this.#opts.roomId}/blobs/${await blobIdFor(this.#opts.keys, hash)}`
+      const res = await this.#fetch(url)
+      if (res.status === 404) {
+        this.#want(hash)
+        return
+      }
+      if (!res.ok) throw new Error(`blob: ${res.status}`)
+      const bytes = await decryptBlob(
+        this.#opts.keys,
+        new Uint8Array(await res.arrayBuffer()),
+        hash,
+      )
+      const type = sniff(bytes)
+      if (!type) throw new Error('not an image')
+      this.#remember(hash, bytes, type)
+    } catch {
+      // The room closed, or someone uploaded something else under its name.
+      this.#missing.add(hash)
+      this.version.set(this.version.get() + 1)
+    } finally {
+      this.#loading.delete(hash)
+    }
+  }
+
+  // Missing images are gathered into one message; the host uploads the ones
+  // it has and announces them.
+  #want(hash: string): void {
+    this.#wanted.set(
+      hash,
+      setTimeout(() => {
+        this.#wanted.delete(hash)
+        this.#missing.add(hash)
+        this.version.set(this.version.get() + 1)
+      }, this.#opts.wantTimeoutMs ?? 10_000),
+    )
+    this.#wantQueue.add(hash)
+    this.#wantTimer ??= setTimeout(() => {
+      this.#wantTimer = undefined
+      const hashes = [...this.#wantQueue]
+      this.#wantQueue.clear()
+      for (let i = 0; i < hashes.length; i += MAX_WANT_HASHES) {
+        this.#opts.send({ kind: 'want', hashes: hashes.slice(i, i + MAX_WANT_HASHES) })
+      }
+    }, this.#opts.wantDelayMs ?? 200)
+  }
+
+  #remember(hash: string, bytes: Uint8Array, type: ImageType): void {
+    if (this.#cache.has(hash)) return
+    const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type }))
+    this.#cache.set(hash, { url, size: bytes.length })
+    this.#urls.add(url)
+    this.#cachedBytes += bytes.length
+    const limit = this.#opts.cacheBytes ?? CACHE_BYTES
+    for (const [oldest, entry] of this.#cache) {
+      if (this.#cachedBytes <= limit || oldest === hash) break
+      this.#cache.delete(oldest)
+      this.#urls.delete(entry.url)
+      URL.revokeObjectURL(entry.url)
+      this.#cachedBytes -= entry.size
+    }
+    this.version.set(this.version.get() + 1)
   }
 
   async #put(hash: string, body: Uint8Array): Promise<void> {
@@ -214,4 +363,8 @@ export class Attachments {
     this.#opts.send({ kind: 'announce', hash, mime })
     return promise
   }
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

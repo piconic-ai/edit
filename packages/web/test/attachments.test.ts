@@ -4,6 +4,7 @@ import {
   contentHash,
   decryptBlob,
   deriveBlobKeys,
+  encryptBlob,
   generateKey,
 } from '@ima/protocol'
 import { describe, expect, it, vi } from 'vitest'
@@ -214,5 +215,135 @@ describe('hostAttachments', () => {
     ]) {
       expect(hostAttachments(states({ role: 'host', attachments }))).toBeNull()
     }
+  })
+})
+
+describe('Attachments as the preview sees them', () => {
+  // A room's blob store, and a host that uploads what is wanted.
+  async function viewer(opts: Partial<AttachmentsOptions> = {}) {
+    const keys = await deriveBlobKeys(generateKey())
+    const sent: Attachment[] = []
+    const blobs = new Map<string, Uint8Array>()
+    const gets: string[] = []
+    const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        blobs.set(String(url), init.body as Uint8Array)
+        return new Response(null, { status: 201 })
+      }
+      gets.push(String(url))
+      const body = blobs.get(String(url))
+      return body
+        ? new Response(body as Uint8Array<ArrayBuffer>)
+        : new Response(null, { status: 404 })
+    })
+    const attachments = new Attachments({
+      roomId: ROOM,
+      keys,
+      send: (a) => sent.push(a),
+      fetch: fetch as typeof globalThis.fetch,
+      wantDelayMs: 1,
+      ...opts,
+    })
+    attachments.host = { dir: 'assets', maxBytes: 1000 }
+    const put = async (bytes: Uint8Array) => {
+      const hash = await contentHash(bytes)
+      const url = `/api/rooms/${ROOM}/blobs/${await blobIdFor(keys, hash)}`
+      blobs.set(url, await encryptBlob(keys, bytes))
+      return hash
+    }
+    return { keys, blobs, attachments, sent, gets, put }
+  }
+
+  it('fetches an image from the room and hands out its URL', async () => {
+    const { attachments, put } = await viewer()
+    const hash = await put(STRIPPED)
+    const src = `assets/${hash}.png`
+    expect(attachments.lookup(src)).toBe('loading')
+    await vi.waitFor(() => expect(attachments.version.get()).toBe(1))
+    const found = attachments.lookup(src)
+    expect(found).toEqual({ url: expect.stringMatching(/^blob:/) })
+    expect(attachments.owns((found as { url: string }).url)).toBe(true)
+    expect(attachments.owns('blob:http://elsewhere/x')).toBe(false)
+  })
+
+  it('asks the host for images the room does not have, and shows them once uploaded', async () => {
+    const { attachments, sent, put } = await viewer()
+    const hash = await contentHash(STRIPPED)
+    const other = '0'.repeat(32)
+    attachments.lookup(`assets/${hash}.png`)
+    attachments.lookup(`assets/${other}.jpg`)
+    // Both go in one message.
+    await vi.waitFor(() => expect(sent).toEqual([{ kind: 'want', hashes: [hash, other] }]))
+    expect(attachments.lookup(`assets/${hash}.png`)).toBe('loading')
+
+    await put(STRIPPED)
+    attachments.handle({ kind: 'announce', hash, mime: 'image/png' })
+    await vi.waitFor(() =>
+      expect(attachments.lookup(`assets/${hash}.png`)).toEqual({ url: expect.any(String) }),
+    )
+  })
+
+  it('gives up on an image the host does not upload', async () => {
+    const { attachments } = await viewer({ wantTimeoutMs: 10 })
+    const src = `assets/${'1'.repeat(32)}.png`
+    attachments.lookup(src)
+    await vi.waitFor(() => expect(attachments.lookup(src)).toBeNull())
+  })
+
+  it('treats content that does not match its name as missing', async () => {
+    const { keys, blobs, attachments } = await viewer()
+    // Someone stored other content under this name's blob id.
+    const name = '2'.repeat(32)
+    const url = `/api/rooms/${ROOM}/blobs/${await blobIdFor(keys, name)}`
+    blobs.set(url, await encryptBlob(keys, STRIPPED))
+    const src = `assets/${name}.png`
+    expect(attachments.lookup(src)).toBe('loading')
+    await vi.waitFor(() => expect(attachments.lookup(src)).toBeNull())
+  })
+
+  it('shows its own uploads without fetching them', async () => {
+    const { attachments, sent, gets } = await viewer()
+    const upload = attachments.upload(new Blob([PNG as Uint8Array<ArrayBuffer>]))
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    const hash = (sent[0] as { hash: string }).hash
+    attachments.handle({ kind: 'stored', hash, path: `assets/${hash}.png` })
+    await upload
+    expect(attachments.lookup(`assets/${hash}.png`)).toEqual({ url: expect.any(String) })
+    expect(gets).toEqual([])
+  })
+
+  it('leaves other links alone', async () => {
+    const { attachments, gets } = await viewer()
+    for (const src of [
+      'images/0123456789abcdef0123456789abcdef.png',
+      'assets/0123.png',
+      'assets/0123456789abcdef0123456789abcdef.svg',
+      '../assets/0123456789abcdef0123456789abcdef.png',
+    ]) {
+      expect(attachments.lookup(src)).toBeNull()
+    }
+    expect(gets).toEqual([])
+  })
+
+  it('keeps resolving links after the host leaves', async () => {
+    const { attachments, put } = await viewer()
+    attachments.host = { dir: 'pics', maxBytes: 1000 }
+    attachments.host = null
+    const hash = await put(STRIPPED)
+    expect(attachments.lookup(`pics/${hash}.png`)).toBe('loading')
+  })
+
+  it('forgets the oldest images past its memory budget', async () => {
+    const { attachments, put } = await viewer({ cacheBytes: STRIPPED.length + 10 })
+    const a = await put(STRIPPED)
+    const png2 = new Uint8Array([...STRIPPED.subarray(0, 8), 0, 0, 0, 0, ...STRIPPED.subarray(8)])
+    const b = await put(png2)
+    attachments.lookup(`assets/${a}.png`)
+    await vi.waitFor(() => expect(attachments.version.get()).toBe(1))
+    const first = attachments.lookup(`assets/${a}.png`) as { url: string }
+    attachments.lookup(`assets/${b}.png`)
+    await vi.waitFor(() => expect(attachments.version.get()).toBe(2))
+    expect(attachments.owns(first.url)).toBe(false)
+    expect(attachments.lookup(`assets/${a}.png`)).toBe('loading')
   })
 })

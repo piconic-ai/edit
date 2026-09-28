@@ -1,5 +1,6 @@
 import type { EditorView } from '@codemirror/view'
 import type * as Y from 'yjs'
+import type { ImageResolver } from './attachments.ts'
 
 type Renderer = Pick<typeof import('./preview.ts'), 'render' | 'patch'>
 
@@ -59,12 +60,15 @@ export class PreviewPane {
   #dirty = true
   #frame = 0
   #onRender: () => void
+  #images: ImageResolver | undefined
 
   constructor(
     text: Y.Text,
     options: {
       load?: () => Promise<Renderer>
       onRender?: () => void
+      /** Finds the images added during the session. */
+      images?: ImageResolver
       /** The article to render into, laid out by components/Layout.tsx. */
       element?: HTMLElement
     } = {},
@@ -72,6 +76,7 @@ export class PreviewPane {
     this.#text = text
     this.#load = options.load ?? (() => import('./preview.ts'))
     this.#onRender = options.onRender ?? (() => {})
+    this.#images = options.images
     this.element = options.element ?? document.createElement('article')
     text.observe(() => {
       this.#dirty = true
@@ -85,6 +90,12 @@ export class PreviewPane {
 
   set active(on: boolean) {
     this.#active = on
+    this.#schedule()
+  }
+
+  /** Renders again though the text did not change, e.g. once an image arrives. */
+  refresh(): void {
+    this.#dirty = true
     this.#schedule()
   }
 
@@ -139,7 +150,7 @@ export class PreviewPane {
     if (!this.#active || !this.#dirty) return
     this.#dirty = false
     const { render, patch } = this.#renderer
-    patch(this.element, render(this.#text.toString()))
+    patch(this.element, render(this.#text.toString(), this.#images))
     this.#onRender()
   }
 }

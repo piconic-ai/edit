@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
+import type { ImageResolver } from './attachments.ts'
 import { type Embed, embedFor, httpUrl, isAllowedFrame, isVideoFile } from './embed.ts'
 
 // Raw HTML in the document is shown as text, never parsed.
@@ -67,8 +68,22 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const src = String(token.attrGet('src') ?? '')
   const alt = self.renderInlineAsText(token.children ?? [], options, env)
   const url = httpUrl(src)
-  // Relative paths point into the host's disk, which the browser cannot reach.
-  if (!url) return `<span class="missing-image" title="${escape(src)}">${escape(alt || src)}</span>`
+  if (!url) {
+    // Relative paths point into the host's disk, which the browser cannot
+    // reach, unless it is an image someone added in this session.
+    const found = images?.lookup(src) ?? null
+    if (found === 'loading') {
+      return `<span class="loading-image" title="${escape(src)}">${escape(alt || src)}</span>`
+    }
+    if (found) {
+      token.attrSet('src', found.url)
+      token.attrSet('title', token.attrGet('title') ?? src)
+      return defaultImage
+        ? defaultImage(tokens, idx, options, env, self)
+        : self.renderToken(tokens, idx, options)
+    }
+    return `<span class="missing-image" title="${escape(src)}">${escape(alt || src)}</span>`
+  }
   if (isVideoFile(url)) return videoHtml(url.href, alt)
   token.attrSet('loading', 'lazy')
   token.attrSet('referrerpolicy', 'no-referrer')
@@ -77,11 +92,22 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
     : self.renderToken(tokens, idx, options)
 }
 
+// Set for the duration of one render; the renderer rules and the sanitizer
+// hooks below are module-wide.
+let images: ImageResolver | undefined
+
 const purify = DOMPurify(window)
 
 purify.addHook('uponSanitizeElement', (node, data) => {
   if (data.tagName === 'iframe' && !isAllowedFrame((node as Element).getAttribute('src'))) {
     node.parentNode?.removeChild(node)
+  }
+})
+
+// blob: URLs are not allowed by default; keep the ones for our own images.
+purify.addHook('uponSanitizeAttribute', (node, data) => {
+  if (node.nodeName === 'IMG' && data.attrName === 'src' && images?.owns(data.attrValue)) {
+    data.forceKeepAttr = true
   }
 })
 
@@ -105,7 +131,11 @@ purify.addHook('afterSanitizeAttributes', (node) => {
     case 'VIDEO':
       el.removeAttribute('srcset')
       el.removeAttribute('poster')
-      if (!httpUrl(el.getAttribute('src') ?? '')) el.remove()
+      {
+        const src = el.getAttribute('src') ?? ''
+        const ours = node.nodeName === 'IMG' && images?.owns(src)
+        if (!httpUrl(src) && !ours) el.remove()
+      }
       break
   }
 })
@@ -122,9 +152,17 @@ export function sanitize(html: string): DocumentFragment {
   })
 }
 
-/** Renders Markdown to sanitised nodes, ready for {@link patch}. */
-export function render(source: string): DocumentFragment {
-  return sanitize(md.render(source))
+/**
+ * Renders Markdown to sanitised nodes, ready for {@link patch}. `resolver`
+ * finds the images added during the session.
+ */
+export function render(source: string, resolver?: ImageResolver): DocumentFragment {
+  images = resolver
+  try {
+    return sanitize(md.render(source))
+  } finally {
+    images = undefined
+  }
 }
 
 const keys = new WeakMap<Node, string>()

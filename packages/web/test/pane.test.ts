@@ -75,6 +75,23 @@ describe('PreviewPane', () => {
     expect(rendered).toHaveBeenCalledTimes(2)
   })
 
+  it('renders again on request, with the session images', async () => {
+    const doc = new Y.Doc()
+    const text = doc.getText('content')
+    let url: string | null = null
+    const images = {
+      lookup: () => (url ? { url } : ('loading' as const)),
+      owns: (u: string) => u === url,
+    }
+    const pane = new PreviewPane(text, { load: () => Promise.resolve(preview), images })
+    text.insert(0, '![](assets/0123456789abcdef0123456789abcdef.png)')
+    pane.active = true
+    await vi.waitFor(() => expect(pane.element.querySelector('.loading-image')).not.toBeNull())
+    url = 'blob:http://localhost/1'
+    pane.refresh()
+    await vi.waitFor(() => expect(pane.element.querySelector('img')?.getAttribute('src')).toBe(url))
+  })
+
   it('catches up on edits made while hidden', async () => {
     const { text, pane, rendered } = setup()
     text.insert(0, 'first')

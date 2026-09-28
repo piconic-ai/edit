@@ -12,7 +12,9 @@ No file in mind yet? Run `ima` on its own: it creates an empty `ima-<time>.md` (
 
 Any UTF-8 text file works, not only Markdown: `ima main.go`, `ima data.csv` or `ima board.canvas`. The editor picks syntax highlighting from the file extension and falls back to Markdown when there is none or it is unknown; `.txt`, `.csv` and `.tsv` stay plain text.
 
-Markdown files open with a rendered preview next to the editor (preview only on phones); switch between Edit, Split and Preview in the header. The preview shows images and videos from absolute URLs already in the document, and plays bare YouTube and Vimeo links. Images at relative paths show their alt text, since they live on your disk.
+Markdown files open with a rendered preview next to the editor (preview only on phones); switch between Edit, Split and Preview in the header. The preview shows images and videos from absolute URLs already in the document, and plays bare YouTube and Vimeo links.
+
+Paste or drop an image (PNG, JPEG, GIF or WebP) into a Markdown file, and ima saves it next to the file as `assets/<hash>.png` and links it where you put it. Location and other metadata are removed first, and images over 10 MB are scaled down. The preview shows these images to everyone in the session; other images at relative paths show their alt text, since they live on your disk.
 
 **Why "ima"?** It comes from two Japanese words read *ima*: 居間 (the living room, where you casually invite people in) and 今 (now). You invite people into your place to write together, right now, and the document never leaves your home.
 
@@ -23,7 +25,7 @@ your machine                     Cloudflare (ima.piconic.ai)           collabora
 notes.md  <->  ima CLI  <--wss-->  Worker -> Room (Durable Object)  <--wss-->  browser editor
 ```
 
-- Your local file is the source of truth. The server stores nothing.
+- Your local file is the source of truth, and pasted images are saved beside it. The server keeps nothing but those images, encrypted, while you are connected, and deletes them when the session ends.
 - Every update is encrypted end to end (AES-GCM) with a key that lives only in the link's `#fragment`. Browsers never send the fragment to the server, so the server only relays ciphertext it cannot read.
 - Documents are synced with [Yjs](https://yjs.dev). Edits you make to the file in your own editor while sharing are streamed to the room too.
 - Anyone with the link can edit. Share it like you would share a Google Docs link.

@@ -284,7 +284,12 @@ async function joinRoom(
   const followEditor = () => {
     if (main.dataset.view === 'split') preview.follow(editor)
   }
-  const preview = new PreviewPane(text, { onRender: followEditor, element: parts.preview })
+  const preview = new PreviewPane(text, {
+    onRender: followEditor,
+    images: attachments,
+    element: parts.preview,
+  })
+  attachments.version.subscribe(() => preview.refresh())
   const splitter = new Splitter(main, { onResize: followEditor })
   const table = new TableView(text, awareness, undoManager, {
     onError: (error) => view.setTableError(error && describeError(error)),
