@@ -1,9 +1,10 @@
 'use client'
 
-import { createSignal, onCleanup, onMount } from '@barefootjs/client'
+import { createSignal, onCleanup } from '@barefootjs/client'
 import type { RoomStatus } from '@ima/protocol'
 import { copyText } from '../copy.ts'
 import type { Readable } from '../store.ts'
+import { watch } from '../watch.ts'
 
 const RESET_MS = 2000
 
@@ -24,17 +25,10 @@ const LABELS = { idle: 'Copy text', copied: 'Copied', failed: 'Could not copy' }
  * does not work: the editor only draws the lines on screen.
  */
 export function EndedBanner(props: EndedBannerProps) {
-  const [status, setStatus] = createSignal(props.status.get())
+  const status = watch(props.status)
   const [copy, setCopy] = createSignal<keyof typeof LABELS>('idle')
   let timer: ReturnType<typeof setTimeout> | undefined
-
-  onMount(() => {
-    const stop = props.status.subscribe(setStatus)
-    onCleanup(() => {
-      stop()
-      clearTimeout(timer)
-    })
-  })
+  onCleanup(() => clearTimeout(timer))
 
   const copyAll = async () => {
     const clipboard = 'clipboard' in props ? props.clipboard : navigator.clipboard

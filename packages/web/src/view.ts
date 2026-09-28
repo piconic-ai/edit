@@ -1,5 +1,5 @@
-import { h } from './dom.ts'
 import { defaultStore, type Store } from './storage.ts'
+import { type Readable, Store as Value } from './store.ts'
 
 export type ViewMode = 'editor' | 'split' | 'preview' | 'table'
 
@@ -90,14 +90,27 @@ export interface ViewSwitchOptions {
   store?: Store | null
 }
 
+/** One view button as the header shows it (components/Header.tsx). */
+export interface ViewButton {
+  mode: ViewMode
+  label: string
+  hidden: boolean
+  pressed: boolean
+  disabled: boolean
+  /** Why the button is disabled, as a tooltip. */
+  title: string | null
+}
+
+const ALL_MODES: readonly ViewMode[] = ['editor', 'split', 'preview', 'table']
+
 /**
- * The view buttons in the header: Edit / Split / Preview for Markdown, and
+ * Which view shows, and the Edit / Split / Preview buttons for Markdown or
  * Text / Table for CSV and TSV. Other files have one view, so the buttons
- * hide and the editor fills the page.
+ * hide and the editor fills the page. The buttons are drawn from `buttons`.
  */
 export class ViewSwitch {
-  readonly element: HTMLElement
-  #buttons = new Map<ViewMode, HTMLButtonElement>()
+  readonly buttons: Readable<readonly ViewButton[]>
+  #buttons = new Value<readonly ViewButton[]>([])
   #chosen = new Map<ViewKind, ViewMode | null>()
   #kind: ViewKind = 'markdown'
   #narrow: boolean
@@ -109,14 +122,7 @@ export class ViewSwitch {
     this.#store = store
     this.#narrow = narrow
     this.#onApply = onApply
-    this.element = h('div', { className: 'view-switch', role: 'group', ariaLabel: 'View' })
-    for (const mode of ['editor', 'split', 'preview', 'table'] as const) {
-      const button = h('button', { type: 'button' })
-      button.dataset.mode = mode
-      button.addEventListener('click', () => this.choose(mode))
-      this.#buttons.set(mode, button)
-      this.element.append(button)
-    }
+    this.buttons = this.#buttons
     this.#apply()
   }
 
@@ -165,20 +171,20 @@ export class ViewSwitch {
   #apply(): void {
     const mode = this.mode
     const { modes } = KINDS[this.#kind]
-    this.element.hidden = modes.length === 0
-    for (const [m, button] of this.#buttons) {
-      const info = modes.find((x) => x.mode === m)
-      button.hidden = !info || (m === 'split' && this.#narrow)
-      button.textContent = info?.label ?? ''
-      button.setAttribute('aria-pressed', String(m === mode))
-    }
-    const table = this.#buttons.get('table')
-    if (table) {
-      const error = this.#kind === 'table' ? this.#tableError : null
-      table.disabled = error !== null
-      if (error === null) table.removeAttribute('title')
-      else table.title = error
-    }
+    const error = this.#kind === 'table' ? this.#tableError : null
+    this.#buttons.set(
+      ALL_MODES.map((m) => {
+        const info = modes.find((x) => x.mode === m)
+        return {
+          mode: m,
+          label: info?.label ?? '',
+          hidden: !info || (m === 'split' && this.#narrow),
+          pressed: m === mode,
+          disabled: m === 'table' && error !== null,
+          title: m === 'table' ? error : null,
+        }
+      }),
+    )
     this.#onApply(mode)
   }
 }

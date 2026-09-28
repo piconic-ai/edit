@@ -58,6 +58,11 @@ body {
   }
 }
 
+/* Mount points for components (main.ts): they add no box of their own. */
+.header-slot,
+.settings-slot {
+  display: contents;
+}
 header {
   display: flex;
   align-items: center;

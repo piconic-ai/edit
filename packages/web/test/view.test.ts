@@ -97,15 +97,17 @@ describe('ViewSwitch', () => {
       store,
     })
     const button = (mode: ViewMode) => {
-      const b = view.element.querySelector<HTMLButtonElement>(`[data-mode="${mode}"]`)
+      const b = view.buttons.get().find((x) => x.mode === mode)
       if (!b) throw new Error(`no ${mode} button`)
       return b
     }
     const pressed = () =>
-      [...view.element.querySelectorAll('[aria-pressed="true"]')].map(
-        (b) => (b as HTMLElement).dataset.mode,
-      )
-    return { view, store, applied, button, pressed }
+      view.buttons
+        .get()
+        .filter((b) => b.pressed)
+        .map((b) => b.mode)
+    const allHidden = () => view.buttons.get().every((b) => b.hidden)
+    return { view, store, applied, button, pressed, allHidden }
   }
 
   it('starts in the stored mode', () => {
@@ -118,7 +120,7 @@ describe('ViewSwitch', () => {
   it('switches and remembers on click', () => {
     const { view, store, applied, button, pressed } = setup()
     expect(view.mode).toBe('split')
-    button('preview').click()
+    view.choose('preview')
     expect(view.mode).toBe('preview')
     expect(store.data.get(VIEW_KEY)).toBe('preview')
     expect(applied.at(-1)).toBe('preview')
@@ -137,34 +139,34 @@ describe('ViewSwitch', () => {
   })
 
   it('stays on the editor and hides itself for files without another view', () => {
-    const { view, applied } = setup({ stored: 'preview' })
+    const { view, applied, allHidden } = setup({ stored: 'preview' })
     view.setKind('plain')
     expect(view.mode).toBe('editor')
-    expect(view.element.hidden).toBe(true)
+    expect(allHidden()).toBe(true)
     expect(applied.at(-1)).toBe('editor')
 
     view.setKind('markdown')
     expect(view.mode).toBe('preview')
-    expect(view.element.hidden).toBe(false)
+    expect(allHidden()).toBe(false)
   })
 
   it('offers Text and Table for tables, remembered apart from Markdown', () => {
     const { view, store, button, pressed } = setup({ stored: 'preview' })
     view.setKind('table')
     expect(view.mode).toBe('table')
-    expect(button('editor').textContent).toBe('Text')
+    expect(button('editor').label).toBe('Text')
     expect(button('split').hidden).toBe(true)
     expect(button('preview').hidden).toBe(true)
     expect(button('table').hidden).toBe(false)
     expect(pressed()).toEqual(['table'])
 
-    button('editor').click()
+    view.choose('editor')
     expect(view.mode).toBe('editor')
     expect(store.data.get(TABLE_VIEW_KEY)).toBe('editor')
     expect(store.data.get(VIEW_KEY)).toBe('preview')
 
     view.setKind('markdown')
-    expect(button('editor').textContent).toBe('Edit')
+    expect(button('editor').label).toBe('Edit')
     expect(button('table').hidden).toBe(true)
     expect(view.mode).toBe('preview')
   })
@@ -181,7 +183,14 @@ describe('ViewSwitch', () => {
     view.setTableError(null)
     expect(view.mode).toBe('table')
     expect(button('table').disabled).toBe(false)
-    expect(button('table').hasAttribute('title')).toBe(false)
+    expect(button('table').title).toBeNull()
+  })
+
+  it('ignores a mode the file kind does not have', () => {
+    const { view, pressed } = setup()
+    view.choose('table')
+    expect(view.mode).toBe('split')
+    expect(pressed()).toEqual(['split'])
   })
 
   it('ignores a table error for Markdown files', () => {
