@@ -3,9 +3,16 @@ import * as encoding from 'lib0/encoding'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as syncProtocol from 'y-protocols/sync'
 import type * as Y from 'yjs'
+import { type Attachment, decodeAttachment, encodeAttachment } from './attachment.ts'
 import { decrypt, encrypt } from './cipher.ts'
 import { ROOM_CLOSED } from './close.ts'
-import { decodeMessage, encodeMessage, MessageType } from './message.ts'
+import {
+  decodeMessage,
+  encodeMessage,
+  type Message,
+  MessageType,
+  UnknownMessageTypeError,
+} from './message.ts'
 
 /** `closed` is final: the host ended the session. */
 export type RoomStatus = 'connecting' | 'connected' | 'disconnected' | 'closed'
@@ -35,6 +42,7 @@ export interface RoomClientOptions {
   maxBackoffMs?: number
   onStatus?: (status: RoomStatus) => void
   onError?: (error: unknown) => void
+  onAttachment?: (attachment: Attachment) => void
 }
 
 const OPEN = 1
@@ -125,8 +133,23 @@ export class RoomClient {
     this.setStatus('disconnected')
   }
 
+  /**
+   * Sends an attachment message to everyone else in the room. Like every other
+   * frame, it is dropped while disconnected; retrying is up to the caller.
+   */
+  sendAttachment(attachment: Attachment): void {
+    this.send(MessageType.Attachment, encodeAttachment(attachment))
+  }
+
   private async receive(data: Uint8Array): Promise<void> {
-    const message = decodeMessage(await decrypt(this.opts.key, data))
+    let message: Message
+    try {
+      message = decodeMessage(await decrypt(this.opts.key, data))
+    } catch (error) {
+      // A newer peer may send message types we do not know yet.
+      if (error instanceof UnknownMessageTypeError) return
+      throw error
+    }
     const decoder = decoding.createDecoder(message.payload)
     if (message.type === MessageType.Sync) {
       const encoder = encoding.createEncoder()
@@ -134,12 +157,14 @@ export class RoomClient {
       if (encoding.length(encoder) > 0) {
         this.send(MessageType.Sync, encoding.toUint8Array(encoder))
       }
-    } else {
+    } else if (message.type === MessageType.Awareness) {
       awarenessProtocol.applyAwarenessUpdate(
         this.awareness,
         decoding.readVarUint8Array(decoder),
         this,
       )
+    } else {
+      this.opts.onAttachment?.(decodeAttachment(message.payload))
     }
   }
 

@@ -41,6 +41,9 @@ type ClientOptions struct {
 	MaxBackoff time.Duration
 	OnStatus   func(Status)
 	OnError    func(error)
+	// OnAttachment is called with each attachment message from the room, on
+	// the connection's read loop: return quickly.
+	OnAttachment func(Attachment)
 }
 
 // Client keeps a Doc and Awareness in sync with every other peer in a room.
@@ -243,8 +246,22 @@ func (c *Client) receive(data []byte) error {
 		return err
 	}
 	t, payload, err := DecodeMessage(plaintext)
+	if errors.Is(err, ErrUnknownMessageType) {
+		// A newer peer may send message types we do not know yet.
+		return nil
+	}
 	if err != nil {
 		return err
+	}
+	if t == MessageAttachment {
+		a, err := DecodeAttachment(payload)
+		if err != nil {
+			return err
+		}
+		if c.opts.OnAttachment != nil {
+			c.opts.OnAttachment(a)
+		}
+		return nil
 	}
 	if t == MessageSync {
 		c.applying.Lock()
@@ -294,6 +311,18 @@ func (c *Client) dropRemoteAwareness() {
 	// handleAwarenessUpdate tries to broadcast the removals too; send drops them since
 	// we are disconnected.
 	c.aw.RemoveExpired(0)
+}
+
+// SendAttachment sends an attachment message to everyone else in the room.
+// Like every other frame, it is dropped while disconnected; retrying is up to
+// the caller.
+func (c *Client) SendAttachment(a Attachment) error {
+	payload, err := EncodeAttachment(a)
+	if err != nil {
+		return err
+	}
+	c.send(MessageAttachment, payload)
+	return nil
 }
 
 func (c *Client) sendAwareness(ids []uint64) {

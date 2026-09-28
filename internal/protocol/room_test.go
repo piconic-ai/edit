@@ -30,10 +30,11 @@ func (p *peer) insert(index int, s string) {
 }
 
 type joinOpts struct {
-	init    string
-	state   map[string]any
-	header  http.Header
-	onError func(error)
+	init         string
+	state        map[string]any
+	header       http.Header
+	onError      func(error)
+	onAttachment func(protocol.Attachment)
 }
 
 func join(t *testing.T, relay *prototest.Relay, key string, o joinOpts) *peer {
@@ -53,14 +54,15 @@ func join(t *testing.T, relay *prototest.Relay, key string, o joinOpts) *peer {
 	}
 	aw.SetLocalState(o.state)
 	client, err := protocol.NewClient(protocol.ClientOptions{
-		URL:        "ws://test",
-		Key:        raw,
-		Doc:        doc,
-		Awareness:  aw,
-		Header:     o.header,
-		Dial:       relay.Dial,
-		MinBackoff: 20 * time.Millisecond,
-		OnError:    o.onError,
+		URL:          "ws://test",
+		Key:          raw,
+		Doc:          doc,
+		Awareness:    aw,
+		Header:       o.header,
+		Dial:         relay.Dial,
+		MinBackoff:   20 * time.Millisecond,
+		OnError:      o.onError,
+		OnAttachment: o.onAttachment,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -161,6 +163,67 @@ func TestIgnoresPeersWithDifferentKey(t *testing.T) {
 	prototest.WaitFor(t, wait, func() bool { mu.Lock(); defer mu.Unlock(); return len(errs) > 0 }, "a decrypt error")
 	if b.String() != "" || a.String() != "mine!" {
 		t.Fatalf("a=%q b=%q", a.String(), b.String())
+	}
+}
+
+func TestAttachments(t *testing.T) {
+	relay := prototest.NewRelay(false)
+	key := protocol.GenerateKey()
+	var mu sync.Mutex
+	var got []protocol.Attachment
+	a := join(t, relay, key, joinOpts{})
+	b := join(t, relay, key, joinOpts{onAttachment: func(at protocol.Attachment) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, at)
+	}})
+	prototest.WaitFor(t, wait, func() bool {
+		return a.Status() == protocol.StatusConnected && b.Status() == protocol.StatusConnected
+	}, "both connected")
+	sent := protocol.Attachment{Kind: protocol.AttachmentAnnounce, Hash: hashA, Mime: "image/png"}
+	if err := a.SendAttachment(sent); err != nil {
+		t.Fatal(err)
+	}
+	prototest.WaitFor(t, wait, func() bool { mu.Lock(); defer mu.Unlock(); return len(got) > 0 }, "the attachment")
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(got, []protocol.Attachment{sent}) {
+		t.Fatalf("got %+v", got)
+	}
+	if err := a.SendAttachment(protocol.Attachment{Kind: protocol.AttachmentWant}); err == nil {
+		t.Fatal("an invalid attachment should not be sent")
+	}
+}
+
+func TestIgnoresUnknownMessageTypes(t *testing.T) {
+	relay := prototest.NewRelay(false)
+	key := protocol.GenerateKey()
+	var mu sync.Mutex
+	var errs []error
+	b := join(t, relay, key, joinOpts{onError: func(err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		errs = append(errs, err)
+	}})
+	prototest.WaitFor(t, wait, func() bool { return b.Status() == protocol.StatusConnected }, "b connected")
+
+	// A newer peer sends a type b does not know, then an edit.
+	raw, _ := protocol.DecodeKey(key)
+	c, _ := protocol.NewCipher(raw)
+	conn, err := relay.Dial(t.Context(), "ws://test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := conn.Write(t.Context(), c.Encrypt(protocol.EncodeMessage(9, []byte{1, 2, 3}))); err != nil {
+		t.Fatal(err)
+	}
+	a := join(t, relay, key, joinOpts{init: "after"})
+	prototest.WaitFor(t, wait, func() bool { return b.String() == "after" && a.String() == "after" }, "b to keep syncing")
+	mu.Lock()
+	defer mu.Unlock()
+	if len(errs) > 0 {
+		t.Fatalf("errors: %v", errs)
 	}
 }
 

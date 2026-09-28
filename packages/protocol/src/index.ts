@@ -1,3 +1,5 @@
+export * from './attachment.ts'
+export * from './blob.ts'
 export * from './cipher.ts'
 export * from './close.ts'
 export * from './key.ts'

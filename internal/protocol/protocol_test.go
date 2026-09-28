@@ -2,6 +2,7 @@ package protocol_test
 
 import (
 	"bytes"
+	"errors"
 	"regexp"
 	"testing"
 
@@ -92,9 +93,14 @@ func TestMessage(t *testing.T) {
 	if typ != protocol.MessageAwareness {
 		t.Fatalf("type = %v", typ)
 	}
-	for _, bad := range [][]byte{{7, 1}, {}} {
-		if _, _, err := protocol.DecodeMessage(bad); err == nil {
-			t.Errorf("DecodeMessage(%v) should fail", bad)
-		}
+	typ, _, _ = protocol.DecodeMessage(protocol.EncodeMessage(protocol.MessageAttachment, nil))
+	if typ != protocol.MessageAttachment {
+		t.Fatalf("type = %v", typ)
+	}
+	if _, _, err := protocol.DecodeMessage([]byte{7, 1}); !errors.Is(err, protocol.ErrUnknownMessageType) {
+		t.Errorf("DecodeMessage(unknown) = %v, want ErrUnknownMessageType", err)
+	}
+	if _, _, err := protocol.DecodeMessage(nil); err == nil || errors.Is(err, protocol.ErrUnknownMessageType) {
+		t.Errorf("DecodeMessage(empty) = %v", err)
 	}
 }

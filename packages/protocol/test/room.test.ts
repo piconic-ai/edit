@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
-import { generateKey, importKey, RoomClient } from '../src/index.ts'
+import { type Attachment, encrypt, generateKey, importKey, RoomClient } from '../src/index.ts'
 import { Relay } from '../src/testing.ts'
 
 const clients: RoomClient[] = []
@@ -110,6 +110,61 @@ describe('RoomClient', () => {
     await vi.waitFor(() => expect(errors.length).toBeGreaterThan(0))
     expect(text(b)).toBe('')
     expect(text(a)).toBe('mine')
+  })
+
+  it('delivers attachment messages', async () => {
+    const relay = new Relay()
+    const key = await importKey(generateKey())
+    const got: Attachment[] = []
+    const a = await join(relay, key)
+    const doc = new Y.Doc()
+    const b = new RoomClient({
+      url: 'ws://test',
+      key,
+      doc,
+      awareness: new Awareness(doc),
+      createSocket: relay.create,
+      onAttachment: (at) => got.push(at),
+    })
+    clients.push(b)
+    b.connect()
+    await vi.waitFor(() => {
+      expect(a.status).toBe('connected')
+      expect(b.status).toBe('connected')
+    })
+    const sent: Attachment = {
+      kind: 'announce',
+      hash: '0123456789abcdef0123456789abcdef',
+      mime: 'image/png',
+    }
+    a.sendAttachment(sent)
+    await vi.waitFor(() => expect(got).toEqual([sent]))
+    expect(() => a.sendAttachment({ kind: 'want', hashes: [] })).toThrow()
+  })
+
+  it('skips message types from newer peers', async () => {
+    const relay = new Relay()
+    const key = await importKey(generateKey())
+    const errors: unknown[] = []
+    const doc = new Y.Doc()
+    const b = new RoomClient({
+      url: 'ws://test',
+      key,
+      doc,
+      awareness: new Awareness(doc),
+      createSocket: relay.create,
+      onError: (e) => errors.push(e),
+    })
+    clients.push(b)
+    b.connect()
+    await vi.waitFor(() => expect(b.status).toBe('connected'))
+    const newer = relay.create('ws://test')
+    await vi.waitFor(() => expect(newer.readyState).toBe(1))
+    newer.send(await encrypt(key, new Uint8Array([9, 1, 2, 3])))
+    await join(relay, key, 'after')
+    await vi.waitFor(() => expect(text(b)).toBe('after'))
+    expect(errors).toEqual([])
+    newer.close()
   })
 
   it('reconnects after the socket drops', async () => {
