@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
+import type { ImageResolver } from '../src/attachments.ts'
 import { patch, render, sanitize } from '../src/preview.ts'
 
 function html(source: string): string {
@@ -66,6 +67,34 @@ describe('render', () => {
     expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer')
     const missing = [...out.querySelectorAll('.missing-image')].map((m) => m.textContent)
     expect(missing).toEqual(['dog', '../x.png'])
+  })
+
+  it('shows the images added during the session', () => {
+    const url = 'blob:http://localhost/1234'
+    const images: ImageResolver = {
+      lookup: (src) =>
+        src === 'assets/a.png' ? { url } : src === 'assets/b.png' ? 'loading' : null,
+      owns: (u) => u === url,
+    }
+    const div = document.createElement('div')
+    div.append(render('![a](assets/a.png) ![b](assets/b.png) ![c](assets/c.png)', images))
+    const img = div.querySelector('img')
+    expect(img?.getAttribute('src')).toBe(url)
+    expect(img?.getAttribute('alt')).toBe('a')
+    expect(img?.getAttribute('title')).toBe('assets/a.png')
+    expect(div.querySelector('.loading-image')?.textContent).toBe('b')
+    expect(div.querySelector('.missing-image')?.textContent).toBe('c')
+  })
+
+  it('keeps out blob URLs that are not our images', () => {
+    const images: ImageResolver = { lookup: () => null, owns: () => false }
+    const div = document.createElement('div')
+    div.append(
+      render('<img src="blob:http://localhost/x">\n\n![x](blob:http://localhost/y)', images),
+    )
+    expect(div.querySelector('img')).toBeNull()
+    // Without a resolver, nothing is ours.
+    expect(dom('![x](blob:http://localhost/y)').querySelector('img')).toBeNull()
   })
 
   it('plays video files from images and bare URLs', () => {

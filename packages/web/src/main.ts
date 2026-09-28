@@ -2,7 +2,7 @@ import { render } from '@barefootjs/client/runtime'
 import { markdown } from '@codemirror/lang-markdown'
 import { Compartment, EditorState, type Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { importKey, RoomClient, type RoomStatus } from '@ima/protocol'
+import { deriveBlobKeys, importKey, RoomClient, type RoomStatus } from '@ima/protocol'
 import { basicSetup } from 'codemirror'
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
 import { Awareness } from 'y-protocols/awareness'
@@ -17,11 +17,14 @@ import {
   resolveTheme,
   saveAppearance,
 } from './appearance.ts'
+import { Attachments, hostAttachments, whyNoImages } from './attachments.ts'
 import { delimiterFor } from './csv.ts'
 import { avatarFor, fetchIdentity } from './identity.ts'
 import { resolveLanguage } from './language.ts'
+import { NoticeBoard } from './notice.ts'
 import { applyPalette } from './palette.ts'
 import { PreviewPane } from './pane.ts'
+import { imagePaste } from './paste.ts'
 import {
   colorFor,
   type Participant,
@@ -43,6 +46,7 @@ import './components/Cards.tsx'
 import './components/EndedBanner.tsx'
 import './components/Header.tsx'
 import './components/Layout.tsx'
+import './components/Notice.tsx'
 import type { LayoutParts } from './components/Layout.tsx'
 import './style.css'
 
@@ -214,6 +218,19 @@ async function joinRoom(
     text: () => text.toString(),
     onReconnect: () => location.reload(),
   })
+  // Filled in once the client exists; nothing is sent before it connects.
+  let client: RoomClient | undefined
+  const attachments = new Attachments({
+    roomId: id,
+    keys: await deriveBlobKeys(key),
+    send: (a) => client?.sendAttachment(a),
+  })
+  const notices = new NoticeBoard()
+  render(parts.notice, 'Notice', {
+    message: notices.message,
+    uploading: attachments.uploading,
+    onDismiss: () => notices.dismiss(),
+  })
   const narrow = matchMedia(NARROW_QUERY)
   const isNarrow = new Store(narrow.matches)
   // Filled in below; the switch applies its first mode before the editor exists.
@@ -251,13 +268,28 @@ async function joinRoom(
       wrap.of(lineWrapping(appearance.wrap)),
       editable.of([]),
       yCollab(text, awareness, { undoManager }),
+      imagePaste({
+        blocked: () =>
+          whyNoImages(
+            roomStatus.get(),
+            people.get().some((p) => p.isHost),
+            attachments.host,
+          ),
+        upload: (file) => attachments.upload(file),
+        onError: (message) => notices.show(message),
+      }),
     ],
   })
 
   const followEditor = () => {
     if (main.dataset.view === 'split') preview.follow(editor)
   }
-  const preview = new PreviewPane(text, { onRender: followEditor, element: parts.preview })
+  const preview = new PreviewPane(text, {
+    onRender: followEditor,
+    images: attachments,
+    element: parts.preview,
+  })
+  attachments.version.subscribe(() => preview.refresh())
   const splitter = new Splitter(main, { onResize: followEditor })
   const table = new TableView(text, awareness, undoManager, {
     onError: (error) => view.setTableError(error && describeError(error)),
@@ -340,6 +372,7 @@ async function joinRoom(
 
   const renderPeople = () => {
     people.set(participants(awareness.getStates(), doc.clientID))
+    attachments.host = hostAttachments(awareness.getStates())
     const host = [...awareness.getStates().values()].find((s) => s.role === 'host')
     // Keep showing the file name after the host has gone.
     if (typeof host?.file === 'string') {
@@ -349,7 +382,7 @@ async function joinRoom(
     }
   }
 
-  const client = new RoomClient({
+  client = new RoomClient({
     url: roomSocketUrl(location, id),
     key: await importKey(key),
     doc,
@@ -357,14 +390,28 @@ async function joinRoom(
     onStatus: (s) => {
       setStatus(s)
       renderPeople()
+      if (s === 'connected') attachments.reconnected()
     },
+    onAttachment: (a) => attachments.handle(a),
   })
   awareness.on('change', renderPeople)
 
   setStatus('connecting')
   client.connect()
   renderPeople()
-  window.addEventListener('pagehide', () => void client.destroy())
+  window.addEventListener('pagehide', () => void client?.destroy())
+}
+
+// A file dropped outside the editor would open in place of the page, and
+// the room's key in the URL would go with it.
+function keepDroppedFiles(): void {
+  const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false
+  window.addEventListener('dragover', (e) => {
+    if (hasFiles(e)) e.preventDefault()
+  })
+  window.addEventListener('drop', (e) => {
+    if (hasFiles(e)) e.preventDefault()
+  })
 }
 
 async function start(): Promise<void> {
@@ -394,6 +441,7 @@ async function start(): Promise<void> {
   const loaded = await theme
   // If the theme could not load, the page matches the default theme the editor falls back to.
   applyPalette(pageColors(appearance, loaded.id))
+  keepDroppedFiles()
   await joinRoom(room.id, room.key, me, appearance, loaded)
 }
 

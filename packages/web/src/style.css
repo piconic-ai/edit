@@ -61,6 +61,7 @@ body {
 .layout,
 .header-slot,
 .banner-slot,
+.notice-slot,
 .settings-slot,
 .splitter-host,
 .splitter-slot,
@@ -859,6 +860,16 @@ main.editor[data-resizing] iframe {
   content: "[image: ";
 }
 .preview .missing-image::after {
+  content: "]";
+}
+.preview .loading-image {
+  color: var(--muted);
+  font-style: italic;
+}
+.preview .loading-image::before {
+  content: "[loading image: ";
+}
+.preview .loading-image::after {
   content: "]";
 }
 .preview-error {
