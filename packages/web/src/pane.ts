@@ -151,6 +151,7 @@ export class PreviewPane {
     this.#dirty = false
     const { render, patch } = this.#renderer
     patch(this.element, render(this.#text.toString(), this.#images))
+    this.#images?.rendered?.()
     this.#onRender()
   }
 }

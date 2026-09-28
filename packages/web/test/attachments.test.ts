@@ -67,6 +67,10 @@ async function setup(statuses: number[] = [201], opts: Partial<AttachmentsOption
   return { keys, sent, requests, attachments, store }
 }
 
+// Other valid PNGs, for distinct hashes.
+const PNG2 = new Uint8Array([...STRIPPED.subarray(0, 8), 0, 0, 0, 0, ...STRIPPED.subarray(8)])
+const PNG3 = new Uint8Array([...PNG2.subarray(0, 8), 0, 0, 0, 0, ...PNG2.subarray(8)])
+
 const file = (bytes: Uint8Array = PNG) => new Blob([bytes as Uint8Array<ArrayBuffer>])
 
 describe('Attachments', () => {
@@ -220,17 +224,28 @@ describe('hostAttachments', () => {
 
 describe('Attachments as the preview sees them', () => {
   // A room's blob store, and a host that uploads what is wanted.
-  async function viewer(opts: Partial<AttachmentsOptions> = {}) {
+  let offline = false
+  let release404 = () => {}
+  async function viewer(opts: Partial<AttachmentsOptions> & { gate?: boolean } = {}) {
+    offline = false
     const keys = await deriveBlobKeys(generateKey())
     const sent: Attachment[] = []
     const blobs = new Map<string, Uint8Array>()
     const gets: string[] = []
     const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (offline) throw new TypeError('Failed to fetch')
       if (init?.method === 'PUT') {
         blobs.set(String(url), init.body as Uint8Array)
         return new Response(null, { status: 201 })
       }
       gets.push(String(url))
+      // The first GET answers 404 only once released, as if slow.
+      if (opts.gate && gets.length === 1) {
+        await new Promise<void>((r) => {
+          release404 = r
+        })
+        return new Response(null, { status: 404 })
+      }
       const body = blobs.get(String(url))
       return body
         ? new Response(body as Uint8Array<ArrayBuffer>)
@@ -333,17 +348,89 @@ describe('Attachments as the preview sees them', () => {
     expect(attachments.lookup(`pics/${hash}.png`)).toBe('loading')
   })
 
-  it('forgets the oldest images past its memory budget', async () => {
+  it('forgets images no longer on screen past its memory budget', async () => {
     const { attachments, put } = await viewer({ cacheBytes: STRIPPED.length + 10 })
     const a = await put(STRIPPED)
-    const png2 = new Uint8Array([...STRIPPED.subarray(0, 8), 0, 0, 0, 0, ...STRIPPED.subarray(8)])
-    const b = await put(png2)
+    const b = await put(PNG2)
     attachments.lookup(`assets/${a}.png`)
+    attachments.rendered()
     await vi.waitFor(() => expect(attachments.version.get()).toBe(1))
     const first = attachments.lookup(`assets/${a}.png`) as { url: string }
+    attachments.rendered()
+    // The document now links only b.
     attachments.lookup(`assets/${b}.png`)
+    attachments.rendered()
     await vi.waitFor(() => expect(attachments.version.get()).toBe(2))
     expect(attachments.owns(first.url)).toBe(false)
     expect(attachments.lookup(`assets/${a}.png`)).toBe('loading')
+  })
+
+  it('settles when the document shows more than its budget', async () => {
+    const { attachments, put, gets } = await viewer({ cacheBytes: 1 })
+    const srcs = [
+      `assets/${await put(STRIPPED)}.png`,
+      `assets/${await put(PNG2)}.png`,
+      `assets/${await put(PNG3)}.png`,
+    ]
+    // Renders like the preview: every link, again on every arrival.
+    const render = () => {
+      for (const src of srcs) attachments.lookup(src)
+      attachments.rendered()
+    }
+    attachments.version.subscribe(render)
+    render()
+    await vi.waitFor(() =>
+      expect(srcs.map((src) => attachments.lookup(src))).toEqual(
+        srcs.map(() => ({ url: expect.any(String) })),
+      ),
+    )
+    await new Promise((r) => setTimeout(r, 50))
+    expect(gets).toHaveLength(3)
+  })
+
+  it('retries what failed on the way after reconnecting', async () => {
+    const { attachments, put, gets } = await viewer()
+    const hash = await put(STRIPPED)
+    const src = `assets/${hash}.png`
+    // Offline: the fetch throws.
+    offline = true
+    attachments.lookup(src)
+    await vi.waitFor(() => expect(attachments.lookup(src)).toBeNull())
+    offline = false
+    // Not retried on every render.
+    attachments.lookup(src)
+    expect(gets).toHaveLength(0)
+    attachments.reconnected()
+    expect(attachments.lookup(src)).toBe('loading')
+    await vi.waitFor(() => expect(attachments.lookup(src)).toEqual({ url: expect.any(String) }))
+  })
+
+  it('asks again after reconnecting for what it wanted, and retries unanswered wants', async () => {
+    const { attachments, sent } = await viewer({ wantTimeoutMs: 300 })
+    const hash = '3'.repeat(32)
+    const src = `assets/${hash}.png`
+    attachments.lookup(src)
+    await vi.waitFor(() => expect(sent).toHaveLength(1))
+    attachments.reconnected()
+    await vi.waitFor(() => expect(sent).toHaveLength(2))
+    expect(sent[1]).toEqual({ kind: 'want', hashes: [hash] })
+    // Unanswered: shown as missing until the next reconnect.
+    await vi.waitFor(() => expect(attachments.lookup(src)).toBeNull())
+    attachments.reconnected()
+    expect(attachments.lookup(src)).toBe('loading')
+  })
+
+  it('fetches again when the image is announced during its own fetch', async () => {
+    const { attachments, sent, put, gets } = await viewer({ gate: true })
+    const hash = await contentHash(STRIPPED)
+    const src = `assets/${hash}.png`
+    attachments.lookup(src)
+    await vi.waitFor(() => expect(gets).toHaveLength(1))
+    // Someone else's want gets it uploaded while our fetch is out.
+    await put(STRIPPED)
+    attachments.handle({ kind: 'announce', hash, mime: 'image/png' })
+    release404()
+    await vi.waitFor(() => expect(attachments.lookup(src)).toEqual({ url: expect.any(String) }))
+    expect(sent).toEqual([])
   })
 })

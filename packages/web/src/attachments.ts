@@ -108,6 +108,8 @@ export interface ImageResolver {
   lookup(src: string): ImageLookup
   /** Whether a URL is one of the images lookup handed out. */
   owns(url: string): boolean
+  /** Called after each render: the links looked up since the last one are on screen. */
+  rendered?(): void
 }
 
 interface Cached {
@@ -152,9 +154,20 @@ export class Attachments implements ImageResolver {
   #cachedBytes = 0
   #urls = new Set<string>()
   #loading = new Set<string>()
-  // Asked the host for; hashes it did not upload in time are missing.
+  // Announced while our own fetch was in flight: a 404 from it is stale.
+  #announcedWhileLoading = new Set<string>()
+  // Asked the host for, until it uploads them or the time runs out.
   #wanted = new Map<string, ReturnType<typeof setTimeout>>()
+  // Content that does not match its name: missing for good.
   #missing = new Set<string>()
+  // Failed on the way (offline, the room reconnecting, no answer): tried
+  // again after the next reconnect.
+  #failed = new Set<string>()
+  // Looked up by the render in progress, and by the last finished one. The
+  // cache never evicts these, or every render would fetch what the one
+  // before evicted: the budget gives way to what the document shows.
+  #seen = new Set<string>()
+  #onScreen = new Set<string>()
   #wantQueue = new Set<string>()
   #wantTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -177,15 +190,21 @@ export class Attachments implements ImageResolver {
     const match = new RegExp(`^${escapeRegExp(this.#dir)}/([0-9a-f]{32})\\.([a-z]+)$`).exec(src)
     const hash = match?.[1]
     if (!hash || !EXTENSIONS.has(match[2] ?? '')) return null
+    this.#seen.add(hash)
     const cached = this.#cache.get(hash)
     if (cached) {
       this.#cache.delete(hash)
       this.#cache.set(hash, cached)
       return { url: cached.url }
     }
-    if (this.#missing.has(hash)) return null
+    if (this.#missing.has(hash) || this.#failed.has(hash)) return null
     void this.#load(hash)
     return 'loading'
+  }
+
+  rendered(): void {
+    this.#onScreen = this.#seen
+    this.#seen = new Set()
   }
 
   owns(url: string): boolean {
@@ -206,11 +225,13 @@ export class Attachments implements ImageResolver {
   handle(attachment: Attachment): void {
     if (attachment.kind === 'announce') {
       // Uploaded for someone who wanted it, maybe us.
-      if (this.#wanted.has(attachment.hash) || this.#missing.has(attachment.hash)) {
-        clearTimeout(this.#wanted.get(attachment.hash))
-        this.#wanted.delete(attachment.hash)
-        this.#missing.delete(attachment.hash)
-        void this.#load(attachment.hash)
+      const hash = attachment.hash
+      if (this.#loading.has(hash)) this.#announcedWhileLoading.add(hash)
+      if (this.#wanted.has(hash) || this.#failed.has(hash)) {
+        clearTimeout(this.#wanted.get(hash))
+        this.#wanted.delete(hash)
+        this.#failed.delete(hash)
+        void this.#load(hash)
       }
     } else if (attachment.kind === 'stored') {
       this.#pending.get(attachment.hash)?.resolve(attachment.path)
@@ -220,10 +241,22 @@ export class Attachments implements ImageResolver {
     }
   }
 
-  /** Frames sent while disconnected are lost: announce what still waits. */
+  /**
+   * Frames sent while disconnected are lost: announce what still waits, ask
+   * again for what was wanted, and retry what failed on the way.
+   */
   reconnected(): void {
     for (const [hash, p] of this.#pending) {
       this.#opts.send({ kind: 'announce', hash, mime: p.mime })
+    }
+    for (const [hash, timer] of [...this.#wanted]) {
+      clearTimeout(timer)
+      this.#wanted.delete(hash)
+      this.#want(hash)
+    }
+    if (this.#failed.size > 0) {
+      this.#failed.clear()
+      this.version.set(this.version.get() + 1)
     }
   }
 
@@ -256,29 +289,46 @@ export class Attachments implements ImageResolver {
 
   async #load(hash: string): Promise<void> {
     if (this.#loading.has(hash) || this.#wanted.has(hash)) return
+    // Loading until it is cached, wanted or given up on, so no render in
+    // between starts a second fetch.
     this.#loading.add(hash)
     try {
+      await this.#fetchImage(hash)
+    } finally {
+      this.#loading.delete(hash)
+      this.#announcedWhileLoading.delete(hash)
+    }
+  }
+
+  async #fetchImage(hash: string): Promise<void> {
+    let data: Uint8Array
+    try {
       const url = `/api/rooms/${this.#opts.roomId}/blobs/${await blobIdFor(this.#opts.keys, hash)}`
-      const res = await this.#fetch(url)
+      let res = await this.#fetch(url)
+      // Uploaded while we were asking: ask once more before wanting it.
+      if (res.status === 404 && this.#announcedWhileLoading.has(hash)) {
+        res = await this.#fetch(url)
+      }
       if (res.status === 404) {
         this.#want(hash)
         return
       }
       if (!res.ok) throw new Error(`blob: ${res.status}`)
-      const bytes = await decryptBlob(
-        this.#opts.keys,
-        new Uint8Array(await res.arrayBuffer()),
-        hash,
-      )
+      data = new Uint8Array(await res.arrayBuffer())
+    } catch {
+      this.#failed.add(hash)
+      this.version.set(this.version.get() + 1)
+      return
+    }
+    try {
+      const bytes = await decryptBlob(this.#opts.keys, data, hash)
       const type = sniff(bytes)
       if (!type) throw new Error('not an image')
       this.#remember(hash, bytes, type)
     } catch {
-      // The room closed, or someone uploaded something else under its name.
+      // Someone uploaded something else under its name.
       this.#missing.add(hash)
       this.version.set(this.version.get() + 1)
-    } finally {
-      this.#loading.delete(hash)
     }
   }
 
@@ -289,7 +339,7 @@ export class Attachments implements ImageResolver {
       hash,
       setTimeout(() => {
         this.#wanted.delete(hash)
-        this.#missing.add(hash)
+        this.#failed.add(hash)
         this.version.set(this.version.get() + 1)
       }, this.#opts.wantTimeoutMs ?? 10_000),
     )
@@ -312,7 +362,8 @@ export class Attachments implements ImageResolver {
     this.#cachedBytes += bytes.length
     const limit = this.#opts.cacheBytes ?? CACHE_BYTES
     for (const [oldest, entry] of this.#cache) {
-      if (this.#cachedBytes <= limit || oldest === hash) break
+      if (this.#cachedBytes <= limit) break
+      if (oldest === hash || this.#seen.has(oldest) || this.#onScreen.has(oldest)) continue
       this.#cache.delete(oldest)
       this.#urls.delete(entry.url)
       URL.revokeObjectURL(entry.url)

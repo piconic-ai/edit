@@ -82,6 +82,7 @@ describe('PreviewPane', () => {
     const images = {
       lookup: () => (url ? { url } : ('loading' as const)),
       owns: (u: string) => u === url,
+      rendered: vi.fn(),
     }
     const pane = new PreviewPane(text, { load: () => Promise.resolve(preview), images })
     text.insert(0, '![](assets/0123456789abcdef0123456789abcdef.png)')
@@ -90,6 +91,8 @@ describe('PreviewPane', () => {
     url = 'blob:http://localhost/1'
     pane.refresh()
     await vi.waitFor(() => expect(pane.element.querySelector('img')?.getAttribute('src')).toBe(url))
+    // Each render tells the resolver it is done, so it knows what is on screen.
+    expect(images.rendered).toHaveBeenCalledTimes(2)
   })
 
   it('catches up on edits made while hidden', async () => {
