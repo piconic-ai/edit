@@ -113,6 +113,23 @@ Workers Builds settings (Cloudflare dashboard → ima Worker → Settings → Bu
 | Non-production branch builds | enabled |
 | Preview command | `pnpm run preview` |
 
+### Attachment buckets
+
+Pasted images are stored in R2 as ciphertext while their room's host is
+connected, and the room deletes them when the host leaves. Each deployment
+needs its bucket, with a lifecycle rule that expires anything a failed
+deletion leaves behind:
+
+```sh
+for bucket in ima-blobs ima-blobs-preview ima-lab-blobs; do
+  pnpm --filter @ima/worker exec wrangler r2 bucket create "$bucket"
+  pnpm --filter @ima/worker exec wrangler r2 bucket lifecycle add "$bucket" expire-rooms rooms/ --expire-days 1
+done
+```
+
+`ima-blobs` is production's, `ima-blobs-preview` is shared by every Preview,
+and `ima-lab-blobs` is the lab's.
+
 ### Lab
 
 `ima-lab.piconic.ai` is a second Worker (`ima-lab`) for experiments that should

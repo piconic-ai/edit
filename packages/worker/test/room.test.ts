@@ -1,7 +1,7 @@
-import { exports } from 'cloudflare:workers'
-import { describe, expect, it } from 'vitest'
+import { env, exports } from 'cloudflare:workers'
+import { describe, expect, it, vi } from 'vitest'
 import { roomIdFor } from '../src/index.ts'
-import { MAX_MESSAGE_BYTES, MAX_PEERS } from '../src/room.ts'
+import { MAX_BLOB_BYTES, MAX_MESSAGE_BYTES, MAX_PEERS } from '../src/room.ts'
 
 const ROOM_CLOSED = 4001
 
@@ -152,5 +152,103 @@ describe('rooms', () => {
     await host(room)
     for (let i = 1; i < MAX_PEERS; i++) await connect(room.id)
     expect((await upgrade(room.id)).status).toBe(429)
+  })
+})
+
+// A blob id: 22 base64url characters.
+const blobId = (n: number) => `blob${String(n).padStart(18, '0')}`
+
+function blobUrl(room: Room | string, id: string): string {
+  return `https://ima.test/api/rooms/${typeof room === 'string' ? room : room.id}/blobs/${id}`
+}
+
+const putBlob = (room: Room, id: string, body: Uint8Array<ArrayBuffer>) =>
+  exports.default.fetch(blobUrl(room, id), { method: 'PUT', body })
+
+const getBlob = (room: Room, id: string) => exports.default.fetch(blobUrl(room, id))
+
+// Blobs live under the room's Durable Object id.
+async function roomBlobs(room: Room): Promise<string[]> {
+  const prefix = `rooms/${env.ROOM.idFromName(room.id).toString()}/`
+  return (await env.BLOBS.list({ prefix })).objects.map((o) => o.key)
+}
+
+describe('blobs', () => {
+  it('stores and serves blobs while the host is connected', async () => {
+    const room = await createRoom()
+    await host(room)
+    expect((await putBlob(room, blobId(1), new Uint8Array([1, 2, 3]))).status).toBe(201)
+    const res = await getBlob(room, blobId(1))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toBe('application/octet-stream')
+    expect(res.headers.get('Cache-Control')).toContain('private')
+    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([1, 2, 3])
+    expect((await getBlob(room, blobId(2))).status).toBe(404)
+  })
+
+  it('keeps the first upload under an id', async () => {
+    const room = await createRoom()
+    await host(room)
+    await putBlob(room, blobId(1), new Uint8Array([1]))
+    expect((await putBlob(room, blobId(1), new Uint8Array([2]))).status).toBe(200)
+    const res = await getBlob(room, blobId(1))
+    expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([1])
+  })
+
+  it('keeps rooms apart', async () => {
+    const one = await createRoom()
+    const two = await createRoom()
+    await host(one)
+    await host(two)
+    await putBlob(one, blobId(1), new Uint8Array([1]))
+    expect((await getBlob(two, blobId(1))).status).toBe(404)
+  })
+
+  it('refuses blobs while there is no host', async () => {
+    const room = await createRoom()
+    expect((await putBlob(room, blobId(1), new Uint8Array([1]))).status).toBe(410)
+    expect((await getBlob(room, blobId(1))).status).toBe(410)
+  })
+
+  it('rejects malformed ids, other methods and oversized blobs', async () => {
+    const room = await createRoom()
+    await host(room)
+    expect((await exports.default.fetch(blobUrl(room, 'short'))).status).toBe(400)
+    expect((await exports.default.fetch(blobUrl('nope', blobId(1)))).status).toBe(400)
+    const del = await exports.default.fetch(blobUrl(room, blobId(1)), { method: 'DELETE' })
+    expect(del.status).toBe(404)
+    const big = await putBlob(room, blobId(1), new Uint8Array(MAX_BLOB_BYTES + 1))
+    expect(big.status).toBe(413)
+  })
+
+  it('enforces the room quota', async () => {
+    // The tests run with a quota of 100 bytes and 3 blobs (vitest.config.ts).
+    const room = await createRoom()
+    await host(room)
+    expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(201)
+    expect((await putBlob(room, blobId(2), new Uint8Array(20))).status).toBe(429)
+    expect((await putBlob(room, blobId(3), new Uint8Array(5))).status).toBe(201)
+    expect((await putBlob(room, blobId(4), new Uint8Array(5))).status).toBe(201)
+    expect((await putBlob(room, blobId(5), new Uint8Array(0))).status).toBe(429)
+    // A repeated upload is free.
+    expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(200)
+  })
+
+  it('deletes the blobs and the quota when the host leaves', async () => {
+    const room = await createRoom()
+    const h = await host(room)
+    const guest = await connect(room.id)
+    await putBlob(room, blobId(1), new Uint8Array([1]))
+    await putBlob(room, blobId(2), new Uint8Array([2]))
+    expect(await roomBlobs(room)).toHaveLength(2)
+
+    h.ws.close(1000, 'bye')
+    await guest.closed
+    await vi.waitFor(async () => expect(await roomBlobs(room)).toEqual([]))
+    expect((await getBlob(room, blobId(1))).status).toBe(410)
+
+    // The next session starts with a fresh quota.
+    await host(room)
+    expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(201)
   })
 })
