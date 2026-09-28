@@ -151,7 +151,7 @@ describe('remote cursors and selections', () => {
   it.each(['light', 'dark'] as const)(
     'draws the caret halo only on %s themes that need it',
     (scheme) => {
-      const view = mount([fallbackTheme(DEFAULT_THEME[scheme]).extension, readerTheme])
+      const view = mount([fallbackTheme(DEFAULT_THEME[scheme]).extension, readerTheme()])
       const caret = view.contentDOM.appendChild(document.createElement('span'))
       caret.className = 'cm-ySelectionCaret'
       const shadow = getComputedStyle(caret).boxShadow
@@ -159,6 +159,45 @@ describe('remote cursors and selections', () => {
       else expect(shadow).toBe('')
     },
   )
+})
+
+describe('readerTheme', () => {
+  it('alternates between two pre-built extensions, never returning the same one twice in a row', () => {
+    // CodeMirror only remeasures line heights (and so the gutter) when a
+    // reconfigured theme counts as a change, so consecutive calls must
+    // differ; but minting a fresh EditorView.theme() every call would leak
+    // a StyleModule (and its mounted CSS rules) on every settings change,
+    // since style-mod never releases one once mounted.
+    const calls = [readerTheme(), readerTheme(), readerTheme(), readerTheme()]
+    expect(calls[0]).not.toBe(calls[1])
+    expect(calls[1]).not.toBe(calls[2])
+    expect(calls[2]).not.toBe(calls[3])
+    expect(new Set(calls).size).toBe(2)
+  })
+
+  it('reconfiguring through a Compartment changes themeClasses every time, keeping the document and selection', () => {
+    // themeClasses is what EditorView.update actually compares (it embeds
+    // the theme facet) to decide whether to remeasure; asserting on it,
+    // rather than on our own wrapper reference, would catch a "fresh array
+    // around one cached theme" regression that still looks different by
+    // `.not.toBe` but never changes what CodeMirror sees.
+    const doc = new Y.Doc()
+    const text = doc.getText('content')
+    const font = new Compartment()
+    const view = mount([basicSetup, font.of(readerTheme()), yCollab(text, new Awareness(doc))])
+    doc.transact(() => text.insert(0, 'shared text'), 'remote')
+    view.dispatch({ selection: EditorSelection.single(2, 6) })
+
+    let previous = view.themeClasses
+    for (let i = 0; i < 5; i++) {
+      view.dispatch({ effects: font.reconfigure(readerTheme()) })
+      expect(view.themeClasses).not.toBe(previous)
+      previous = view.themeClasses
+    }
+
+    expect(view.state.doc.toString()).toBe('shared text')
+    expect(view.state.selection.main).toMatchObject({ from: 2, to: 6 })
+  })
 })
 
 function deferred<T>() {
@@ -181,7 +220,7 @@ function setup() {
   const view = mount([
     basicSetup,
     theme.of(marker('start')),
-    readerTheme,
+    readerTheme(),
     yCollab(text, new Awareness(doc)),
   ])
   doc.transact(() => text.insert(0, 'shared text'), 'remote')
