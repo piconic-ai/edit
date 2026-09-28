@@ -6,6 +6,7 @@ import { onMount } from '@barefootjs/client'
 export interface LayoutParts {
   header: HTMLElement
   banner: HTMLElement
+  notice: HTMLElement
   main: HTMLElement
   /** The editor's box; CodeMirror forces display on .cm-editor, so panes are hidden through it. */
   source: HTMLElement
@@ -15,7 +16,7 @@ export interface LayoutParts {
   table: HTMLElement
 }
 
-/** The room page: header, the ended banner, and the editor with its panes. */
+/** The room page: header, the ended banner, notices, and the editor with its panes. */
 export function Layout(props: { onReady: (parts: LayoutParts) => void }) {
   const parts: Partial<LayoutParts> = {}
   onMount(() => props.onReady(parts as LayoutParts))
@@ -32,6 +33,12 @@ export function Layout(props: { onReady: (parts: LayoutParts) => void }) {
         className="banner-slot"
         ref={(el) => {
           parts.banner = el
+        }}
+      />
+      <div
+        className="notice-slot"
+        ref={(el) => {
+          parts.notice = el
         }}
       />
       <main
