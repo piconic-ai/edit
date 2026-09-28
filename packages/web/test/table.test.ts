@@ -179,13 +179,53 @@ describe('TableView', () => {
     expect(text.toString()).toBe('a,b\n')
   })
 
-  it('selects on the first tap and edits on the second', () => {
+  it('edits on a second tap on a touch screen', () => {
     const { view, cell, editor } = setup('a,b\n')
-    cell(0, 1).click()
+    const tap = () => {
+      const down = new MouseEvent('pointerdown', { bubbles: true })
+      Object.defineProperty(down, 'pointerType', { value: 'touch' })
+      cell(0, 1).dispatchEvent(down)
+      cell(0, 1).click()
+    }
+    tap()
     expect(view.selected).toEqual({ row: 0, col: 1 })
     expect(editor()).toBeNull()
-    cell(0, 1).click()
+    tap()
     expect(editor()?.value).toBe('b')
+  })
+
+  it('edits on a double-click, not a second click, with a mouse', () => {
+    const { cell, editor } = setup('a,b\n')
+    cell(0, 1).click()
+    cell(0, 1).click()
+    expect(editor()).toBeNull()
+    cell(0, 1).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    expect(editor()?.value).toBe('b')
+  })
+
+  it('puts the value back on Escape and moves up on Shift+Enter, as a spreadsheet does', () => {
+    const { text, view, type, editor, key } = setup('a\nb\nc\n')
+    view.edit({ row: 1, col: 0 })
+    type('changed')
+    expect(text.toString()).toBe('a\nchanged\nc\n')
+    key(editor() as HTMLElement, 'Escape')
+    expect(text.toString()).toBe('a\nb\nc\n')
+    expect(editor()).toBeNull()
+    expect(view.selected).toEqual({ row: 1, col: 0 })
+
+    view.edit({ row: 1, col: 0 })
+    key(editor() as HTMLElement, 'Enter', { shiftKey: true })
+    expect(view.selected).toEqual({ row: 0, col: 0 })
+  })
+
+  it('breaks the line in a cell with Alt+Enter or Ctrl+Enter', () => {
+    const { text, view, editor, key } = setup('ab\n')
+    view.edit({ row: 0, col: 0 })
+    const e = editor() as HTMLTextAreaElement
+    e.setSelectionRange(1, 1)
+    key(e, 'Enter', { ctrlKey: true })
+    expect(text.toString()).toBe('"a\nb"\n')
+    expect(editor()).not.toBeNull()
   })
 
   it('keeps the keyboard focus on the selected cell through a redraw', () => {
@@ -279,10 +319,14 @@ describe('TableView', () => {
     expect(view.selected).toEqual({ row: 1, col: 1 })
   })
 
-  it('inserts and deletes with Google Sheets shortcuts', () => {
+  it('inserts and deletes with Google Sheets shortcuts on a whole row or column', () => {
     const { text, view, cell, key } = setup('a,b\nc,d\n')
     view.select({ row: 1, col: 0 })
-    // A cell inserts a row above.
+    // On a single cell Sheets asks what to insert; here the keys do nothing.
+    key(cell(1, 0), '=', { code: 'Equal', ctrlKey: true, altKey: true })
+    key(cell(1, 0), '-', { code: 'Minus', ctrlKey: true, altKey: true })
+    expect(text.toString()).toBe('a,b\nc,d\n')
+    key(cell(1, 0), ' ', { shiftKey: true })
     key(cell(1, 0), '=', { code: 'Equal', ctrlKey: true, altKey: true })
     expect(text.toString()).toBe('a,b\n,\nc,d\n')
     key(cell(1, 0), '-', { code: 'Minus', ctrlKey: true, altKey: true })
@@ -294,11 +338,22 @@ describe('TableView', () => {
     expect(text.toString()).toBe(',a,b\n,c,d\n')
     key(cell(1, 0), '–', { code: 'Minus', metaKey: true, altKey: true })
     expect(text.toString()).toBe('a,b\nc,d\n')
-    // Shift+Space selects the row; Escape goes back to the cell.
+    // Shift+Space selects the row; an arrow key goes back to a single cell.
     key(cell(1, 0), ' ', { shiftKey: true })
     expect(view.span).toBe('row')
-    key(cell(1, 0), 'Escape')
+    key(cell(1, 0), 'ArrowUp')
     expect(view.span).toBe('cell')
+  })
+
+  it('shows the shortcuts only in the row and column menus, where they apply', () => {
+    const { view, cell, head, rightClick } = setup('a,b\n')
+    const kbd = () => [...view.element.querySelectorAll('.context-menu kbd')].length
+    rightClick(cell(0, 0))
+    expect(kbd()).toBe(0)
+    rightClick(head('row', 0))
+    expect(kbd()).toBe(2)
+    rightClick(head('col', 0))
+    expect(kbd()).toBe(2)
   })
 
   it('keeps deleting columns, or rows, when the delete keys are pressed again', () => {

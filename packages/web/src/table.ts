@@ -102,6 +102,10 @@ export class TableView {
   #span: Span = 'cell'
   /** Set after a long press opened the menu, so the tap that ends it does not select. */
   #swallowClick = false
+  /** How the last press came: a second tap edits on a touch screen, not with a mouse. */
+  #pointer = 'mouse'
+  /** The cell's value when its edit began, for Escape to put back. */
+  #original = ''
   #delimiter: string | null = null
   #table: Table | null = null
   #error: CsvError | null = null
@@ -210,7 +214,8 @@ export class TableView {
   edit(at: Position, initial?: string): void {
     if (!this.#table) return
     this.select(at, false)
-    const value = initial ?? this.#valueAt(at)
+    this.#original = this.#valueAt(at)
+    const value = initial ?? this.#original
     const editor = h('textarea', { className: 'cell-editor', value, rows: 1 })
     editor.setAttribute('aria-label', 'Cell')
     editor.addEventListener('input', () => {
@@ -294,8 +299,9 @@ export class TableView {
     const table = this.#table
     const at = this.#selected
     const { insert, remove } = SHORTCUTS
-    // The shortcuts act on rows unless a whole column is selected.
-    const rowKeys = kind !== 'column'
+    // The shortcuts work on a whole selected row or column, as in Google Sheets.
+    const rowKeys = kind === 'row'
+    const columnKeys = kind === 'column'
     const rows: MenuItem[] = [
       {
         label: 'Insert row above',
@@ -313,13 +319,13 @@ export class TableView {
     const columns: MenuItem[] = [
       {
         label: 'Insert column left',
-        keys: rowKeys ? undefined : insert,
+        keys: columnKeys ? insert : undefined,
         action: () => this.insertColumn('left'),
       },
       { label: 'Insert column right', action: () => this.insertColumn('right') },
       {
         label: 'Delete column',
-        keys: rowKeys ? undefined : remove,
+        keys: columnKeys ? remove : undefined,
         disabled: !(table && at && at.col < table.columns),
         action: () => this.deleteColumn(),
       },
@@ -348,6 +354,7 @@ export class TableView {
       // The click that ends a long press, if the platform sends one, always
       // comes before the next press: a flag still set here was never used.
       this.#swallowClick = false
+      this.#pointer = ev.pointerType
       if (ev.pointerType !== 'touch') return
       cancel()
       const target = this.#targetOf(ev.target)
@@ -639,8 +646,9 @@ export class TableView {
     if (!at) return
     const again =
       this.#span === 'cell' && this.#selected?.row === at.row && this.#selected.col === at.col
-    // A second tap edits: phones have no double-click to spare.
-    if (again) this.edit(at)
+    // A mouse edits on a double-click, as in a spreadsheet. A second tap edits
+    // on a touch screen, where a double tap may zoom instead.
+    if (again && this.#pointer === 'touch') this.edit(at)
     else this.select(at)
   }
 
@@ -660,10 +668,13 @@ export class TableView {
       this.#undo.redo()
       return
     }
-    // Google Sheets' keys: Ctrl+Alt+= inserts, Ctrl+Alt+- deletes (⌘⌥ on a Mac),
-    // rows unless a whole column is selected. The codes survive ⌥ changing the character.
+    // Google Sheets' keys: with a whole row or column selected, Ctrl+Alt+=
+    // inserts one before it and Ctrl+Alt+- deletes it (⌘⌥ on a Mac). On a single
+    // cell Sheets asks what to insert, so they do nothing here. The codes
+    // survive ⌥ changing the character.
     if (mod && ev.altKey && (ev.code === 'Equal' || ev.code === 'Minus')) {
       ev.preventDefault()
+      if (this.#span === 'cell') return
       const column = this.#span === 'column'
       if (ev.code === 'Equal') {
         if (column) this.insertColumn('left')
@@ -687,11 +698,6 @@ export class TableView {
             ? { kind: 'column', col }
             : { kind: 'cell', at: { row, col } }
       this.openMenu(target, rect?.left ?? 0, rect?.bottom ?? 0)
-      return
-    }
-    if (ev.key === 'Escape' && this.#span !== 'cell') {
-      ev.preventDefault()
-      this.select({ row, col })
       return
     }
     const rows = Math.max(1, this.#table?.rows.length ?? 0)
@@ -737,7 +743,8 @@ export class TableView {
       else this.#undo.undo()
       return
     }
-    if (ev.key === 'Enter' && ev.altKey) {
+    // A line break inside the cell: Alt+Enter or Ctrl/⌘+Enter, as in Google Sheets.
+    if (ev.key === 'Enter' && (ev.altKey || mod)) {
       ev.preventDefault()
       const editor = ev.target as HTMLTextAreaElement
       editor.setRangeText('\n', editor.selectionStart, editor.selectionEnd, 'end')
@@ -745,14 +752,21 @@ export class TableView {
       this.#fit()
       return
     }
+    if (ev.key === 'Escape') {
+      // As in a spreadsheet, Escape drops the edit: the cell gets back the
+      // value it had when the edit began.
+      ev.preventDefault()
+      this.#write(this.#original)
+      this.#finishEdit(true)
+      this.select(at)
+      return
+    }
     const next =
-      ev.key === 'Enter' && !ev.shiftKey
-        ? { row: at.row + 1, col: at.col }
+      ev.key === 'Enter'
+        ? { row: Math.max(0, at.row + (ev.shiftKey ? -1 : 1)), col: at.col }
         : ev.key === 'Tab'
           ? { row: at.row, col: Math.max(0, at.col + (ev.shiftKey ? -1 : 1)) }
-          : ev.key === 'Escape'
-            ? at
-            : null
+          : null
     if (!next) {
       this.#fit()
       return
