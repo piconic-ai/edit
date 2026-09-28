@@ -4,6 +4,7 @@ package interop
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +22,8 @@ import (
 	"github.com/piconic-ai/ima/internal/protocol"
 	"github.com/piconic-ai/ima/internal/protocol/prototest"
 	"github.com/piconic-ai/ima/internal/session"
+	"github.com/reearth/ygo/awareness"
+	"github.com/reearth/ygo/crdt"
 )
 
 const roomID = "AAAAAAAAAAAAAAAAAAAAAA"
@@ -104,39 +108,7 @@ func TestGoHostWithJavaScriptGuest(t *testing.T) {
 	prototest.WaitFor(t, 5*time.Second, func() bool { return s.Client.Status() == protocol.StatusConnected }, "host connected")
 
 	share, _ := url.Parse(s.URL)
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/rooms/" + roomID + "/ws"
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	guest := exec.CommandContext(ctx, "node", "testdata/guest.mjs", dir, wsURL, share.Fragment)
-	var stderr strings.Builder
-	guest.Stderr = &stderr
-	stdout, err := guest.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := guest.Start(); err != nil {
-		t.Fatal(err)
-	}
-	lines := make(chan string)
-	go func() {
-		defer close(lines)
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			lines <- scanner.Text()
-		}
-	}()
-	next := func(what string) string {
-		select {
-		case line, ok := <-lines:
-			if !ok {
-				t.Fatalf("guest exited before %s: %v\n%s", what, guest.Wait(), stderr.String())
-			}
-			return line
-		case <-ctx.Done():
-			t.Fatalf("timed out waiting for %s\n%s", what, stderr.String())
-			return ""
-		}
-	}
+	guest := startGuest(t, "testdata/guest.mjs", dir, wsURL(server), share.Fragment)
 
 	read := func() string {
 		b, _ := os.ReadFile(file)
@@ -150,19 +122,142 @@ func TestGoHostWithJavaScriptGuest(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got string
-	if line := next("the final text"); json.Unmarshal([]byte(line), &got) != nil || got != final {
-		t.Fatalf("guest ended with %q\n%s", line, stderr.String())
+	if line := guest.next("the final text"); json.Unmarshal([]byte(line), &got) != nil || got != final {
+		t.Fatalf("guest ended with %q\n%s", line, guest.stderr.String())
 	}
 	if err := s.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	if line := next("the host to leave"); line != "host left" {
-		t.Fatalf("guest said %q\n%s", line, stderr.String())
+	if line := guest.next("the host to leave"); line != "host left" {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
 	}
-	if err := guest.Wait(); err != nil {
-		t.Fatalf("guest failed: %v\n%s", err, stderr.String())
-	}
+	guest.wait()
 	if read() != final {
 		t.Fatalf("file = %q", read())
+	}
+}
+
+func TestAttachmentsWithJavaScriptGuest(t *testing.T) {
+	dir := protocolDir(t)
+	server := newServer(t)
+	key := protocol.GenerateKey()
+	raw, _ := protocol.DecodeKey(key)
+	keys, err := protocol.DeriveBlobKeys(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := crdt.New()
+	attachments := make(chan protocol.Attachment, 1)
+	host, err := protocol.NewClient(protocol.ClientOptions{
+		URL:          wsURL(server),
+		Key:          raw,
+		Doc:          doc,
+		Awareness:    awareness.New(uint64(doc.ClientID())),
+		OnAttachment: func(a protocol.Attachment) { attachments <- a },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(host.Destroy)
+	host.Connect()
+	prototest.WaitFor(t, 5*time.Second, func() bool { return host.Status() == protocol.StatusConnected }, "host connected")
+
+	guest := startGuest(t, "testdata/attachment.mjs", dir, wsURL(server), key)
+	var uploaded struct{ Hash, BlobID, Blob string }
+	if line := guest.next("the upload"); json.Unmarshal([]byte(line), &uploaded) != nil {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
+	}
+	// The guest encrypted and named the blob the way the host does.
+	const content = "\x89PNG\r\n\x1a\nima 居間"
+	if uploaded.Hash != protocol.ContentHash([]byte(content)) {
+		t.Fatalf("hash = %s", uploaded.Hash)
+	}
+	if id, _ := keys.BlobID(uploaded.Hash); uploaded.BlobID != id {
+		t.Fatalf("blob id = %s, want %s", uploaded.BlobID, id)
+	}
+	blob, _ := base64.RawURLEncoding.DecodeString(uploaded.Blob)
+	if got, err := keys.Decrypt(blob, uploaded.Hash); err != nil || string(got) != content {
+		t.Fatalf("Decrypt = %q, %v", got, err)
+	}
+
+	select {
+	case a := <-attachments:
+		want := protocol.Attachment{Kind: protocol.AttachmentAnnounce, Hash: uploaded.Hash, Mime: "image/png"}
+		if !reflect.DeepEqual(a, want) {
+			t.Fatalf("host got %+v", a)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("no announcement\n%s", guest.stderr.String())
+	}
+	path := "assets/" + uploaded.Hash + ".png"
+	if err := host.SendAttachment(protocol.Attachment{Kind: protocol.AttachmentStored, Hash: uploaded.Hash, Path: path}); err != nil {
+		t.Fatal(err)
+	}
+	if line := guest.next("the stored reply"); line != "stored "+path {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
+	}
+	guest.wait()
+}
+
+func wsURL(server *httptest.Server) string {
+	return "ws" + strings.TrimPrefix(server.URL, "http") + "/api/rooms/" + roomID + "/ws"
+}
+
+// guest is a Node.js script under testdata that reports by printing lines.
+type guest struct {
+	t      *testing.T
+	cmd    *exec.Cmd
+	ctx    context.Context
+	lines  chan string
+	stderr *strings.Builder
+}
+
+func startGuest(t *testing.T, script string, args ...string) *guest {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+	g := &guest{
+		t:      t,
+		cmd:    exec.CommandContext(ctx, "node", append([]string{script}, args...)...),
+		ctx:    ctx,
+		lines:  make(chan string),
+		stderr: &strings.Builder{},
+	}
+	g.cmd.Stderr = g.stderr
+	stdout, err := g.cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := g.cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		defer close(g.lines)
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			g.lines <- scanner.Text()
+		}
+	}()
+	return g
+}
+
+func (g *guest) next(what string) string {
+	g.t.Helper()
+	select {
+	case line, ok := <-g.lines:
+		if !ok {
+			g.t.Fatalf("guest exited before %s: %v\n%s", what, g.cmd.Wait(), g.stderr.String())
+		}
+		return line
+	case <-g.ctx.Done():
+		g.t.Fatalf("timed out waiting for %s\n%s", what, g.stderr.String())
+		return ""
+	}
+}
+
+func (g *guest) wait() {
+	g.t.Helper()
+	if err := g.cmd.Wait(); err != nil {
+		g.t.Fatalf("guest failed: %v\n%s", err, g.stderr.String())
 	}
 }

@@ -69,6 +69,20 @@ IMA_SERVER=http://localhost:8787 go run ./cmd/ima notes.md
 The wire format (AES-GCM frames, message types, y-protocols sync and awareness)
 is shared by both implementations: change them together.
 
+- A frame is `iv || AES-GCM(room key, type || payload)`. Types: `0` sync, `1`
+  awareness, `2` attachment. Clients skip types they do not know, so newer
+  peers can add more.
+- Attachments (images) are named by content: `hash` is the first 128 bits of
+  SHA-256 of the bytes, in hex. Their bytes are encrypted with a key derived
+  from the room key (HKDF-SHA256, info `ima blob enc v1`) and stored under
+  `blobId`, the first 128 bits of HMAC-SHA256 over `hash` with another derived
+  key (info `ima blob id v1`), in base64url. The server sees neither the
+  content nor its hash.
+- Attachment messages carry a lib0 varint kind and fields: `0` announce
+  (hash, mime), `1` want (hashes), `2` stored (hash, path), `3` rejected
+  (hash, reason). `internal/protocol/testdata/blob-vectors.json` pins the
+  derivations for both implementations.
+
 ## Releases and deploys
 
 Production (`ima.piconic.ai`) deploys when a tagpr release PR is merged
