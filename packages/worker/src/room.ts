@@ -114,7 +114,12 @@ export class Room extends DurableObject<Env> {
   }
 
   private async blob(request: Request, id: string): Promise<Response> {
-    await this.cleaning
+    // Another session may end while we wait, chaining a newer cleanup.
+    let cleaning: Promise<void>
+    do {
+      cleaning = this.cleaning
+      await cleaning
+    } while (cleaning !== this.cleaning)
     if (this.hosts().length === 0) return new Response('room is closed', { status: 410 })
     const key = this.blobPrefix() + id
     if (request.method === 'GET') {

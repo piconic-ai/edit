@@ -255,6 +255,20 @@ describe('blobs', () => {
     expect((await putBlob(room, blobId(1), new Uint8Array(4))).status).toBe(200)
   })
 
+  it('waits out every cleanup before serving a new session', async () => {
+    const room = await createRoom()
+    const first = await host(room)
+    await putBlob(room, blobId(1), new Uint8Array([1]))
+    // Two sessions end back to back; each chains a cleanup.
+    first.ws.close(1000, 'bye')
+    const second = await host(room)
+    second.ws.close(1000, 'bye')
+    await host(room)
+    const res = await getBlob(room, blobId(1))
+    expect(res.status).toBe(404)
+    expect(await roomBlobs(room)).toEqual([])
+  })
+
   it('drops an upload that outlives its session', async () => {
     const room = await createRoom()
     const h = await host(room)
