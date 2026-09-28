@@ -28,16 +28,22 @@
     "bindings": [{ "name": "ROOM", "class_name": "Room" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  // Encrypted attachments, kept only while a room's host is connected. Each
+  // bucket needs a lifecycle rule expiring `rooms/` after a day, as a backstop
+  // for deletion (see README).
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "ima-blobs" }],
   // Worker Previews: every push to a branch other than `release` makes (or
   // updates) that branch's Preview via Cloudflare Workers Builds, whose
   // Preview command runs `pnpm run preview`. Previews never become the
   // production deployment. They inherit no bindings from the settings above,
-  // so the Room binding is declared again here; each Preview gets its own
-  // Durable Object namespace automatically.
+  // so the bindings are declared again here; each Preview gets its own
+  // Durable Object namespace automatically. All Previews share one bucket:
+  // blobs live under their room's Durable Object id, which differs per namespace.
   "previews": {
     "durable_objects": {
       "bindings": [{ "name": "ROOM", "class_name": "Room" }]
     },
+    "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "ima-blobs-preview" }],
     // Per-Preview logs and traces: Cloudflare dashboard → ima Worker →
     // Previews → <branch> → Observability. (`wrangler tail` can't target
     // Previews.)
@@ -61,7 +67,8 @@
       "durable_objects": {
         "bindings": [{ "name": "ROOM", "class_name": "Room" }]
       },
-      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+      "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "ima-lab-blobs" }]
     }
   }
 }

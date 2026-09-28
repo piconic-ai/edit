@@ -5,6 +5,8 @@ export { Room } from './room.ts'
 
 // Room ids are 128+ bits, base64url without padding.
 const ROOM_ID = /^[A-Za-z0-9_-]{22}$/
+// Blob ids are 128-bit HMACs, base64url without padding.
+const BLOB_ID = /^[A-Za-z0-9_-]{22}$/
 
 function base64url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
@@ -49,6 +51,17 @@ app.get('/api/rooms/:id/ws', async (c) => {
 
   const room = c.env.ROOM.get(c.env.ROOM.idFromName(id))
   return room.fetch(new Request(c.req.raw, { headers }))
+})
+
+// Encrypted attachments, stored while the room's host is connected. Anyone in
+// the room may read and write them, as they may join the WebSocket.
+app.all('/api/rooms/:id/blobs/:blobId', async (c) => {
+  const id = c.req.param('id')
+  if (!ROOM_ID.test(id) || !BLOB_ID.test(c.req.param('blobId'))) {
+    return c.text('invalid room or blob id', 400)
+  }
+  const room = c.env.ROOM.get(c.env.ROOM.idFromName(id))
+  return room.fetch(c.req.raw)
 })
 
 export default app

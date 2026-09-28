@@ -5,7 +5,7 @@ A CLI that lets you co-edit a local text file with other people, right now.
 The name comes from the Japanese 居間 (living room) and 今 (now).
 
 ## Principles
-- The host's local file is the source of truth. The server never stores content.
+- The host's local file is the source of truth. The server never sees plaintext. The only content it keeps is encrypted attachments (R2), and only while the room's host is connected; the room deletes them when the host leaves. No permanent storage, no public URLs.
 - Updates are end-to-end encrypted with a key held in the URL fragment; the server only relays ciphertext.
 - Never send the key to the server (not in requests, logs, or error reports).
 - The minimal version only co-edits a single text file. No auth, comments, or AI features.
@@ -13,7 +13,7 @@ The name comes from the Japanese 居間 (living room) and 今 (now).
 ## Layout
 - cmd/ima, internal/: the `ima` command (Go, single binary). internal/protocol mirrors packages/protocol on top of reearth/ygo; keep the wire format in sync
 - packages/protocol: encryption, message format and room client for the web (pnpm workspace)
-- packages/worker: Hono + Durable Objects (WebSocket Hibernation API). Also serves the web assets.
+- packages/worker: Hono + Durable Objects (WebSocket Hibernation API) + R2 for encrypted attachments. Also serves the web assets.
 - packages/web: editor built on CodeMirror 6 + y-codemirror.next. UI components are BarefootJS (`src/components/*.tsx`, client-side rendering only: the server never sees content). Write new UI as components with signals; do not use BarefootJS's ready-made UI components, keep ima's own CSS. State from outside (room status, Yjs) reaches components as a `Store` (`src/store.ts`): a signal made once outside the components (in main.ts or a class like `TableView`), which components just read with `store.get()` in their JSX. Components never subscribe per instance; a signal-creating helper called from a component would re-run in the CSR template (piconic-ai/barefootjs#3235). Publish a new value only when it changed, so every cell or row reading it does not re-run. Where behaviour is heavy (the table, the context menu, the Split divider), a class keeps the state and publishes it as stores, and a component draws it and hands its events back (`TableView` + `TableGrid.tsx`). Export only components (and types) from `src/components/*.tsx`: any other export makes the CSR adapter emit a template and fails the build (piconic-ai/barefootjs#3234)
 
 ## Stack
