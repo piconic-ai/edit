@@ -58,9 +58,17 @@ body {
   }
 }
 
-/* Mount points for components (main.ts): they add no box of their own. */
+/* Wrappers and mount points around components: they add no box of their own. */
+.layout,
 .header-slot,
-.settings-slot {
+.banner-slot,
+.settings-slot,
+.splitter-host,
+.splitter-slot,
+.table-host,
+.table-slot,
+.menu-slot,
+.menu-host {
   display: contents;
 }
 header {
@@ -404,7 +412,7 @@ header {
   color: var(--accent);
 }
 
-/* A miniature page in a theme's colours (theme-preview.ts). Sized in em, so the
+/* A miniature page in a theme's colours (components/ThemePreview.tsx). Sized in em, so the
    font size of its container scales it: the settings row shows a small one. */
 .theme-preview {
   display: flex;
@@ -580,7 +588,7 @@ header {
   .banner button,
   .card button,
   .card input,
-  .table-tools button {
+  .context-menu [role="menuitem"] {
     min-height: 44px;
   }
   .settings-row,
@@ -866,34 +874,13 @@ main.editor[data-resizing] iframe {
   flex-direction: column;
   background: var(--panel);
 }
-.table-tools {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--line);
-}
-.table-tools button {
-  font: inherit;
-  font-size: 0.8rem;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
-}
-.table-tools button:disabled {
-  color: var(--muted);
-  cursor: default;
-  opacity: 0.6;
-}
 .table-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding-bottom: env(safe-area-inset-bottom);
+  /* Keeps a cell scrolled into view clear of the sticky headers. */
+  scroll-padding: 2.4em 0 0 3.6em;
 }
 .grid {
   border-collapse: separate;
@@ -902,7 +889,6 @@ main.editor[data-resizing] iframe {
   font-size: max(var(--editor-font-floor, 0px), calc(var(--editor-font-size) - 1px));
   line-height: 1.4;
 }
-.grid th,
 .grid td {
   position: relative;
   min-width: 6em;
@@ -916,15 +902,56 @@ main.editor[data-resizing] iframe {
   overflow-wrap: anywhere;
   cursor: cell;
 }
+/* Column letters and row numbers, as in a spreadsheet; both stay on screen. */
 .grid th {
   position: sticky;
-  top: 0;
   z-index: 2;
+  padding: 4px 8px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   background: var(--bg);
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.grid thead th {
+  top: 0;
+}
+.grid .row-head {
+  left: 0;
+  min-width: 3em;
+  vertical-align: middle;
+}
+.grid .grid-corner {
+  left: 0;
+  z-index: 3;
+  cursor: default;
+}
+.grid th[data-mark="active"] {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--ink);
   font-weight: 600;
 }
-.grid tbody tr:nth-child(2n) td {
-  background: color-mix(in srgb, var(--bg) 50%, transparent);
+.grid th[data-mark="selected"] {
+  background: var(--accent);
+  color: var(--panel);
+  font-weight: 600;
+}
+.grid td[data-mark="span"] {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+/* The CSV's first row usually names the columns. */
+.grid td[data-row="0"] {
+  font-weight: 600;
+}
+.grid td {
+  -webkit-touch-callout: none;
 }
 .grid [aria-selected="true"] {
   outline: 2px solid var(--accent);
@@ -954,6 +981,58 @@ main.editor[data-resizing] iframe {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+}
+/* The row and column menu (menu.ts), opened by a right-click or long press. */
+.context-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 14em;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--sans);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.context-menu[hidden] {
+  display: none;
+}
+.context-menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.context-menu [role="menuitem"]:hover,
+.context-menu [role="menuitem"]:focus-visible {
+  outline: none;
+  background: var(--bg);
+}
+.context-menu [role="menuitem"]:disabled {
+  color: var(--muted);
+  cursor: default;
+  background: transparent;
+}
+.context-menu kbd {
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 0.75rem;
+}
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
 }
 /* The editor lies over the cell's hidden text (.cell-mirror), so editing
    looks like the selected cell and the column keeps its width. */

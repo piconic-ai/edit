@@ -18,6 +18,13 @@ function memoryStore(init: Record<string, string> = {}) {
   }
 }
 
+/** The divider itself, drawn by components/SplitterBar.tsx inside the splitter's element. */
+function bar(splitter: Splitter): HTMLElement {
+  const el = splitter.element.querySelector<HTMLElement>('.splitter')
+  if (!el) throw new Error('no divider')
+  return el
+}
+
 describe('ratios', () => {
   it('keeps both panes usable', () => {
     expect(clampRatio(0.05)).toBe(0.2)
@@ -60,34 +67,34 @@ describe('Splitter', () => {
   it('starts at the stored width', () => {
     const { container, splitter } = setup('0.3')
     expect(container.style.getPropertyValue('--split')).toBe('30%')
-    expect(splitter.element.getAttribute('aria-valuenow')).toBe('30')
+    expect(bar(splitter).getAttribute('aria-valuenow')).toBe('30')
   })
 
   it('resizes while dragging and saves on release', () => {
     const { store, container, splitter, onResize } = setup()
-    splitter.element.dispatchEvent(pointer('pointerdown', 500))
-    splitter.element.dispatchEvent(pointer('pointermove', 350))
+    bar(splitter).dispatchEvent(pointer('pointerdown', 500))
+    bar(splitter).dispatchEvent(pointer('pointermove', 350))
     expect(container.style.getPropertyValue('--split')).toBe('35%')
     expect(store.data.has(SPLIT_KEY)).toBe(false)
-    splitter.element.dispatchEvent(pointer('pointerup', 350))
+    bar(splitter).dispatchEvent(pointer('pointerup', 350))
     expect(store.data.get(SPLIT_KEY)).toBe('0.35')
     expect(onResize).toHaveBeenCalled()
     expect('resizing' in container.dataset).toBe(false)
 
-    splitter.element.dispatchEvent(pointer('pointermove', 700))
+    bar(splitter).dispatchEvent(pointer('pointermove', 700))
     expect(splitter.ratio).toBe(0.35)
   })
 
   it('moves with the keyboard and resets on double-click', () => {
     const { store, splitter } = setup('0.5')
     const key = (k: string) =>
-      splitter.element.dispatchEvent(new KeyboardEvent('keydown', { key: k, cancelable: true }))
+      bar(splitter).dispatchEvent(new KeyboardEvent('keydown', { key: k, cancelable: true }))
     key('ArrowLeft')
     expect(splitter.ratio).toBeCloseTo(0.45)
     key('End')
     expect(splitter.ratio).toBe(0.8)
     expect(store.data.get(SPLIT_KEY)).toBe('0.8')
-    splitter.element.dispatchEvent(new MouseEvent('dblclick'))
+    bar(splitter).dispatchEvent(new MouseEvent('dblclick'))
     expect(splitter.ratio).toBe(0.5)
     expect(store.data.get(SPLIT_KEY)).toBe('0.5')
   })

@@ -1,6 +1,5 @@
 import type { EditorView } from '@codemirror/view'
 import type * as Y from 'yjs'
-import { h } from './dom.ts'
 
 type Renderer = Pick<typeof import('./preview.ts'), 'render' | 'patch'>
 
@@ -63,12 +62,17 @@ export class PreviewPane {
 
   constructor(
     text: Y.Text,
-    options: { load?: () => Promise<Renderer>; onRender?: () => void } = {},
+    options: {
+      load?: () => Promise<Renderer>
+      onRender?: () => void
+      /** The article to render into, laid out by components/Layout.tsx. */
+      element?: HTMLElement
+    } = {},
   ) {
     this.#text = text
     this.#load = options.load ?? (() => import('./preview.ts'))
     this.#onRender = options.onRender ?? (() => {})
-    this.element = h('article', { className: 'preview', ariaLabel: 'Preview' })
+    this.element = options.element ?? document.createElement('article')
     text.observe(() => {
       this.#dirty = true
       this.#schedule()
@@ -123,9 +127,12 @@ export class PreviewPane {
       } catch {
         // Offline or a stale deploy: try again on the next change.
         this.#loading = null
-        this.element.replaceChildren(
-          h('p', { className: 'preview-error', textContent: 'The preview could not be loaded.' }),
-        )
+        // The article's content is rendered Markdown, patched in place (preview.ts),
+        // so this message goes in the same way rather than through a component.
+        const message = document.createElement('p')
+        message.className = 'preview-error'
+        message.textContent = 'The preview could not be loaded.'
+        this.element.replaceChildren(message)
         return
       }
     }

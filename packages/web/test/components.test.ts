@@ -44,3 +44,13 @@ describe('Header IR', () => {
     expect(ir.find({ tag: 'ul' })?.events).toContain('click')
   })
 })
+
+describe('Settings IR', () => {
+  const file = 'Settings.tsx'
+  const ir = renderToTest(readFileSync(join(dir, file), 'utf8'), file)
+
+  it('keeps which page shows as a signal, and the current theme as a memo', () => {
+    expect(ir.signals).toContain('gallery')
+    expect(ir.memos).toContain('current')
+  })
+})
