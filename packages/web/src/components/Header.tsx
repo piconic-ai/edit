@@ -7,7 +7,6 @@ import type { Participant } from '../room.ts'
 import type { SettingsModel } from '../settings.ts'
 import type { Readable } from '../store.ts'
 import type { ViewSwitch } from '../view.ts'
-import { follow } from '../watch.ts'
 import { Settings } from './Settings.tsx'
 
 /** How many faces the collapsed row of participants shows before "+N". */
@@ -43,16 +42,11 @@ function label(p: Participant): string {
  * only hides them visually.
  */
 export function Header(props: HeaderProps) {
-  const [file, setFile] = createSignal(props.file.get())
-  const [status, setStatus] = createSignal(props.status.get())
-  const [people, setPeople] = createSignal(props.people.get())
-  const [narrow, setNarrow] = createSignal(props.narrow.get())
-  const [buttons, setButtons] = createSignal(props.view.buttons.get())
-  follow(props.file, setFile)
-  follow(props.status, setStatus)
-  follow(props.people, setPeople)
-  follow(props.narrow, setNarrow)
-  follow(props.view.buttons, setButtons)
+  const file = () => props.file.get()
+  const status = () => props.status.get()
+  const people = () => props.people.get()
+  const narrow = () => props.narrow.get()
+  const buttons = () => props.view.buttons.get()
   const [expanded, setExpanded] = createSignal(false)
   const more = createMemo(() => {
     const hidden = people().length - MAX_FACES

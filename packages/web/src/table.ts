@@ -538,7 +538,7 @@ export class TableView {
     const table = this.#table
     const doc = this.#text.doc
     if (!table || !doc) {
-      this.peers.set({})
+      this.#setPeers({})
       return
     }
     const byCell: Record<string, CellPeers> = {}
@@ -562,7 +562,17 @@ export class TableView {
         ? { names: `${seen.names}, ${p.name}`, color: seen.color }
         : { names: p.name, color: p.color }
     }
-    this.peers.set(byCell)
+    this.#setPeers(byCell)
+  }
+
+  /** Publishes others' cells only when they moved, so the cells' peer effects stay put. */
+  #setPeers(next: Record<string, CellPeers>): void {
+    const prev = this.peers.get()
+    const keys = Object.keys(next)
+    const same =
+      keys.length === Object.keys(prev).length &&
+      keys.every((k) => prev[k]?.names === next[k]?.names && prev[k]?.color === next[k]?.color)
+    if (!same) this.peers.set(next)
   }
 
   #cellElement(at: Position): HTMLElement | null {

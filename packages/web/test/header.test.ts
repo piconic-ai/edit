@@ -17,7 +17,7 @@ function person(clientId: number, name: string, extra: Partial<Participant> = {}
   return { clientId, name, color: '#1f7a64', isHost: false, isSelf: false, ...extra }
 }
 
-/** Counts live subscriptions, to catch any the component never releases. */
+/** Counts live subscriptions: components read stores, they never subscribe. */
 class Counted<T> extends Store<T> {
   active = 0
   override subscribe(fn: (value: T) => void): () => void {
@@ -51,9 +51,11 @@ function mount() {
 }
 
 describe('Header', () => {
-  it('subscribes to each store once per render', () => {
-    const { file, status, people, narrow } = mount()
-    expect([file, status, people, narrow].map((s) => s.active)).toEqual([1, 1, 1, 1])
+  it('reads the stores without subscribing to them, so nothing can leak', () => {
+    const { file, status, people, narrow, q } = mount()
+    expect([file, status, people, narrow].map((s) => s.active)).toEqual([0, 0, 0, 0])
+    file.set('notes.md')
+    expect(q('.file')?.textContent).toBe('notes.md')
   })
 
   it('shows the file name once the host tells it', () => {

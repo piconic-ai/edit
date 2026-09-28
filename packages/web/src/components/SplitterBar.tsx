@@ -1,8 +1,6 @@
 'use client'
 
-import { createSignal } from '@barefootjs/client'
 import { MAX_RATIO, MIN_RATIO, type Splitter } from '../splitter.ts'
-import { follow } from '../watch.ts'
 
 /**
  * The divider between the editor and the preview in Split. Drag it, use the
@@ -10,8 +8,7 @@ import { follow } from '../watch.ts'
  */
 export function SplitterBar(props: { splitter: Splitter }) {
   const s = props.splitter
-  const [percent, setPercent] = createSignal(s.percent.get())
-  follow(s.percent, setPercent)
+  const percent = () => s.percent.get()
 
   return (
     <div

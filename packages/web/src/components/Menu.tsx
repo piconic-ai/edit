@@ -1,13 +1,10 @@
 'use client'
 
-import { createSignal } from '@barefootjs/client'
 import type { ContextMenu } from '../menu.ts'
-import { follow } from '../watch.ts'
 
 /** Draws a ContextMenu (menu.ts): its items, separators and shortcuts, at its point. */
 export function Menu(props: { menu: ContextMenu }) {
-  const [state, setState] = createSignal(props.menu.state.get())
-  follow(props.menu.state, setState)
+  const state = () => props.menu.state.get()
 
   return (
     <div

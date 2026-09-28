@@ -152,6 +152,15 @@ describe('TableView', () => {
     expect(cell(1, 0).textContent).toBe('cats')
   })
 
+  it('does not republish others\' cells when a change leaves them where they were', () => {
+    const { text, view } = setup('a,b\nc,d\n')
+    let publishes = 0
+    view.peers.subscribe(() => publishes++)
+    text.insert(0, 'x')
+    text.insert(0, 'y')
+    expect(publishes).toBe(0)
+  })
+
   it('types over a selected cell, like a spreadsheet', () => {
     const { text, view, cell, key } = setup('a,b\n')
     view.select({ row: 0, col: 1 })
