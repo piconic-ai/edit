@@ -343,6 +343,20 @@ func TestAnnouncesItselfAsHost(t *testing.T) {
 	}, "host awareness")
 }
 
+func TestAdvertisesAttachments(t *testing.T) {
+	f := setup(t, "", setupOpts{})
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool {
+		for _, s := range g.aw.GetStates() {
+			a, _ := s.State["attachments"].(map[string]any)
+			if s.State["role"] == "host" && a["dir"] == "assets" && a["maxBytes"] == float64(10<<20) {
+				return true
+			}
+		}
+		return false
+	}, "attachments in host awareness")
+}
+
 func TestStreamsExternalEditsToGuests(t *testing.T) {
 	f := setup(t, "# notes\n", setupOpts{watch: true})
 	g := joinAsGuest(t, f.relay, f.session.URL)

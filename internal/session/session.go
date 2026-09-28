@@ -16,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/piconic-ai/ima/internal/attach"
 	"github.com/piconic-ai/ima/internal/filewriter"
 	"github.com/piconic-ai/ima/internal/merge"
 	"github.com/piconic-ai/ima/internal/protocol"
@@ -42,7 +43,10 @@ type Options struct {
 	// OnPeople is called with the names of the other people in the room,
 	// sorted, whenever someone joins, leaves or renames.
 	OnPeople func([]string)
-	OnError  func(error)
+	// OnSaved is called with the path, relative to File, of each image
+	// someone pasted that was saved beside the file.
+	OnSaved func(path string)
+	OnError func(error)
 }
 
 type Session struct {
@@ -53,12 +57,13 @@ type Session struct {
 	Client *protocol.Client
 	Writer *filewriter.Writer
 
-	file      string
-	awareness *awareness.Awareness
-	watcher   *fsnotify.Watcher
-	watchDone chan struct{}
-	stopAlive func()
-	onError   func(error)
+	file        string
+	awareness   *awareness.Awareness
+	attachments *attach.Attachments
+	watcher     *fsnotify.Watcher
+	watchDone   chan struct{}
+	stopAlive   func()
+	onError     func(error)
 
 	mu        sync.Mutex
 	readTimer *time.Timer
@@ -118,7 +123,18 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	if opts.Avatar != "" {
 		user["avatar"] = opts.Avatar
 	}
-	aw.SetLocalState(map[string]any{"role": "host", "name": name, "user": user, "file": filepath.Base(opts.File)})
+	aw.SetLocalState(map[string]any{
+		"role": "host",
+		"name": name,
+		"user": user,
+		"file": filepath.Base(opts.File),
+		// Browsers let people paste images only when the host says it saves them.
+		"attachments": map[string]any{"dir": attach.Dir, "maxBytes": attach.MaxBytes},
+	})
+	blobKeys, err := protocol.DeriveBlobKeys(rawKey)
+	if err != nil {
+		return nil, err
+	}
 
 	s := &Session{
 		URL:       server + "/r/" + room.ID + "#" + key,
@@ -148,10 +164,24 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		Dial:      opts.Dial,
 		OnStatus:  opts.OnStatus,
 		OnError:   onError,
+		// Set below, before the client connects.
+		OnAttachment: func(m protocol.Attachment) { s.attachments.Handle(m) },
 	})
 	if err != nil {
 		return nil, err
 	}
+	s.attachments = attach.New(attach.Options{
+		File:   opts.File,
+		Server: server,
+		Room:   room.ID,
+		// Without the host token: blobs are for everyone in the room.
+		Header:     opts.Header,
+		HTTPClient: opts.HTTPClient,
+		Keys:       blobKeys,
+		Send:       s.Client.SendAttachment,
+		OnSaved:    opts.OnSaved,
+		OnError:    onError,
+	})
 
 	doc.OnUpdate(func(_ []byte, origin any) {
 		if origin == s.Client {
@@ -392,6 +422,7 @@ func (s *Session) Stop() error {
 		if s.beforeDestroy != nil {
 			s.beforeDestroy()
 		}
+		s.attachments.Close()
 		s.Client.Destroy()
 
 		// Save again: edits may have arrived while leaving, and none can arrive now.

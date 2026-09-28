@@ -130,6 +130,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Watch:    true,
 		OnStatus: out.setStatus,
 		OnPeople: out.setPeople,
+		OnSaved: func(path string) {
+			out.imageSaved(filepath.Join(filepath.Dir(arg), filepath.FromSlash(path)))
+		},
 		OnError: func(err error) {
 			if os.Getenv("IMA_DEBUG") != "" {
 				fmt.Fprintln(stderr, "\nima:", err)

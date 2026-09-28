@@ -85,6 +85,28 @@ func TestUIOnTerminal(t *testing.T) {
 	}
 }
 
+func TestUIImageSaved(t *testing.T) {
+	var out strings.Builder
+	u := newUI(&out, false, false)
+	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false, false)
+	u.setStatus(protocol.StatusConnected)
+	u.imageSaved("assets/0123.png")
+	if !strings.HasSuffix(out.String(), "  ● Just you so far\n  Saved an image to assets/0123.png\n") {
+		t.Fatalf("got %q", out.String())
+	}
+
+	// On a terminal it goes above the live line, which comes back.
+	out.Reset()
+	u = newUI(&out, true, false)
+	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false, false)
+	u.setStatus(protocol.StatusConnected)
+	u.imageSaved("assets/0123.png")
+	want := "\r\x1b[2K  \x1b[2mSaved an image to assets/0123.png\x1b[0m\n\r\x1b[2K  \x1b[32m●\x1b[0m Just you so far"
+	if !strings.HasSuffix(out.String(), want) {
+		t.Fatalf("got %q", out.String())
+	}
+}
+
 func TestUIWithoutColor(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, true) // NO_COLOR

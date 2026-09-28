@@ -154,6 +154,19 @@ func (u *ui) setPeople(names []string) {
 	u.render()
 }
 
+// imageSaved says that an image someone pasted was written to the host's
+// disk. On a terminal it goes above the live line, which is drawn again.
+func (u *ui) imageSaved(path string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.live && u.tty {
+		fmt.Fprint(u.out, "\r\x1b[2K")
+		u.lastLine = ""
+	}
+	fmt.Fprintln(u.out, "  "+u.dim("Saved an image to "+path))
+	u.render()
+}
+
 // stopLive ends the live line, leaving its last state on screen.
 func (u *ui) stopLive() {
 	u.mu.Lock()

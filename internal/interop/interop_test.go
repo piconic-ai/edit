@@ -5,7 +5,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,11 +30,37 @@ import (
 
 const roomID = "AAAAAAAAAAAAAAAAAAAAAA"
 
-// newServer stands in for the Worker: it creates rooms and relays frames between sockets.
+// newServer stands in for the Worker: it creates rooms, relays frames between
+// sockets and keeps blobs.
 func newServer(t *testing.T) *httptest.Server {
 	var mu sync.Mutex
 	conns := map[*websocket.Conn]bool{}
+	blobs := map[string][]byte{}
 	mux := http.NewServeMux()
+	mux.HandleFunc("PUT /api/rooms/{id}/blobs/{blob}", func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if _, ok := blobs[r.URL.Path]; ok {
+			return
+		}
+		blobs[r.URL.Path] = body
+		w.WriteHeader(http.StatusCreated)
+	})
+	mux.HandleFunc("GET /api/rooms/{id}/blobs/{blob}", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		body, ok := blobs[r.URL.Path]
+		mu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write(body)
+	})
 	mux.HandleFunc("POST /api/rooms", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]string{"id": roomID, "hostToken": "host-token"})
@@ -199,6 +227,58 @@ func TestAttachmentsWithJavaScriptGuest(t *testing.T) {
 	guest.wait()
 }
 
+func TestGoHostSavesImagesFromJavaScriptGuest(t *testing.T) {
+	dir := protocolDir(t)
+	server := newServer(t)
+	file := filepath.Join(t.TempDir(), "notes.md")
+	if err := os.WriteFile(file, []byte("# notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// An image saved in an earlier session, which a guest will ask for.
+	earlier := []byte("\x89PNG\r\n\x1a\nearlier")
+	assets := filepath.Join(filepath.Dir(file), "assets")
+	_ = os.Mkdir(assets, 0o755)
+	if err := os.WriteFile(filepath.Join(assets, protocol.ContentHash(earlier)+".png"), earlier, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var saved []string
+	var mu sync.Mutex
+	s, err := session.Start(context.Background(), session.Options{
+		File:    file,
+		Server:  server.URL,
+		OnSaved: func(path string) { mu.Lock(); saved = append(saved, path); mu.Unlock() },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Stop() })
+	prototest.WaitFor(t, 5*time.Second, func() bool { return s.Client.Status() == protocol.StatusConnected }, "host connected")
+
+	share, _ := url.Parse(s.URL)
+	guest := startGuest(t, "testdata/upload.mjs", dir, server.URL, roomID, share.Fragment, protocol.ContentHash(earlier))
+
+	// The guest pasted an image: the host saved it.
+	pasted := []byte("\x89PNG\r\n\x1a\nima 居間")
+	path := "assets/" + protocol.ContentHash(pasted) + ".png"
+	if line := guest.next("the stored reply"); line != "stored "+path {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
+	}
+	if got, err := os.ReadFile(filepath.Join(filepath.Dir(file), filepath.FromSlash(path))); err != nil || string(got) != string(pasted) {
+		t.Fatalf("saved %q, %v", got, err)
+	}
+	mu.Lock()
+	if !reflect.DeepEqual(saved, []string{path}) {
+		t.Fatalf("OnSaved got %v", saved)
+	}
+	mu.Unlock()
+
+	// The guest wanted the earlier image: the host uploaded it from disk.
+	if line := guest.next("the wanted image"); line != "wanted "+hex.EncodeToString(earlier) {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
+	}
+	guest.wait()
+}
+
 func wsURL(server *httptest.Server) string {
 	return "ws" + strings.TrimPrefix(server.URL, "http") + "/api/rooms/" + roomID + "/ws"
 }
@@ -209,7 +289,7 @@ type guest struct {
 	cmd    *exec.Cmd
 	ctx    context.Context
 	lines  chan string
-	stderr *strings.Builder
+	stderr *syncBuffer
 }
 
 func startGuest(t *testing.T, script string, args ...string) *guest {
@@ -221,7 +301,7 @@ func startGuest(t *testing.T, script string, args ...string) *guest {
 		cmd:    exec.CommandContext(ctx, "node", append([]string{script}, args...)...),
 		ctx:    ctx,
 		lines:  make(chan string),
-		stderr: &strings.Builder{},
+		stderr: &syncBuffer{},
 	}
 	g.cmd.Stderr = g.stderr
 	stdout, err := g.cmd.StdoutPipe()
@@ -260,4 +340,23 @@ func (g *guest) wait() {
 	if err := g.cmd.Wait(); err != nil {
 		g.t.Fatalf("guest failed: %v\n%s", err, g.stderr.String())
 	}
+}
+
+// syncBuffer collects a guest's stderr, which the test may read while the
+// guest is still writing to it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
