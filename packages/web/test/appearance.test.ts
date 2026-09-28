@@ -41,7 +41,6 @@ describe('loadAppearance / saveAppearance', () => {
     expect(DEFAULT_APPEARANCE).toMatchObject({
       theme: null,
       fontSize: 15,
-      font: 'mono',
       lineHeight: 1.6,
       wrap: true,
     })
@@ -52,7 +51,6 @@ describe('loadAppearance / saveAppearance', () => {
     const a: Appearance = {
       theme: 'dracula',
       fontSize: 18,
-      font: 'sans',
       lineHeight: 1.8,
       wrap: false,
     }
@@ -88,7 +86,7 @@ describe('parseAppearance', () => {
   })
 
   it('drops unknown values and keys', () => {
-    const a = parseAppearance({ theme: 'nord', font: 'comic', wrap: 'yes', x: 1 })
+    const a = parseAppearance({ theme: 'nord', wrap: 'yes', x: 1 })
     expect(a).toEqual(DEFAULT_APPEARANCE)
     expect(parseAppearance({ theme: 42 }).theme).toBeNull()
     expect(parseAppearance({ theme: 'solarized-dark' }).theme).toBe('solarized-dark')
@@ -171,12 +169,9 @@ describe('pageColors', () => {
 describe('applyText', () => {
   it('exposes the text settings as CSS variables', () => {
     const root = document.createElement('html')
-    applyText({ ...DEFAULT_APPEARANCE, fontSize: 18, font: 'sans', lineHeight: 1.4 }, root)
+    applyText({ ...DEFAULT_APPEARANCE, fontSize: 18, lineHeight: 1.4 }, root)
     expect(root.style.getPropertyValue('--editor-font-size')).toBe('18px')
-    expect(root.style.getPropertyValue('--editor-font')).toBe('var(--sans)')
     expect(root.style.getPropertyValue('--editor-line-height')).toBe('1.4')
-    applyText(DEFAULT_APPEARANCE, root)
-    expect(root.style.getPropertyValue('--editor-font')).toBe('var(--mono)')
   })
 })
 

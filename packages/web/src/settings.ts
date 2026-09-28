@@ -1,4 +1,3 @@
-import type { Font } from './appearance.ts'
 import type { Readable } from './store.ts'
 import type { ThemeInfo } from './themes.ts'
 
@@ -64,8 +63,6 @@ export interface SettingsModel {
   fontSizeRange: Range
   fontSize: Readable<number>
   setFontSize(size: number): void
-  font: Readable<Font>
-  setFont(font: Font): void
   lineHeightRange: Range
   lineHeight: Readable<number>
   setLineHeight(height: number): void

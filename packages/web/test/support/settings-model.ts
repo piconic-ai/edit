@@ -1,14 +1,12 @@
-import type { Font } from '../../src/appearance.ts'
 import type { Range, SettingsModel } from '../../src/settings.ts'
 import { Store } from '../../src/store.ts'
 import { THEMES } from '../../src/themes.ts'
 
 /** A settings model backed by plain stores, recording what each control asked for. */
-export function fakeSettings(options: { theme?: string; font?: Font; vimFails?: boolean } = {}) {
+export function fakeSettings(options: { theme?: string; vimFails?: boolean } = {}) {
   const calls: [string, unknown][] = []
   const theme = new Store(options.theme ?? 'github-light')
   const fontSize = new Store(15)
-  const font = new Store<Font>(options.font ?? 'mono')
   const lineHeight = new Store(1.6)
   const wrap = new Store(true)
   const vim = new Store(false)
@@ -26,11 +24,6 @@ export function fakeSettings(options: { theme?: string; font?: Font; vimFails?: 
     setFontSize: (v) => {
       calls.push(['fontSize', v])
       fontSize.set(v)
-    },
-    font,
-    setFont: (v) => {
-      calls.push(['font', v])
-      font.set(v)
     },
     lineHeightRange,
     lineHeight,
@@ -51,5 +44,5 @@ export function fakeSettings(options: { theme?: string; font?: Font; vimFails?: 
       if (options.vimFails) void Promise.resolve().then(() => vim.set(false))
     },
   }
-  return { model, calls, stores: { theme, fontSize, font, lineHeight, wrap, vim } }
+  return { model, calls, stores: { theme, fontSize, lineHeight, wrap, vim } }
 }

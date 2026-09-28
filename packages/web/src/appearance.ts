@@ -8,8 +8,6 @@ import { DEFAULT_THEME, type Scheme, themeInfo, themeOrDefault } from './themes.
  */
 export const APPEARANCE_KEY = 'ima:appearance'
 
-export type Font = 'mono' | 'sans'
-
 export interface Appearance {
   /**
    * The theme of the page and the editor. Null until the reader picks one:
@@ -18,7 +16,6 @@ export interface Appearance {
    */
   theme: string | null
   fontSize: number
-  font: Font
   lineHeight: number
   wrap: boolean
 }
@@ -36,7 +33,6 @@ export const LINE_HEIGHT = { min: 1.2, max: 2, step: 0.1 } as const
 export const DEFAULT_APPEARANCE: Appearance = {
   theme: null,
   fontSize: 15,
-  font: 'mono',
   lineHeight: 1.6,
   wrap: true,
 }
@@ -84,7 +80,6 @@ export function parseAppearance(raw: unknown, prefersDark = false): Appearance {
   return {
     theme,
     fontSize: clamp(a.fontSize, FONT_SIZE, d.fontSize),
-    font: a.font === 'sans' ? 'sans' : d.font,
     lineHeight: clamp(a.lineHeight, LINE_HEIGHT, d.lineHeight),
     wrap: typeof a.wrap === 'boolean' ? a.wrap : d.wrap,
   }
@@ -117,7 +112,6 @@ export function resolveTheme(a: Appearance, prefersDark: boolean): string {
 
 export function applyText(a: Appearance, root: HTMLElement = document.documentElement): void {
   root.style.setProperty('--editor-font-size', `${a.fontSize}px`)
-  root.style.setProperty('--editor-font', a.font === 'sans' ? 'var(--sans)' : 'var(--mono)')
   root.style.setProperty('--editor-line-height', String(a.lineHeight))
 }
 

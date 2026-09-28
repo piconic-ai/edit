@@ -15,7 +15,6 @@
         if (stored && typeof stored === 'object') {
           if (typeof stored.fontSize === 'number' && stored.fontSize >= 12 && stored.fontSize <= 24)
             root.style.setProperty('--editor-font-size', stored.fontSize + 'px')
-          if (stored.font === 'sans') root.style.setProperty('--editor-font', 'var(--sans)')
           if (typeof stored.lineHeight === 'number' && stored.lineHeight >= 1.2 && stored.lineHeight <= 2)
             root.style.setProperty('--editor-line-height', String(stored.lineHeight))
         }

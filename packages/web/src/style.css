@@ -15,7 +15,6 @@
   --mono:
     ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --editor-font-size: 15px;
-  --editor-font: var(--mono);
   --editor-line-height: 1.6;
 }
 * {
@@ -885,7 +884,7 @@ main.editor[data-resizing] iframe {
 .grid {
   border-collapse: separate;
   border-spacing: 0;
-  font-family: var(--editor-font);
+  font-family: var(--mono);
   font-size: max(var(--editor-font-floor, 0px), calc(var(--editor-font-size) - 1px));
   line-height: 1.4;
 }
