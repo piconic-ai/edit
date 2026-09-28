@@ -162,11 +162,17 @@ describe('remote cursors and selections', () => {
 })
 
 describe('readerTheme', () => {
-  it('returns a fresh extension each call, so reconfiguring it always counts as a change', () => {
+  it('alternates between two pre-built extensions, never returning the same one twice in a row', () => {
     // CodeMirror only remeasures line heights (and so the gutter) when a
-    // reconfigured theme is a new object; a memoized constant would silently
-    // reintroduce the gutter/text misalignment this extension exists to avoid.
-    expect(readerTheme()).not.toBe(readerTheme())
+    // reconfigured theme counts as a change, so consecutive calls must
+    // differ; but minting a fresh EditorView.theme() every call would leak
+    // a StyleModule (and its mounted CSS rules) on every settings change,
+    // since style-mod never releases one once mounted.
+    const calls = [readerTheme(), readerTheme(), readerTheme(), readerTheme()]
+    expect(calls[0]).not.toBe(calls[1])
+    expect(calls[1]).not.toBe(calls[2])
+    expect(calls[2]).not.toBe(calls[3])
+    expect(new Set(calls).size).toBe(2)
   })
 
   it('reconfigures through a Compartment keeping the document and selection, like a theme switch', () => {

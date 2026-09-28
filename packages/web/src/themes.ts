@@ -170,19 +170,7 @@ export function fallbackTheme(id: string): { id: string; extension: Extension } 
 /** Drawn around remote carets on dark themes; every participant colour reads on it. */
 export const CARET_HALO = '#ffffff'
 
-/**
- * What the reader's own settings control: text metrics through CSS variables,
- * and a halo that keeps other people's carets visible on dark backgrounds.
- *
- * Returns a fresh extension on every call. CodeMirror only remeasures line
- * heights (and so the gutter's row positions) when a Compartment holding
- * this is reconfigured with a genuinely new object; setting the CSS
- * variables alone does not, and the gutter drifts out of sync with the text.
- * Callers must put this behind a Compartment and reconfigure it through
- * `dispatch` on every font size/family/line height change, the same way
- * ThemeSwitcher reconfigures the colour theme.
- */
-export function readerTheme(): Extension {
+function buildReaderTheme(): Extension {
   return [
     Prec.highest(
       EditorView.theme({
@@ -200,6 +188,35 @@ export function readerTheme(): Extension {
       '&dark': { colorScheme: 'dark' },
     }),
   ]
+}
+
+// Two pre-built instances to alternate between, rather than building a fresh
+// one on every call: EditorView.theme() mints a new StyleModule each time
+// it runs, and style-mod never releases a mounted module (see its own
+// StyleModule doc comment: themes "should be created once and stored...
+// to avoid leaking rules"), so recreating this per settings change would
+// leak another permanent <style> rule on every font size/family/line
+// height edit for the life of the page.
+const readerThemeA: Extension = buildReaderTheme()
+const readerThemeB: Extension = buildReaderTheme()
+let useReaderThemeA = true
+
+/**
+ * What the reader's own settings control: text metrics through CSS variables,
+ * and a halo that keeps other people's carets visible on dark backgrounds.
+ *
+ * Alternates between the two variants above on every call, so it never
+ * returns the same extension twice in a row. CodeMirror only remeasures
+ * line heights (and so the gutter's row positions) when a Compartment
+ * holding this is reconfigured with a value that counts as a change; a
+ * memoized constant would not, and the gutter would drift out of sync with
+ * the text. Callers must put this behind a Compartment and reconfigure it
+ * through `dispatch` on every font size/family/line height change, the same
+ * way ThemeSwitcher reconfigures the colour theme.
+ */
+export function readerTheme(): Extension {
+  useReaderThemeA = !useReaderThemeA
+  return useReaderThemeA ? readerThemeA : readerThemeB
 }
 
 /**
