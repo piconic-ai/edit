@@ -203,6 +203,21 @@ describe('TableView', () => {
     expect(editor()?.value).toBe('b')
   })
 
+  it('leaves nothing behind after Escape, even after a pause, in a short row', async () => {
+    const { text, view, type, editor, key, cell } = setup('a,b\nc\n')
+    view.edit({ row: 1, col: 1 })
+    type('x')
+    // Longer than the undo manager's capture window.
+    await new Promise((r) => setTimeout(r, 600))
+    type('xy')
+    key(editor() as HTMLElement, 'Escape')
+    expect(text.toString()).toBe('a,b\nc\n')
+    key(cell(1, 1), 'z', { ctrlKey: true })
+    expect(text.toString()).toBe('a,b\nc\n')
+    key(cell(1, 1), 'y', { ctrlKey: true })
+    expect(text.toString()).toBe('a,b\nc\n')
+  })
+
   it('puts the value back on Escape and moves up on Shift+Enter, as a spreadsheet does', () => {
     const { text, view, type, editor, key } = setup('a\nb\nc\n')
     view.edit({ row: 1, col: 0 })

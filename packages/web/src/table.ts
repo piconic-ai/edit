@@ -104,8 +104,8 @@ export class TableView {
   #swallowClick = false
   /** How the last press came: a second tap edits on a touch screen, not with a mouse. */
   #pointer = 'mouse'
-  /** The cell's value when its edit began, for Escape to put back. */
-  #original = ''
+  /** How many undo steps there were when the edit began, for Escape to go back to. */
+  #undoDepth = 0
   #delimiter: string | null = null
   #table: Table | null = null
   #error: CsvError | null = null
@@ -214,8 +214,10 @@ export class TableView {
   edit(at: Position, initial?: string): void {
     if (!this.#table) return
     this.select(at, false)
-    this.#original = this.#valueAt(at)
-    const value = initial ?? this.#original
+    // The edit gets undo steps of its own, which Escape takes back.
+    this.#undo.stopCapturing()
+    this.#undoDepth = this.#undo.undoStack.length
+    const value = initial ?? this.#valueAt(at)
     const editor = h('textarea', { className: 'cell-editor', value, rows: 1 })
     editor.setAttribute('aria-label', 'Cell')
     editor.addEventListener('input', () => {
@@ -753,11 +755,14 @@ export class TableView {
       return
     }
     if (ev.key === 'Escape') {
-      // As in a spreadsheet, Escape drops the edit: the cell gets back the
-      // value it had when the edit began.
+      // As in a spreadsheet, Escape drops the edit. Undoing it, rather than
+      // writing the old value back, also removes a cell the typing created,
+      // and leaves nothing for Ctrl+Z or Ctrl+Y to bring back.
       ev.preventDefault()
-      this.#write(this.#original)
-      this.#finishEdit(true)
+      this.#finishEdit(false)
+      const redoDepth = this.#undo.redoStack.length
+      while (this.#undo.undoStack.length > this.#undoDepth) this.#undo.undo()
+      this.#undo.redoStack.splice(redoDepth)
       this.select(at)
       return
     }
