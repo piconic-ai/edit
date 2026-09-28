@@ -2,7 +2,7 @@ import type { Font } from './appearance.ts'
 import type { Readable } from './store.ts'
 import type { ThemeInfo } from './themes.ts'
 
-export const PANEL_WIDTH = 320
+const PANEL_WIDTH = 320
 const EDGE = 8
 
 /** An eight-toothed gear outline centred in a 24x24 box. */

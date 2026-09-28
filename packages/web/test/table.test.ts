@@ -21,7 +21,6 @@ function setup(content: string, delimiter = ',') {
   const errors: (CsvError | null)[] = []
   const view = new TableView(text, awareness, undoManager, {
     onError: (e) => errors.push(e),
-    schedule: (redraw) => redraw(),
   })
   document.body.append(view.element)
   views.push(view)
@@ -29,7 +28,13 @@ function setup(content: string, delimiter = ',') {
   view.active = true
   const grid = () =>
     [...view.element.querySelectorAll('tbody tr')].map((tr) =>
-      [...tr.querySelectorAll('td')].map((c) => c.firstChild?.textContent ?? ''),
+      [...tr.querySelectorAll('td')].map((c) =>
+        // The cell's own text, not the name label of someone else in it.
+        [...c.childNodes]
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent)
+          .join(''),
+      ),
     )
   const cell = (row: number, col: number) => {
     const el = view.element.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`)
@@ -249,6 +254,30 @@ describe('TableView', () => {
     expect(document.activeElement).toBe(cell(1, 1))
     text.insert(0, 'x')
     expect(document.activeElement).toBe(cell(1, 1))
+  })
+
+  it('moves the keyboard focus with the selected cell when someone adds a row above', () => {
+    const { text, view, cell } = setup('h\na\nb\n')
+    view.select({ row: 2, col: 0 })
+    expect(document.activeElement).toBe(cell(2, 0))
+    text.insert(2, 'new\n')
+    expect(view.selected).toEqual({ row: 3, col: 0 })
+    expect(document.activeElement).toBe(cell(3, 0))
+  })
+
+  it('carries an open edit over when someone adds a row above it', () => {
+    const { text, view, type, editor } = setup('h\na\nb\n')
+    view.edit({ row: 2, col: 0 })
+    type('bee')
+    ;(editor() as HTMLTextAreaElement).setSelectionRange(1, 1)
+    text.insert(0, 'new\n')
+    const moved = editor() as HTMLTextAreaElement
+    expect(moved.closest('td')?.dataset.row).toBe('3')
+    expect(moved.value).toBe('bee')
+    expect(document.activeElement).toBe(moved)
+    expect(moved.selectionStart).toBe(1)
+    type('beet')
+    expect(text.toString()).toBe('new\nh\na\nbeet\n')
   })
 
   it('keeps the selection on its cell when someone adds a row above', () => {

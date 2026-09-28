@@ -19,7 +19,6 @@ import {
   saveAppearance,
 } from './appearance.ts'
 import { delimiterFor } from './csv.ts'
-import { h } from './dom.ts'
 import { avatarFor, fetchIdentity } from './identity.ts'
 import { resolveLanguage } from './language.ts'
 import { applyPalette } from './palette.ts'
@@ -41,8 +40,11 @@ import { fallbackTheme, loadTheme, readerTheme, THEMES, ThemeSwitcher } from './
 import { NARROW_QUERY, type ViewMode, ViewSwitch } from './view.ts'
 import { trackViewport } from './viewport.ts'
 import { loadVimMode, VimToggle, vimExtension } from './vim.ts'
+import './components/Cards.tsx'
 import './components/EndedBanner.tsx'
 import './components/Header.tsx'
+import './components/Layout.tsx'
+import type { LayoutParts } from './components/Layout.tsx'
 import './style.css'
 
 const NAME_KEY = 'ima:name'
@@ -65,49 +67,18 @@ function saveName(name: string): void {
   }
 }
 
-function showCard(title: string, body: (Node | string)[]): HTMLElement {
-  const card = h('div', { className: 'card' }, [h('h1', { textContent: title }), ...body])
-  app.replaceChildren(h('div', { className: 'center' }, [card]))
-  return card
-}
-
 function showLanding(): void {
-  showCard('ima', [
-    h('p', {}, [
-      'Co-edit a local text file, right now. Run ',
-      h('code', { textContent: 'ima notes.md' }),
-      ' and share the link it prints. ',
-      h('a', {
-        href: 'https://github.com/piconic-ai/ima#install',
-        textContent: 'How to install',
-      }),
-    ]),
-    h('p', { textContent: '居間 (living room) + 今 (now).' }),
-  ])
+  render(app, 'Landing')
 }
 
 function askName(): Promise<string> {
   return new Promise((resolve) => {
-    const input = h('input', {
-      name: 'name',
-      placeholder: 'Your name',
-      autocomplete: 'name',
-      required: true,
-      maxLength: 40,
+    render(app, 'JoinCard', {
+      onJoin: (name: string) => {
+        saveName(name)
+        resolve(name)
+      },
     })
-    const form = h('form', {}, [input, h('button', { type: 'submit', textContent: 'Join' })])
-    form.addEventListener('submit', (ev) => {
-      ev.preventDefault()
-      const name = input.value.trim()
-      if (!name) return
-      saveName(name)
-      resolve(name)
-    })
-    showCard('Join the room', [
-      h('p', { textContent: 'Others will see this name next to your cursor.' }),
-      form,
-    ])
-    input.focus()
   })
 }
 
@@ -237,15 +208,15 @@ async function joinRoom(
   const fileName = new Store<string | null>(null)
   const people = new Store<readonly Participant[]>([])
   // The room closes as soon as the host leaves (or was never there).
-  const banner = h('div')
+  let parts: LayoutParts | undefined
+  render(app, 'Layout', { onReady: (p: LayoutParts) => (parts = p) })
+  if (!parts) throw new Error('the room page did not lay out')
+  const { header, banner, main, source } = parts
   render(banner, 'EndedBanner', {
     status: roomStatus,
     text: () => text.toString(),
     onReconnect: () => location.reload(),
   })
-  // CodeMirror forces display on .cm-editor, so the panes are hidden through a wrapper.
-  const source = h('div', { className: 'source' })
-  const main = h('main', { className: 'editor' }, [source])
   const narrow = matchMedia(NARROW_QUERY)
   const isNarrow = new Store(narrow.matches)
   // Filled in below; the switch applies its first mode before the editor exists.
@@ -257,9 +228,7 @@ async function joinRoom(
     isNarrow.set(narrow.matches)
     view.setNarrow(narrow.matches)
   })
-  // Drawn once the editor exists, since the settings act on it.
-  const header = h('div', { className: 'header-slot' })
-  app.replaceChildren(header, banner, main)
+  // The header is drawn once the editor exists, since the settings act on it.
 
   const vimMode = new Compartment()
   const editable = new Compartment()
@@ -290,12 +259,13 @@ async function joinRoom(
   const followEditor = () => {
     if (main.dataset.view === 'split') preview.follow(editor)
   }
-  const preview = new PreviewPane(text, { onRender: followEditor })
+  const preview = new PreviewPane(text, { onRender: followEditor, element: parts.preview })
   const splitter = new Splitter(main, { onResize: followEditor })
   const table = new TableView(text, awareness, undoManager, {
     onError: (error) => view.setTableError(error && describeError(error)),
   })
-  main.append(splitter.element, preview.element, table.element)
+  parts.splitter.replaceChildren(splitter.element)
+  parts.table.replaceChildren(table.element)
   let following = 0
   editor.scrollDOM.addEventListener('scroll', () => {
     following ||= requestAnimationFrame(() => {
@@ -412,9 +382,7 @@ async function start(): Promise<void> {
   }
   const room = parseRoomLocation(location)
   if (!room) {
-    showCard('This link is incomplete', [
-      h('p', { textContent: 'Ask the host to copy the whole URL, including the part after #.' }),
-    ])
+    render(app, 'IncompleteLink')
     return
   }
   // Fetch the editor theme meanwhile, so the editor paints in it from the start.

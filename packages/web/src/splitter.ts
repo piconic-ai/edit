@@ -1,5 +1,7 @@
-import { h } from './dom.ts'
+import { render } from '@barefootjs/client/runtime'
 import { defaultStore, type Store } from './storage.ts'
+import { Store as Value } from './store.ts'
+import './components/SplitterBar.tsx'
 
 export const SPLIT_KEY = 'ima:split'
 export const MIN_RATIO = 0.2
@@ -40,7 +42,10 @@ export function saveSplitRatio(ratio: number, store: Store | null = defaultStore
  * is exposed to CSS as `--split` on the container.
  */
 export class Splitter {
+  /** Holds the divider (components/SplitterBar.tsx). */
   readonly element: HTMLElement
+  /** The editor's share of the width, in percent, as the divider announces it. */
+  readonly percent = new Value(0)
   #container: HTMLElement
   #ratio: number
   #store: Store | null
@@ -54,51 +59,54 @@ export class Splitter {
     this.#store = options.store === undefined ? defaultStore() : options.store
     this.#onResize = options.onResize ?? (() => {})
     this.#ratio = loadSplitRatio(this.#store)
-    this.element = h('div', { className: 'splitter', role: 'separator', tabIndex: 0 })
-    this.element.setAttribute('aria-orientation', 'vertical')
-    this.element.setAttribute('aria-label', 'Resize the editor and preview')
-    this.element.setAttribute('aria-valuemin', String(MIN_RATIO * 100))
-    this.element.setAttribute('aria-valuemax', String(MAX_RATIO * 100))
     this.#show()
-
-    this.element.addEventListener('pointerdown', (ev) => {
-      if (ev.button !== 0) return
-      ev.preventDefault()
-      // Keeps the drag going over the preview's iframes.
-      this.element.setPointerCapture?.(ev.pointerId)
-      container.dataset.resizing = ''
-    })
-    this.element.addEventListener('pointermove', (ev) => {
-      if (!('resizing' in container.dataset)) return
-      this.#set(ratioAt(ev.clientX, container.getBoundingClientRect()), false)
-    })
-    const stop = () => {
-      if (!('resizing' in container.dataset)) return
-      delete container.dataset.resizing
-      saveSplitRatio(this.#ratio, this.#store)
-    }
-    this.element.addEventListener('pointerup', stop)
-    this.element.addEventListener('pointercancel', stop)
-    this.element.addEventListener('dblclick', () => this.#set(DEFAULT_RATIO, true))
-    this.element.addEventListener('keydown', (ev) => {
-      const next =
-        ev.key === 'ArrowLeft'
-          ? this.#ratio - STEP
-          : ev.key === 'ArrowRight'
-            ? this.#ratio + STEP
-            : ev.key === 'Home'
-              ? MIN_RATIO
-              : ev.key === 'End'
-                ? MAX_RATIO
-                : null
-      if (next === null) return
-      ev.preventDefault()
-      this.#set(next, true)
-    })
+    this.element = document.createElement('div')
+    this.element.className = 'splitter-slot'
+    render(this.element, 'SplitterBar', { splitter: this })
   }
 
   get ratio(): number {
     return this.#ratio
+  }
+
+  onPointerDown(ev: PointerEvent): void {
+    if (ev.button !== 0) return
+    ev.preventDefault()
+    // Keeps the drag going over the preview's iframes.
+    ;(ev.currentTarget as HTMLElement | null)?.setPointerCapture?.(ev.pointerId)
+    this.#container.dataset.resizing = ''
+  }
+
+  onPointerMove(ev: PointerEvent): void {
+    if (!('resizing' in this.#container.dataset)) return
+    this.#set(ratioAt(ev.clientX, this.#container.getBoundingClientRect()), false)
+  }
+
+  onPointerEnd(): void {
+    if (!('resizing' in this.#container.dataset)) return
+    delete this.#container.dataset.resizing
+    saveSplitRatio(this.#ratio, this.#store)
+  }
+
+  /** Back to half and half. */
+  reset(): void {
+    this.#set(DEFAULT_RATIO, true)
+  }
+
+  onKey(ev: KeyboardEvent): void {
+    const next =
+      ev.key === 'ArrowLeft'
+        ? this.#ratio - STEP
+        : ev.key === 'ArrowRight'
+          ? this.#ratio + STEP
+          : ev.key === 'Home'
+            ? MIN_RATIO
+            : ev.key === 'End'
+              ? MAX_RATIO
+              : null
+    if (next === null) return
+    ev.preventDefault()
+    this.#set(next, true)
   }
 
   #set(ratio: number, save: boolean): void {
@@ -111,6 +119,6 @@ export class Splitter {
   #show(): void {
     const percent = Math.round(this.#ratio * 1000) / 10
     this.#container.style.setProperty('--split', `${percent}%`)
-    this.element.setAttribute('aria-valuenow', String(percent))
+    this.percent.set(percent)
   }
 }

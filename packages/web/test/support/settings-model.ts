@@ -4,11 +4,11 @@ import { Store } from '../../src/store.ts'
 import { THEMES } from '../../src/themes.ts'
 
 /** A settings model backed by plain stores, recording what each control asked for. */
-export function fakeSettings(options: { theme?: string; vimFails?: boolean } = {}) {
+export function fakeSettings(options: { theme?: string; font?: Font; vimFails?: boolean } = {}) {
   const calls: [string, unknown][] = []
   const theme = new Store(options.theme ?? 'github-light')
   const fontSize = new Store(15)
-  const font = new Store<Font>('mono')
+  const font = new Store<Font>(options.font ?? 'mono')
   const lineHeight = new Store(1.6)
   const wrap = new Store(true)
   const vim = new Store(false)

@@ -58,9 +58,17 @@ body {
   }
 }
 
-/* Mount points for components (main.ts): they add no box of their own. */
+/* Wrappers and mount points around components: they add no box of their own. */
+.layout,
 .header-slot,
-.settings-slot {
+.banner-slot,
+.settings-slot,
+.splitter-host,
+.splitter-slot,
+.table-host,
+.table-slot,
+.menu-slot,
+.menu-host {
   display: contents;
 }
 header {

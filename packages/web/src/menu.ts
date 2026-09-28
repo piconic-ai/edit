@@ -1,4 +1,6 @@
-import { h } from './dom.ts'
+import { render } from '@barefootjs/client/runtime'
+import { Store } from './store.ts'
+import './components/Menu.tsx'
 
 export interface MenuItem {
   label: string
@@ -35,13 +37,28 @@ export function ariaShortcut(keys: readonly string[], mac = isMac()): string {
   return keys.map((k) => names[k]?.[mac ? 0 : 1] ?? k).join('+')
 }
 
+/** A menu row as the component draws it (components/Menu.tsx). */
+export type MenuEntry =
+  | { separator: true }
+  | { separator: false; label: string; kbd?: string; aria?: string; disabled: boolean }
+
+export interface MenuState {
+  open: boolean
+  entries: readonly MenuEntry[]
+  left: number
+  top: number
+}
+
 /**
  * A context menu at a point. It closes on Escape, Tab, a pick, or a press
- * anywhere else, and gives the focus back to where it was.
+ * anywhere else, and gives the focus back to where it was. This class keeps
+ * the state and the behaviour; Menu.tsx draws it inside `element`.
  */
 export class ContextMenu {
   readonly element: HTMLElement
+  readonly state = new Store<MenuState>({ open: false, entries: [], left: 0, top: 0 })
   #mac: boolean
+  #actions: ((() => void) | null)[] = []
   #returnFocus: HTMLElement | null = null
   #onOutside = (ev: Event) => {
     if (!this.element.contains(ev.target as Node)) this.close()
@@ -49,58 +66,56 @@ export class ContextMenu {
 
   constructor(mac = isMac()) {
     this.#mac = mac
-    this.element = h('div', { className: 'context-menu', role: 'menu', hidden: true })
-    this.element.addEventListener('keydown', (ev) => this.#onKey(ev))
-    this.element.addEventListener('contextmenu', (ev) => ev.preventDefault())
+    this.element = document.createElement('div')
+    this.element.className = 'menu-slot'
+    render(this.element, 'Menu', { menu: this })
   }
 
   get open(): boolean {
-    return !this.element.hidden
+    return this.state.get().open
   }
 
   show(items: readonly (MenuItem | null)[], x: number, y: number): void {
     this.#returnFocus = document.activeElement as HTMLElement | null
-    this.element.replaceChildren(
-      ...items.map((item) => {
-        if (!item) return h('div', { className: 'context-menu-separator', role: 'separator' })
-        const button = h('button', {
-          type: 'button',
-          role: 'menuitem',
-          tabIndex: -1,
-          disabled: item.disabled ?? false,
-        })
-        button.append(h('span', { textContent: item.label }))
-        if (item.keys) {
-          button.append(h('kbd', { textContent: formatShortcut(item.keys, this.#mac) }))
-          button.setAttribute('aria-keyshortcuts', ariaShortcut(item.keys, this.#mac))
-        }
-        button.addEventListener('click', () => {
-          this.close()
-          item.action()
-        })
-        return button
-      }),
+    this.#actions = items.map((item) => item?.action ?? null)
+    const entries: MenuEntry[] = items.map((item) =>
+      item
+        ? {
+            separator: false,
+            label: item.label,
+            kbd: item.keys && formatShortcut(item.keys, this.#mac),
+            aria: item.keys && ariaShortcut(item.keys, this.#mac),
+            disabled: item.disabled ?? false,
+          }
+        : { separator: true },
     )
-    this.element.hidden = false
+    this.state.set({ open: true, entries, left: x, top: y })
     // Keep it on screen: flip left or up when it would overflow.
-    const { width, height } = this.element.getBoundingClientRect()
+    const menu = this.element.querySelector<HTMLElement>('.context-menu')
+    const { width, height } = menu?.getBoundingClientRect() ?? { width: 0, height: 0 }
     const vw = document.documentElement.clientWidth
     const vh = document.documentElement.clientHeight
     const left = x + width + EDGE > vw ? Math.max(EDGE, x - width) : x
     const top = y + height + EDGE > vh ? Math.max(EDGE, y - height) : y
-    this.element.style.left = `${left}px`
-    this.element.style.top = `${top}px`
+    this.state.set({ open: true, entries, left, top })
     document.addEventListener('pointerdown', this.#onOutside, true)
     this.#items()[0]?.focus()
   }
 
   close(): void {
     if (!this.open) return
-    this.element.hidden = true
+    this.state.set({ ...this.state.get(), open: false })
     document.removeEventListener('pointerdown', this.#onOutside, true)
     const back = this.#returnFocus
     this.#returnFocus = null
     if (back?.isConnected) back.focus()
+  }
+
+  /** Runs the item at `index` in the list shown, after closing. */
+  pick(index: number): void {
+    const action = this.#actions[index]
+    this.close()
+    action?.()
   }
 
   #items(): HTMLButtonElement[] {
@@ -109,7 +124,7 @@ export class ContextMenu {
     )
   }
 
-  #onKey(ev: KeyboardEvent): void {
+  onKey(ev: KeyboardEvent): void {
     const items = this.#items()
     const at = items.indexOf(document.activeElement as HTMLButtonElement)
     const target =

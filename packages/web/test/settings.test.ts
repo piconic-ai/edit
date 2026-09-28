@@ -90,14 +90,15 @@ describe('Settings', () => {
   })
 
   it('reports the font, and shows the one the model holds', () => {
-    const { input, calls, stores } = mount()
+    // Not the first option, so the browser's own default cannot pass for it.
+    const { input, calls, stores } = mount({ font: 'sans' })
     const select = input('Font') as unknown as HTMLSelectElement
-    expect(select.value).toBe('mono')
-    select.value = 'sans'
+    expect(select.value).toBe('sans')
+    select.value = 'mono'
     select.dispatchEvent(new Event('change'))
-    expect(calls).toEqual([['font', 'sans']])
-    stores.font.set('mono')
-    expect(select.value).toBe('mono')
+    expect(calls).toEqual([['font', 'mono']])
+    stores.font.set('sans')
+    expect(select.value).toBe('sans')
   })
 
   it('reports every step of a range with a formatted value', () => {
