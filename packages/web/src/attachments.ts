@@ -1,4 +1,11 @@
-import { type Attachment, type BlobKeys, blobIdFor, contentHash, encryptBlob } from '@ima/protocol'
+import {
+  type Attachment,
+  type BlobKeys,
+  blobIdFor,
+  contentHash,
+  encryptBlob,
+  type RoomStatus,
+} from '@ima/protocol'
 import { ImageError, prepareImage, type Shrink } from './image.ts'
 import { Store } from './store.ts'
 
@@ -26,6 +33,22 @@ export function hostAttachments(states: Map<number, State>): HostAttachments | n
     if (typeof a.maxBytes !== 'number' || !(a.maxBytes > 0)) return null
     return { dir: a.dir, maxBytes: Math.min(a.maxBytes, MAX_BYTES) }
   }
+  return null
+}
+
+/**
+ * Why images cannot be added right now, or null when they can. Before the
+ * host's awareness state arrives, and while reconnecting, its absence says
+ * nothing about its version.
+ */
+export function whyNoImages(
+  status: RoomStatus,
+  hostHere: boolean,
+  host: HostAttachments | null,
+): string | null {
+  if (status === 'closed') return 'The session has ended.'
+  if (status !== 'connected' || !hostHere) return 'Connecting to the host. Try again in a moment.'
+  if (!host) return "The host's ima is too old to save images."
   return null
 }
 
@@ -143,6 +166,9 @@ export class Attachments {
     const waiting = this.#pending.get(hash)
     if (waiting) return waiting.promise
     await this.#put(hash, await encryptBlob(this.#opts.keys, image.bytes))
+    // Another upload of the same image may have got here first.
+    const announced = this.#pending.get(hash)
+    if (announced) return announced.promise
     return this.#announce(hash, image.type)
   }
 

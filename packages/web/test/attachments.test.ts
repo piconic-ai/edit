@@ -13,6 +13,7 @@ import {
   type AttachmentsOptions,
   hostAttachments,
   MAX_BYTES,
+  whyNoImages,
 } from '../src/attachments.ts'
 
 const ROOM = 'AAAAAAAAAAAAAAAAAAAAAA'
@@ -146,10 +147,43 @@ describe('Attachments', () => {
     expect(sent).toHaveLength(0)
   })
 
+  it('adds the same image twice at once', async () => {
+    const { attachments, sent } = await setup([201, 201])
+    const first = attachments.upload(file())
+    const second = attachments.upload(file())
+    await vi.waitFor(() => expect(sent.length).toBeGreaterThan(0))
+    await new Promise((r) => setTimeout(r, 20))
+    // One announcement, answered once, settles both.
+    expect(sent).toHaveLength(1)
+    const hash = (sent[0] as { hash: string }).hash
+    attachments.handle({ kind: 'stored', hash, path: `assets/${hash}.png` })
+    expect(await Promise.all([first, second])).toEqual([`assets/${hash}.png`, `assets/${hash}.png`])
+  })
+
   it('ignores answers about other images', async () => {
     const { attachments } = await setup()
     attachments.handle({ kind: 'stored', hash: '0'.repeat(32), path: 'assets/x.png' })
     attachments.handle({ kind: 'rejected', hash: '0'.repeat(32), reason: 'type' })
+  })
+})
+
+describe('whyNoImages', () => {
+  const host = { dir: 'assets', maxBytes: 1000 }
+
+  it('lets images in only with a host that saves them, in an open room', () => {
+    expect(whyNoImages('connected', true, host)).toBeNull()
+    expect(whyNoImages('closed', true, host)).toMatch(/ended/)
+    expect(whyNoImages('connected', true, null)).toMatch(/too old/)
+  })
+
+  it('does not blame the host before hearing from it', () => {
+    for (const [status, hostHere] of [
+      ['connecting', false],
+      ['disconnected', true],
+      ['connected', false],
+    ] as const) {
+      expect(whyNoImages(status, hostHere, null)).toMatch(/Connecting to the host/)
+    }
   })
 })
 

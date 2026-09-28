@@ -137,6 +137,77 @@ describe('stripMetadata', () => {
   })
 })
 
+// EXIF in an APP1: a TIFF header, then IFD0 with a GPS pointer and the orientation.
+function exif(orientation: number, little: boolean): string {
+  const u16 = (n: number) => (little ? [n & 0xff, n >> 8] : u16be(n))
+  const u32 = (n: number) => (little ? u32le(n) : u32be(n))
+  const tiff = bytes(
+    little ? 'II' : 'MM',
+    u16(42),
+    u32(8),
+    u16(2),
+    [...u16(0x8825), ...u16(4), ...u32(1), ...u32(38)], // GPS IFD pointer
+    [...u16(0x0112), ...u16(3), ...u32(1), ...u16(orientation), 0, 0],
+    u32(0),
+    'GPS 35.6N 139.7E',
+  )
+  return `Exif\0\0${text(tiff)}`
+}
+
+const photo = (app1: string, tail: number[] = []) =>
+  bytes([0xff, 0xd8], segment(0xe1, app1), [0xff, 0xda], u16be(2), 'scan', [0xff, 0xd9], tail)
+
+// Reads the orientation back from stripped bytes, where it must be the only EXIF entry.
+function orientationOf(jpeg: Uint8Array): number | null {
+  const at = text(jpeg).indexOf('Exif\0\0')
+  if (at < 0) return null
+  const tiff = new DataView(jpeg.buffer, jpeg.byteOffset + at + 6)
+  const little = tiff.getUint8(0) === 0x49
+  const ifd = tiff.getUint32(4, little)
+  expect(tiff.getUint16(ifd, little)).toBe(1)
+  expect(tiff.getUint16(ifd + 2, little)).toBe(0x0112)
+  return tiff.getUint16(ifd + 10, little)
+}
+
+describe('stripMetadata on JPEG photos', () => {
+  it.each([true, false])('keeps the orientation and nothing else (little-endian: %s)', (little) => {
+    const out = stripMetadata(photo(exif(6, little)), 'image/jpeg')
+    expect(orientationOf(out)).toBe(6)
+    expect(text(out)).not.toContain('GPS')
+  })
+
+  it('drops EXIF whose orientation is the default', () => {
+    const out = stripMetadata(photo(exif(1, false)), 'image/jpeg')
+    expect(orientationOf(out)).toBeNull()
+    expect(text(out)).toBe(text(bytes([0xff, 0xd8, 0xff, 0xda], u16be(2), 'scan', [0xff, 0xd9])))
+  })
+
+  it('drops what follows the end of the image', () => {
+    const out = stripMetadata(photo('Exif\0\0', [...bytes('ftypmp42 GPS video')]), 'image/jpeg')
+    expect(text(out).endsWith('scan\xff\xd9')).toBe(true)
+  })
+
+  it('keeps every scan of a progressive JPEG, with stuffed bytes and restarts', () => {
+    const scanned = bytes(
+      [0xff, 0xd8],
+      [0xff, 0xda],
+      u16be(2),
+      [1, 0xff, 0x00, 2, 0xff, 0xd0, 3],
+      segment(0xc4, 'huffman'),
+      [0xff, 0xda],
+      u16be(2),
+      [4, 5],
+      [0xff, 0xd9],
+    )
+    expect(stripMetadata(scanned, 'image/jpeg')).toEqual(scanned)
+  })
+
+  it('refuses a scan that never ends', () => {
+    const cut = bytes([0xff, 0xd8, 0xff, 0xda], u16be(2), 'scan')
+    expect(() => stripMetadata(cut, 'image/jpeg')).toThrow(ImageError)
+  })
+})
+
 describe('isAnimatedGif', () => {
   it('spots the looping extension', () => {
     expect(isAnimatedGif(bytes('GIF89a', '!\xff\x0bNETSCAPE2.0'))).toBe(true)

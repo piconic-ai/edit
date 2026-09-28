@@ -17,7 +17,7 @@ import {
   resolveTheme,
   saveAppearance,
 } from './appearance.ts'
-import { Attachments, hostAttachments } from './attachments.ts'
+import { Attachments, hostAttachments, whyNoImages } from './attachments.ts'
 import { delimiterFor } from './csv.ts'
 import { avatarFor, fetchIdentity } from './identity.ts'
 import { resolveLanguage } from './language.ts'
@@ -269,11 +269,12 @@ async function joinRoom(
       editable.of([]),
       yCollab(text, awareness, { undoManager }),
       imagePaste({
-        blocked: () => {
-          if (roomStatus.get() === 'closed') return 'The session has ended.'
-          if (!attachments.host) return "The host's ima is too old to save images."
-          return null
-        },
+        blocked: () =>
+          whyNoImages(
+            roomStatus.get(),
+            people.get().some((p) => p.isHost),
+            attachments.host,
+          ),
         upload: (file) => attachments.upload(file),
         onError: (message) => notices.show(message),
       }),

@@ -50,10 +50,13 @@ function unreadable(): never {
   throw new ImageError('unreadable')
 }
 
-// JPEG: a run of segments until the scan. APP1 holds EXIF (where a photo's
-// location is) and XMP.
+// JPEG: segments, each scan followed by its entropy-coded data, up to the end
+// of image. APP1 holds EXIF (where a photo's location is) and XMP; only EXIF's
+// orientation is kept, or phone photos would turn sideways. Anything after
+// the end of image (a motion photo's video, an HDR gain map) is dropped too.
 function stripJpeg(bytes: Uint8Array): Uint8Array {
   const out: Uint8Array[] = [bytes.subarray(0, 2)]
+  let orientationKept = false
   let i = 2
   for (;;) {
     if (bytes[i] !== 0xff) unreadable()
@@ -63,9 +66,8 @@ function stripJpeg(bytes: Uint8Array): Uint8Array {
       i++ // fill byte
       continue
     }
-    if (marker === 0xda || marker === 0xd9) {
-      // Start of scan (or end of image): the rest is image data.
-      out.push(bytes.subarray(i))
+    if (marker === 0xd9) {
+      out.push(bytes.subarray(i, i + 2))
       break
     }
     if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
@@ -74,11 +76,77 @@ function stripJpeg(bytes: Uint8Array): Uint8Array {
       continue
     }
     const length = ((bytes[i + 2] ?? 0) << 8) | (bytes[i + 3] ?? 0)
-    if (length < 2 || i + 2 + length > bytes.length) unreadable()
-    if (marker !== 0xe1) out.push(bytes.subarray(i, i + 2 + length))
-    i += 2 + length
+    const end = i + 2 + length
+    if (length < 2 || end > bytes.length) unreadable()
+    if (marker === 0xe1) {
+      const orientation = exifOrientation(bytes.subarray(i + 4, end))
+      if (orientation && orientation !== 1 && !orientationKept) {
+        out.push(orientationSegment(orientation))
+        orientationKept = true
+      }
+    } else {
+      out.push(bytes.subarray(i, end))
+    }
+    i = end
+    if (marker === 0xda) {
+      // Entropy-coded data runs to the next marker: 0xff is followed there
+      // by 0x00 (a stuffed byte) or a restart marker, and by nothing else.
+      while (i < bytes.length) {
+        const next = bytes[i + 1]
+        if (
+          bytes[i] === 0xff &&
+          next !== 0x00 &&
+          !(next !== undefined && next >= 0xd0 && next <= 0xd7)
+        ) {
+          break
+        }
+        i++
+      }
+      if (i >= bytes.length) unreadable()
+      out.push(bytes.subarray(end, i))
+    }
   }
   return concat(out)
+}
+
+const EXIF_HEADER = ascii('Exif\0\0')
+const ORIENTATION_TAG = 0x0112
+
+/** The orientation (1 to 8) in an APP1's EXIF, if it has one. */
+function exifOrientation(app1: Uint8Array): number | null {
+  if (!startsWith(app1, EXIF_HEADER)) return null
+  const tiff = app1.subarray(EXIF_HEADER.length)
+  if (tiff.length < 8) return null
+  const little = tiff[0] === 0x49 && tiff[1] === 0x49
+  if (!little && !(tiff[0] === 0x4d && tiff[1] === 0x4d)) return null
+  const view = new DataView(tiff.buffer, tiff.byteOffset, tiff.byteLength)
+  const ifd = view.getUint32(4, little)
+  if (ifd + 2 > tiff.length) return null
+  const count = view.getUint16(ifd, little)
+  for (let n = 0; n < count; n++) {
+    const entry = ifd + 2 + n * 12
+    if (entry + 12 > tiff.length) return null
+    if (view.getUint16(entry, little) === ORIENTATION_TAG) {
+      const value = view.getUint16(entry + 8, little)
+      return value >= 1 && value <= 8 ? value : null
+    }
+  }
+  return null
+}
+
+/** An APP1 whose EXIF holds the orientation and nothing else. */
+function orientationSegment(orientation: number): Uint8Array {
+  const tiff = [
+    ...ascii('MM'),
+    0,
+    42,
+    ...[0, 0, 0, 8], // IFD0 right after the header
+    ...[0, 1], // one entry
+    ...[0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, orientation, 0, 0], // SHORT orientation
+    ...[0, 0, 0, 0], // no next IFD
+  ]
+  const data = [...EXIF_HEADER, ...tiff]
+  return new Uint8Array([0xff, 0xe1, (data.length + 2) >> 8, (data.length + 2) & 0xff, ...data])
 }
 
 // PNG: length, type, data and CRC per chunk, up to IEND. eXIf holds EXIF; the
@@ -153,8 +221,8 @@ export function isAnimatedGif(bytes: Uint8Array): boolean {
 }
 
 /**
- * Re-encodes an image at `scale` of its size. The result carries no
- * metadata. Swappable, since tests have no canvas.
+ * Re-encodes an image at `scale` of its size, applying a JPEG's orientation.
+ * The result carries no metadata. Swappable, since tests have no canvas.
  */
 export type Shrink = (bytes: Uint8Array, type: ImageType, scale: number) => Promise<Uint8Array>
 
