@@ -172,26 +172,35 @@ export const CARET_HALO = '#ffffff'
 
 /**
  * What the reader's own settings control: text metrics through CSS variables,
- * so changing them needs no reconfiguration, and a halo that keeps other
- * people's carets visible on dark backgrounds.
+ * and a halo that keeps other people's carets visible on dark backgrounds.
+ *
+ * Returns a fresh extension on every call. CodeMirror only remeasures line
+ * heights (and so the gutter's row positions) when a Compartment holding
+ * this is reconfigured with a genuinely new object; setting the CSS
+ * variables alone does not, and the gutter drifts out of sync with the text.
+ * Callers must put this behind a Compartment and reconfigure it through
+ * `dispatch` on every font size/family/line height change, the same way
+ * ThemeSwitcher reconfigures the colour theme.
  */
-export const readerTheme: Extension = [
-  Prec.highest(
-    EditorView.theme({
-      // --editor-font-floor keeps iOS from zooming in when the editor gets focus (style.css).
-      '&': { fontSize: 'max(var(--editor-font-floor, 0px), var(--editor-font-size))' },
-      '.cm-scroller': {
-        fontFamily: 'var(--editor-font)',
-        lineHeight: 'var(--editor-line-height)',
-      },
+export function readerTheme(): Extension {
+  return [
+    Prec.highest(
+      EditorView.theme({
+        // --editor-font-floor keeps iOS from zooming in when the editor gets focus (style.css).
+        '&': { fontSize: 'max(var(--editor-font-floor, 0px), var(--editor-font-size))' },
+        '.cm-scroller': {
+          fontFamily: 'var(--editor-font)',
+          lineHeight: 'var(--editor-line-height)',
+        },
+      }),
+    ),
+    EditorView.baseTheme({
+      '&dark .cm-ySelectionCaret': { boxShadow: `0 0 0 1px ${CARET_HALO}` },
+      '&light': { colorScheme: 'light' },
+      '&dark': { colorScheme: 'dark' },
     }),
-  ),
-  EditorView.baseTheme({
-    '&dark .cm-ySelectionCaret': { boxShadow: `0 0 0 1px ${CARET_HALO}` },
-    '&light': { colorScheme: 'light' },
-    '&dark': { colorScheme: 'dark' },
-  }),
-]
+  ]
+}
 
 /**
  * Swaps the editor theme. Themes load lazily, so a slow load must not

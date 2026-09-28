@@ -114,6 +114,7 @@ function settingsModel(
   wrapMode: Compartment,
   vim: VimToggle,
   initial: Appearance,
+  fontMode: Compartment,
 ): SettingsModel {
   const prefersDark = matchMedia(DARK_QUERY)
   let current = initial
@@ -142,7 +143,10 @@ function settingsModel(
   const setText = (next: Appearance) => {
     update(next)
     applyText(current)
-    editor.requestMeasure()
+    // A CSS variable change alone does not make CodeMirror remeasure line
+    // heights, so the gutter would drift out of sync with the text (see
+    // readerTheme's doc comment in themes.ts).
+    editor.dispatch({ effects: fontMode.reconfigure(readerTheme()) })
   }
   return {
     themes: THEMES,
@@ -235,6 +239,7 @@ async function joinRoom(
   const language = new Compartment()
   const themeMode = new Compartment()
   const wrap = new Compartment()
+  const fontMode = new Compartment()
   // Reused so switching back to Markdown does not reparse the document.
   const markdownSupport = markdown()
   const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)]
@@ -249,7 +254,7 @@ async function joinRoom(
       Prec.high(keymap.of(yUndoManagerKeymap)),
       language.of(markdownSupport),
       themeMode.of(theme.extension),
-      readerTheme,
+      fontMode.of(readerTheme()),
       wrap.of(lineWrapping(appearance.wrap)),
       editable.of([]),
       yCollab(text, awareness, { undoManager }),
@@ -295,6 +300,7 @@ async function joinRoom(
     wrap,
     vim,
     appearance,
+    fontMode,
   )
   if (loadVimMode()) settings.setVim(true)
   render(header, 'Header', {

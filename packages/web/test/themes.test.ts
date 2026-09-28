@@ -151,7 +151,7 @@ describe('remote cursors and selections', () => {
   it.each(['light', 'dark'] as const)(
     'draws the caret halo only on %s themes that need it',
     (scheme) => {
-      const view = mount([fallbackTheme(DEFAULT_THEME[scheme]).extension, readerTheme])
+      const view = mount([fallbackTheme(DEFAULT_THEME[scheme]).extension, readerTheme()])
       const caret = view.contentDOM.appendChild(document.createElement('span'))
       caret.className = 'cm-ySelectionCaret'
       const shadow = getComputedStyle(caret).boxShadow
@@ -159,6 +159,29 @@ describe('remote cursors and selections', () => {
       else expect(shadow).toBe('')
     },
   )
+})
+
+describe('readerTheme', () => {
+  it('returns a fresh extension each call, so reconfiguring it always counts as a change', () => {
+    // CodeMirror only remeasures line heights (and so the gutter) when a
+    // reconfigured theme is a new object; a memoized constant would silently
+    // reintroduce the gutter/text misalignment this extension exists to avoid.
+    expect(readerTheme()).not.toBe(readerTheme())
+  })
+
+  it('reconfigures through a Compartment keeping the document and selection, like a theme switch', () => {
+    const doc = new Y.Doc()
+    const text = doc.getText('content')
+    const font = new Compartment()
+    const view = mount([basicSetup, font.of(readerTheme()), yCollab(text, new Awareness(doc))])
+    doc.transact(() => text.insert(0, 'shared text'), 'remote')
+    view.dispatch({ selection: EditorSelection.single(2, 6) })
+
+    view.dispatch({ effects: font.reconfigure(readerTheme()) })
+
+    expect(view.state.doc.toString()).toBe('shared text')
+    expect(view.state.selection.main).toMatchObject({ from: 2, to: 6 })
+  })
 })
 
 function deferred<T>() {
@@ -181,7 +204,7 @@ function setup() {
   const view = mount([
     basicSetup,
     theme.of(marker('start')),
-    readerTheme,
+    readerTheme(),
     yCollab(text, new Awareness(doc)),
   ])
   doc.transact(() => text.insert(0, 'shared text'), 'remote')
