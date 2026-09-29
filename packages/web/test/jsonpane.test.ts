@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { undo } from '@codemirror/commands'
 import type { CanvasMessage } from '@ima/protocol'
 import { MAX_CANVAS_EDIT_BYTES } from '@ima/protocol'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -136,6 +137,46 @@ describe('JsonPane', () => {
     pane.check()
     expect(sent).toHaveLength(2)
     expect(lastEdit().base).toBe(base)
+  })
+
+  it('does not undo what it took in from others', () => {
+    const { doc, pane, sent, text } = setup()
+    mapOf(doc, 'a').set('x', 42)
+    undo(pane.view)
+    expect(text()).toContain('"x":42')
+    pane.check()
+    expect(sent).toEqual([])
+  })
+
+  it('sends again what went unanswered once the connection is back', () => {
+    const { pane, sent, text, type, lastEdit } = setup()
+    const base = text()
+    const next = base.replace('"x":0', '"x":5')
+    type(next)
+    pane.check()
+    // The frame, or its answer, was lost while the connection was down.
+    pane.reconnected()
+    expect(sent).toHaveLength(2)
+    expect(lastEdit()).toMatchObject({ base, next })
+    pane.handle({ kind: 'applied', id: lastEdit().id })
+    expect(pane.status.get()).toEqual({ kind: 'synced' })
+    // Nothing waiting: a reconnect sends nothing.
+    pane.reconnected()
+    expect(sent).toHaveLength(2)
+  })
+
+  it('takes in what changed meanwhile once the text is back to the base', () => {
+    const { doc, pane, text, type, lastEdit } = setup()
+    const base = text()
+    type(base.replace('"x":0', '"x":"zero"'))
+    pane.check()
+    pane.handle({ kind: 'rejected', id: lastEdit().id, reason: 'no' })
+    mapOf(doc, 'a').set('width', 300)
+    type(base)
+    pane.check()
+    expect(pane.status.get()).toEqual({ kind: 'synced' })
+    expect(text()).toBe(toJSON(read(doc)))
+    expect(text()).toContain('"width":300')
   })
 
   it('ignores answers to edits it did not send', () => {

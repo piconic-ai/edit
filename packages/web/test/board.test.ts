@@ -319,6 +319,10 @@ describe('BoardView', () => {
     expect(view.element.querySelector('.canvas-json-status')?.textContent).toBe(
       'In step with the canvas.',
     )
+    // Clicking the toggle twice quickly is not a double click on the board.
+    toggle.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await tick()
+    expect(read(doc).nodes).toHaveLength(1)
     view.readOnly = true
     expect(json.status.get()).toEqual({ kind: 'closed' })
   })

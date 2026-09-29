@@ -121,6 +121,8 @@ function settingsModel(
   vim: VimToggle,
   initial: Appearance,
   fontMode: Compartment,
+  /** Other editors on the page, which take the same reader theme. */
+  fontFollowers: readonly { view: EditorView; compartment: Compartment }[] = [],
 ): SettingsModel {
   const prefersDark = matchMedia(DARK_QUERY)
   let current = initial
@@ -150,8 +152,11 @@ function settingsModel(
     applyText(current)
     // A CSS variable change alone does not make CodeMirror remeasure line
     // heights, so the gutter would drift out of sync with the text (see
-    // readerTheme's doc comment in themes.ts).
-    editor.dispatch({ effects: fontMode.reconfigure(readerTheme()) })
+    // readerTheme's doc comment in themes.ts). Every editor gets the same
+    // instance, so the next call alternates for all of them.
+    const reader = readerTheme()
+    editor.dispatch({ effects: fontMode.reconfigure(reader) })
+    for (const f of fontFollowers) f.view.dispatch({ effects: f.compartment.reconfigure(reader) })
   }
   return {
     themes: THEMES,
@@ -258,6 +263,8 @@ async function joinRoom(
   // Reused so switching back to Markdown does not reparse the document.
   const markdownSupport = markdown()
   const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+  // One instance for every editor on the page: readerTheme() alternates.
+  const reader = readerTheme()
   const undoManager = new Y.UndoManager(text)
   const editor = new EditorView({
     parent: source,
@@ -269,7 +276,7 @@ async function joinRoom(
       Prec.high(keymap.of(yUndoManagerKeymap)),
       language.of(markdownSupport),
       themeMode.of(theme.extension),
-      fontMode.of(readerTheme()),
+      fontMode.of(reader),
       wrap.of(lineWrapping(appearance.wrap)),
       editable.of([]),
       yCollab(text, awareness, { undoManager }),
@@ -301,9 +308,10 @@ async function joinRoom(
   })
   // The canvas as JSON, in the editor's theme; edits go to the host.
   const jsonTheme = new Compartment()
+  const jsonFont = new Compartment()
   const jsonPane = new JsonPane(doc, {
     send: (m) => client?.sendCanvas(m),
-    extensions: [jsonTheme.of(theme.extension), readerTheme()],
+    extensions: [jsonTheme.of(theme.extension), jsonFont.of(reader)],
   })
   const board = new BoardView(doc, awareness, { json: jsonPane })
   parts.splitter.replaceChildren(splitter.element)
@@ -335,7 +343,9 @@ async function joinRoom(
   const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
   const themes = new ThemeSwitcher(editor, themeMode, theme.id)
   themes.follow(jsonPane.view, jsonTheme)
-  const settings = settingsModel(editor, themes, wrap, vim, appearance, fontMode)
+  const settings = settingsModel(editor, themes, wrap, vim, appearance, fontMode, [
+    { view: jsonPane.view, compartment: jsonFont },
+  ])
   if (loadVimMode()) settings.setVim(true)
   render(header, 'Header', {
     file: fileName,
@@ -405,7 +415,10 @@ async function joinRoom(
     onStatus: (s) => {
       setStatus(s)
       renderPeople()
-      if (s === 'connected') attachments.reconnected()
+      if (s === 'connected') {
+        attachments.reconnected()
+        jsonPane.reconnected()
+      }
     },
     onAttachment: (a) => attachments.handle(a),
     onCanvas: (m) => jsonPane.handle(m),

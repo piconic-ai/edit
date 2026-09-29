@@ -124,7 +124,8 @@ export class JsonPane {
     }
     this.#view.dispatch({
       changes: { from: start, to: text.length - end, insert: next.slice(start, next.length - end) },
-      annotations: Transaction.userEvent.of(FOLLOW),
+      // Not the reader's to undo: undoing it would send a revert of others' edits.
+      annotations: [Transaction.userEvent.of(FOLLOW), Transaction.addToHistory.of(false)],
     })
     this.status.set({ kind: 'synced' })
   }
@@ -143,7 +144,11 @@ export class JsonPane {
     if (this.#closed) return
     const text = this.#text
     if (text === this.#base) {
-      if (this.#pending.size === 0) this.status.set({ kind: 'synced' })
+      if (this.#pending.size === 0) {
+        this.status.set({ kind: 'synced' })
+        // Back to what the canvas was: take in what changed meanwhile.
+        this.#follow()
+      }
       return
     }
     try {
@@ -184,6 +189,17 @@ export class JsonPane {
     } else {
       this.status.set({ kind: 'rejected', message: message.reason })
     }
+  }
+
+  /**
+   * After the connection came back. Frames sent or answered while it was
+   * down are gone, so what was waiting for an answer is sent again: the host
+   * applies base → next as a three-way change, so a second time is harmless.
+   */
+  reconnected(): void {
+    if (this.#pending.size === 0) return
+    this.#pending.clear()
+    this.check()
   }
 
   /** Once the room has closed: nothing can be sent, so nothing can be typed. */

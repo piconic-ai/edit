@@ -423,7 +423,8 @@ export class BoardView {
   /** A double click: on a text node, type in it; on the empty board, add one there. */
   onDoubleClick(e: MouseEvent): void {
     const target = e.target as Element
-    if (target.closest('.canvas-editor')) return
+    // A quick second click on the JSON toggle is not a place to add a node.
+    if (target.closest('.canvas-editor, .canvas-json-toggle')) return
     const id = target.closest<HTMLElement>('.bf-flow__node')?.dataset.id
     if (id) this.edit(id)
     else this.addTextAt(e.clientX, e.clientY)
