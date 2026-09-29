@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@barefootjs/client": "0.39.1",
+    "@barefootjs/xyflow": "0.39.1",
     "@catppuccin/codemirror": "^1.0.3",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
