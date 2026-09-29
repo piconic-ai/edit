@@ -26,6 +26,7 @@ import {
   textOf,
 } from './canvas.ts'
 import { type Box, EdgeLayer, shapesOf } from './edges.ts'
+import type { JsonPane } from './jsonpane.ts'
 import { Store } from './store.ts'
 import './components/CanvasBoard.tsx'
 
@@ -101,6 +102,13 @@ export class BoardView {
   readonly editing = new Store<string | null>(null)
   /** Whether the canvas has nothing in it yet, for the hint. */
   readonly empty = new Store(true)
+  /** The canvas as JSON, beside the board while `showJson` is on. */
+  readonly json: JsonPane | null
+  /**
+   * Whether the JSON shows. A back door for fixes and bulk edits, so it is
+   * off whenever the page opens, and not remembered.
+   */
+  readonly showJson = new Store(false)
   #doc: Y.Doc
   #awareness: Awareness
   #undo: Y.UndoManager
@@ -117,9 +125,10 @@ export class BoardView {
   #edgesChanged = new Store(0)
   #drawnEdges = ''
 
-  constructor(doc: Y.Doc, awareness: Awareness) {
+  constructor(doc: Y.Doc, awareness: Awareness, options: { json?: JsonPane } = {}) {
     this.#doc = doc
     this.#awareness = awareness
+    this.json = options.json ?? null
     const scope = [doc.getArray(NODES), doc.getArray(EDGES)]
     // Undo only this browser's edits, not everyone's; typing in a text node
     // adds the editor's own origin.
@@ -152,9 +161,21 @@ export class BoardView {
   /** Once the room has closed: the board shows the canvas, and nothing changes it. */
   set readOnly(on: boolean) {
     this.#readOnly = on
-    if (on) this.finishEditing()
+    if (on) {
+      this.finishEditing()
+      this.json?.close()
+    }
     this.#store?.setNodesDraggable(!on)
     this.#store?.setNodesConnectable(!on)
+  }
+
+  toggleJson(): void {
+    this.showJson.set(!untrack(() => this.showJson.get()))
+  }
+
+  /** Where CanvasBoard puts the JSON pane's editor. */
+  mountJson(host: HTMLElement): void {
+    if (this.json) host.prepend(this.json.element)
   }
 
   /** Called by the flow once it exists. */

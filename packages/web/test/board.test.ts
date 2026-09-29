@@ -5,9 +5,13 @@ import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { BoardView } from '../src/board.ts'
 import { EDGES, NODES, read, TEXT } from '../src/canvas.ts'
+import { JsonPane } from '../src/jsonpane.ts'
 
 beforeAll(() => {
   // jsdom has neither; xyflow measures with the first and the board waits on the second.
+  // jsdom lays nothing out; CodeMirror measures text ranges.
+  Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList
+  Range.prototype.getBoundingClientRect ??= () => new DOMRect()
   globalThis.ResizeObserver ??= class {
     observe() {}
     unobserve() {}
@@ -246,7 +250,7 @@ describe('BoardView', () => {
     const doc = docOf([node('a')])
     const view = setup(doc)
     await tick()
-    const pane = view.element.querySelector('.canvas-view') as HTMLElement
+    const pane = view.element.querySelector('.canvas-board') as HTMLElement
     pane.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 500, clientY: 300 }))
     await tick()
     const added = read(doc).nodes[1]
@@ -297,13 +301,35 @@ describe('BoardView', () => {
     expect(awarenessOf(view).getLocalState()?.cursor).toBeNull()
   })
 
+  it('shows the JSON beside the board on demand', async () => {
+    const doc = docOf([node('a')])
+    const json = new JsonPane(doc, { send: () => {} })
+    const view = new BoardView(doc, new Awareness(doc), { json })
+    document.body.append(view.element)
+    views.push(view)
+    view.active = true
+    await tick()
+    const section = view.element.querySelector('.canvas-view') as HTMLElement
+    expect(section.hasAttribute('data-json')).toBe(false)
+    expect(view.element.querySelector('.canvas-json .canvas-json-editor')).toBe(json.element)
+    const toggle = view.element.querySelector('.canvas-json-toggle') as HTMLButtonElement
+    toggle.click()
+    expect(section.hasAttribute('data-json')).toBe(true)
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    expect(view.element.querySelector('.canvas-json-status')?.textContent).toBe(
+      'In step with the canvas.',
+    )
+    view.readOnly = true
+    expect(json.status.get()).toEqual({ kind: 'closed' })
+  })
+
   it('changes nothing once the room has closed', async () => {
     const doc = docOf([node('a')])
     const view = setup(doc)
     await tick()
     view.readOnly = true
     const before = Y.encodeStateAsUpdate(doc)
-    const pane = view.element.querySelector('.canvas-view') as HTMLElement
+    const pane = view.element.querySelector('.canvas-board') as HTMLElement
     pane.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 10, clientY: 10 }))
     view.edit('a')
     expect(view.editing.get()).toBeNull()

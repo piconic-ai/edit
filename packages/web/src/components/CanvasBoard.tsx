@@ -3,7 +3,28 @@
 import { useContext } from '@barefootjs/client'
 import { type EdgeBase, type NodeBase, Position } from '@barefootjs/xyflow'
 import { BoardContext, type BoardView, MAX_ZOOM, MIN_ZOOM } from '../board.ts'
+import type { JsonStatus } from '../jsonpane.ts'
 import { Flow, Handle } from './xyflow/index.tsx'
+
+/** What the JSON pane says under the text. */
+const statusText = (status: JsonStatus | undefined) => {
+  switch (status?.kind) {
+    case 'editing':
+      return 'Editing…'
+    case 'invalid':
+      return `Not valid JSON yet: ${status.message}`
+    case 'too-large':
+      return 'Too large to send in one go.'
+    case 'sending':
+      return 'Sending to the host…'
+    case 'rejected':
+      return status.message
+    case 'closed':
+      return 'The room has closed.'
+    default:
+      return 'In step with the canvas.'
+  }
+}
 
 /** Only web links open from a link node; anything else is shown, not followed. */
 const webUrl = (url: string | undefined) => (url && /^https?:\/\//i.test(url) ? url : undefined)
@@ -92,44 +113,64 @@ export function CanvasBoard(props: { view: BoardView }) {
       <section
         className="canvas-view"
         aria-label="Canvas"
-        onKeyDown={(e) => v.onKey(e)}
-        // One handler for the board: xyflow captures the pointer on a node's
-        // element, so a double click lands there rather than on the card.
-        onDoubleClick={(e) => v.onDoubleClick(e)}
+        data-json={v.showJson.get() ? '' : undefined}
       >
-        <svg className="canvas-markers" aria-hidden="true" width="0" height="0">
-          <defs>
-            <marker
-              id="canvas-arrow"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="7"
-              markerHeight="7"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" />
-            </marker>
-          </defs>
-        </svg>
-        <Flow
-          // The view fills them in from the document once the flow exists.
-          nodes={[] as NodeBase[]}
-          edges={[] as EdgeBase[]}
-          minZoom={MIN_ZOOM}
-          maxZoom={MAX_ZOOM}
-          zoomOnDoubleClick={false}
-          onInit={(store) => v.onInit(store)}
-          onNodeDragStart={(_e, _node, nodes) => v.onNodeDragStart(nodes)}
-          onNodeDragStop={(_e, _node, nodes) => v.onNodeDragStop(nodes)}
-          onNodesDelete={(nodes) => v.onNodesDelete(nodes)}
-          onEdgesDelete={(edges) => v.onEdgesDelete(edges)}
-          onConnect={(c) => v.onConnect(c)}
-          renderNode={CanvasCard}
-        />
-        <p className="canvas-hint" hidden={!v.empty.get()}>
-          Double-click to add a card.
-        </p>
+        <div className="canvas-json" ref={(el) => v.mountJson(el)}>
+          <p className="canvas-json-status" data-kind={v.json?.status.get().kind}>
+            {statusText(v.json?.status.get())}
+          </p>
+        </div>
+        <div
+          className="canvas-board"
+          onKeyDown={(e) => v.onKey(e)}
+          // One handler for the board: xyflow captures the pointer on a node's
+          // element, so a double click lands there rather than on the card.
+          onDoubleClick={(e) => v.onDoubleClick(e)}
+        >
+          <svg className="canvas-markers" aria-hidden="true" width="0" height="0">
+            <defs>
+              <marker
+                id="canvas-arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" />
+              </marker>
+            </defs>
+          </svg>
+          <Flow
+            // The view fills them in from the document once the flow exists.
+            nodes={[] as NodeBase[]}
+            edges={[] as EdgeBase[]}
+            minZoom={MIN_ZOOM}
+            maxZoom={MAX_ZOOM}
+            zoomOnDoubleClick={false}
+            onInit={(store) => v.onInit(store)}
+            onNodeDragStart={(_e, _node, nodes) => v.onNodeDragStart(nodes)}
+            onNodeDragStop={(_e, _node, nodes) => v.onNodeDragStop(nodes)}
+            onNodesDelete={(nodes) => v.onNodesDelete(nodes)}
+            onEdgesDelete={(edges) => v.onEdgesDelete(edges)}
+            onConnect={(c) => v.onConnect(c)}
+            renderNode={CanvasCard}
+          />
+          <p className="canvas-hint" hidden={!v.empty.get()}>
+            Double-click to add a card.
+          </p>
+          {/* The JSON is a back door: a small button, not a view in the header. */}
+          <button
+            type="button"
+            className="canvas-json-toggle"
+            aria-pressed={v.showJson.get() ? 'true' : 'false'}
+            title={v.showJson.get() ? 'Hide JSON' : 'Show JSON'}
+            onClick={() => v.toggleJson()}
+          >
+            {'{ }'}
+          </button>
+        </div>
       </section>
     </BoardContext.Provider>
   )

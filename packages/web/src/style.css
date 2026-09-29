@@ -1147,9 +1147,82 @@ main.editor .cm-vim-panel {
   --bf-resize-color: var(--muted);
   flex: 1;
   min-width: 0;
-  position: relative;
+  display: flex;
   background: var(--bg);
   font-family: var(--sans);
+}
+.canvas-board {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+/* The JSON back door (jsonpane.ts): beside the board while shown. */
+.canvas-json {
+  display: none;
+  flex: 0 0 40%;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+.canvas-view[data-json] .canvas-json {
+  display: flex;
+}
+.canvas-json-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.canvas-json-editor .cm-editor {
+  flex: 1;
+  min-width: 0;
+}
+.canvas-json-status {
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+  max-height: 30%;
+  overflow: auto;
+}
+.canvas-json-status[data-kind="invalid"],
+.canvas-json-status[data-kind="rejected"],
+.canvas-json-status[data-kind="too-large"] {
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.canvas-json-status[data-kind="rejected"] {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.canvas-json-toggle {
+  position: absolute;
+  right: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 5;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.canvas-json-toggle:hover,
+.canvas-json-toggle[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--muted);
+}
+/* Two panes do not fit a narrow screen, and the JSON is for rare fixes. */
+@media (max-width: 720px) {
+  .canvas-json-toggle,
+  .canvas-view[data-json] .canvas-json {
+    display: none;
+  }
 }
 .canvas-markers {
   position: absolute;

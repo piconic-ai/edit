@@ -229,6 +229,9 @@ export class ThemeSwitcher {
   #view: EditorView
   #compartment: Compartment
   #load: (id: string) => Promise<Extension>
+  /** Other editors in the same theme, such as a canvas's JSON. */
+  #followers: { view: EditorView; compartment: Compartment }[] = []
+  #extension: Extension | null = null
 
   constructor(
     view: EditorView,
@@ -266,8 +269,20 @@ export class ThemeSwitcher {
     }
     // A newer choice may have been made while the theme was loading.
     if (seq !== this.#seq) return loaded
+    this.#extension = extension
     this.#view.dispatch({ effects: this.#compartment.reconfigure(extension) })
+    for (const f of this.#followers)
+      f.view.dispatch({ effects: f.compartment.reconfigure(extension) })
     return loaded
+  }
+
+  /**
+   * Keeps another editor in the theme: now, once a theme was set, and on
+   * every change after. Its `compartment` holds the theme there.
+   */
+  follow(view: EditorView, compartment: Compartment): void {
+    this.#followers.push({ view, compartment })
+    if (this.#extension) view.dispatch({ effects: compartment.reconfigure(this.#extension) })
   }
 }
 

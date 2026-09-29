@@ -22,6 +22,7 @@ import { BoardView } from './board.ts'
 import { read as readCanvas, toJSON } from './canvas.ts'
 import { delimiterFor } from './csv.ts'
 import { avatarFor, fetchIdentity } from './identity.ts'
+import { JsonPane } from './jsonpane.ts'
 import { resolveLanguage } from './language.ts'
 import { NoticeBoard } from './notice.ts'
 import { applyPalette } from './palette.ts'
@@ -298,7 +299,13 @@ async function joinRoom(
   const table = new TableView(text, awareness, undoManager, {
     onError: (error) => view.setTableError(error && describeError(error)),
   })
-  const board = new BoardView(doc, awareness)
+  // The canvas as JSON, in the editor's theme; edits go to the host.
+  const jsonTheme = new Compartment()
+  const jsonPane = new JsonPane(doc, {
+    send: (m) => client?.sendCanvas(m),
+    extensions: [jsonTheme.of(theme.extension), readerTheme()],
+  })
+  const board = new BoardView(doc, awareness, { json: jsonPane })
   parts.splitter.replaceChildren(splitter.element)
   parts.table.replaceChildren(table.element)
   parts.canvas.replaceChildren(board.element)
@@ -326,14 +333,9 @@ async function joinRoom(
   })
 
   const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
-  const settings = settingsModel(
-    editor,
-    new ThemeSwitcher(editor, themeMode, theme.id),
-    wrap,
-    vim,
-    appearance,
-    fontMode,
-  )
+  const themes = new ThemeSwitcher(editor, themeMode, theme.id)
+  themes.follow(jsonPane.view, jsonTheme)
+  const settings = settingsModel(editor, themes, wrap, vim, appearance, fontMode)
   if (loadVimMode()) settings.setVim(true)
   render(header, 'Header', {
     file: fileName,
@@ -406,6 +408,7 @@ async function joinRoom(
       if (s === 'connected') attachments.reconnected()
     },
     onAttachment: (a) => attachments.handle(a),
+    onCanvas: (m) => jsonPane.handle(m),
   })
   awareness.on('change', renderPeople)
 
