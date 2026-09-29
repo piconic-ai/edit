@@ -352,8 +352,14 @@ describe('BoardView', () => {
     pointer('pointermove', flow, 130.4, 100)
     await new Promise((r) => requestAnimationFrame(r))
     expect(shared()).toMatchObject({ dragging: { id: 'a', x: 30, y: 0 } })
+    // The move reaches the document before the ghost goes, so others never
+    // see the node back at its old place in between.
+    const order: string[] = []
+    doc.on('update', () => order.push('move'))
+    awarenessOf(view).on('update', () => order.push('presence'))
     pointer('pointerup', flow, 130.4, 100)
     expect(shared()).not.toHaveProperty('dragging')
+    expect(order).toEqual(['move', 'presence'])
   })
 
   it('shows others on the nodes they are on, and a ghost where they drag', async () => {

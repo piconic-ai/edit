@@ -448,13 +448,15 @@ export class BoardView {
     cancelAnimationFrame(this.#dragFrame)
     this.#dragFrame = 0
     this.#dragShare = null
-    this.#share({ ...this.#presence, dragging: undefined })
     moveNodes(
       this.#doc,
       nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })),
       BOARD_ORIGIN,
     )
     for (const n of nodes) this.#dragging.delete(n.id)
+    // After the move: the ghost goes once the node is where it was dropped,
+    // so others never see it snap back in between.
+    this.#share({ ...this.#presence, dragging: undefined })
   }
 
   onNodesDelete(nodes: readonly NodeBase[]): void {
