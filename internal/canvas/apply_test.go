@@ -56,6 +56,13 @@ func TestApplyReproducesNext(t *testing.T) {
 			"\t\t{\"id\":\"a1\",\"type\":\"text\",\"text\":\"Hello\\n\\\"world\\\" <b>\",\"x\":-340,\"y\":-160,\"width\":250,\"height\":60},\n", "", 1),
 			"\"height\":800}\n", "\"height\":800},\n\t\t{\"id\":\"a1\",\"type\":\"text\",\"text\":\"Hello\\n\\\"world\\\" <b>\",\"x\":-340,\"y\":-160,\"width\":250,\"height\":60}\n", 1),
 		"extra key": strings.Replace(obsidianFile, "{\n", "{\n\t\"meta\":{\"v\":1},\n", 1),
+		// Reordered while turning into a text node, and out of one.
+		"group to back as text": strings.Replace(strings.Replace(obsidianFile,
+			"},\n\t\t{\"id\":\"g4\",\"type\":\"group\",\"label\":\"Group\",\"x\":-400,\"y\":-200,\"width\":900,\"height\":800}\n", "}\n", 1),
+			"\t\t{\"id\":\"a1\"", "\t\t{\"id\":\"g4\",\"type\":\"text\",\"text\":\"abc\",\"x\":-400,\"y\":-200,\"width\":900,\"height\":800},\n\t\t{\"id\":\"a1\"", 1),
+		"text to back as group": strings.Replace(strings.Replace(obsidianFile,
+			"\t\t{\"id\":\"a1\",\"type\":\"text\",\"text\":\"Hello\\n\\\"world\\\" <b>\",\"x\":-340,\"y\":-160,\"width\":250,\"height\":60},\n", "", 1),
+			"\"height\":800}\n", "\"height\":800},\n\t\t{\"id\":\"a1\",\"type\":\"group\",\"x\":-340,\"y\":-160,\"width\":250,\"height\":60}\n", 1),
 	}
 	for name, next := range nextOf {
 		t.Run(name, func(t *testing.T) {

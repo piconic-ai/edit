@@ -154,13 +154,14 @@ func applyList(doc *crdt.Doc, list *crdt.YArray, base, next []map[string]any, or
 			b, inBase := baseByID[id]
 			now, inDoc := nowByID[id]
 			values := v
+			mergeText := false
 			if inBase {
 				if !inDoc {
 					// Someone else deleted it meanwhile: that deletion stands.
 					continue
 				}
 				// A moved item keeps what others changed meanwhile, with next's changes on top.
-				values = overlay(now.now, b, v)
+				values, mergeText = overlay(now.now, b, v)
 			}
 			// Before the item after it in next, or on top: a node brought to the
 			// front stays in front of what others added meanwhile.
@@ -174,7 +175,7 @@ func applyList(doc *crdt.Doc, list *crdt.YArray, base, next []map[string]any, or
 			m, text := newItem(txn, values)
 			list.InsertType(txn, at, m)
 			current = append(current[:at], append([]entry{{id: id, m: m}}, current[at:]...)...)
-			if inBase && text != nil {
+			if mergeText && text != nil {
 				bs, _ := b[TextKey].(string)
 				ns, _ := v[TextKey].(string)
 				merges(text, bs, ns)
@@ -214,18 +215,21 @@ func applyList(doc *crdt.Doc, list *crdt.YArray, base, next []map[string]any, or
 	return texts
 }
 
-// overlay returns now with the change from base to next on top. The text is
-// left as it is now: it merges by character afterwards.
-func overlay(now, base, next map[string]any) map[string]any {
-	out := make(map[string]any, len(now))
+// overlay returns now with the change from base to next on top. A text that
+// next changes and now still has is left as it is now, and mergeText says it
+// is to merge by character afterwards; a text only next has is taken as it
+// is, and one next removed is removed.
+func overlay(now, base, next map[string]any) (out map[string]any, mergeText bool) {
+	out = make(map[string]any, len(now))
 	for k, v := range now {
 		out[k] = v
 	}
 	for _, k := range changedKeys(base, next) {
-		if k == TextKey {
-			if _, ok := out[k]; ok {
-				continue
-			}
+		_, inNow := out[k]
+		_, inNext := next[k]
+		if k == TextKey && inNow && inNext {
+			mergeText = true
+			continue
 		}
 		if v, ok := next[k]; ok {
 			out[k] = v
@@ -233,7 +237,7 @@ func overlay(now, base, next map[string]any) map[string]any {
 			delete(out, k)
 		}
 	}
-	return out
+	return out, mergeText
 }
 
 // movedIDs returns the items next put in a different order than base. Those
