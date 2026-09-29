@@ -127,14 +127,45 @@ const set = (el: Element, name: string, value: string | undefined) => {
  */
 export class EdgeLayer {
   #root: SVGGElement
+  #ghosts: SVGGElement
   #drawn = new Map<string, Drawn>()
   #onSelect: (id: string) => void
 
   constructor(svg: SVGSVGElement, onSelect: (id: string) => void) {
     this.#root = document.createElementNS(SVG, 'g')
     this.#root.setAttribute('class', 'canvas-edges')
-    svg.append(this.#root)
+    this.#ghosts = document.createElementNS(SVG, 'g')
+    this.#ghosts.setAttribute('class', 'canvas-ghosts')
+    svg.append(this.#root, this.#ghosts)
     this.#onSelect = onSelect
+  }
+
+  /**
+   * Outlines where others are dragging nodes, in their colour with their
+   * name: the node itself stays put here until they let go. Colours come
+   * from participants(), which only passes hex colours.
+   */
+  drawGhosts(ghosts: readonly (Box & { name: string; color: string })[]): void {
+    const groups = [...this.#ghosts.children] as SVGGElement[]
+    ghosts.forEach((g, i) => {
+      let group = groups[i]
+      if (!group) {
+        group = document.createElementNS(SVG, 'g')
+        group.setAttribute('class', 'canvas-ghost')
+        group.append(document.createElementNS(SVG, 'rect'), document.createElementNS(SVG, 'text'))
+        this.#ghosts.append(group)
+      }
+      const [rect, text] = [...group.children] as [SVGRectElement, SVGTextElement]
+      set(group, 'style', `--peer-color: ${g.color}`)
+      set(rect, 'x', String(g.x))
+      set(rect, 'y', String(g.y))
+      set(rect, 'width', String(g.width))
+      set(rect, 'height', String(g.height))
+      set(text, 'x', String(g.x))
+      set(text, 'y', String(g.y - 6))
+      if (text.textContent !== g.name) text.textContent = g.name
+    })
+    for (const extra of groups.slice(ghosts.length)) extra.remove()
   }
 
   draw(shapes: readonly EdgeShape[]): void {
@@ -194,6 +225,7 @@ export class EdgeLayer {
 
   destroy(): void {
     this.#root.remove()
+    this.#ghosts.remove()
     this.#drawn.clear()
   }
 }

@@ -1392,3 +1392,41 @@ main.editor .cm-vim-panel {
   stroke-width: 4px;
   pointer-events: none;
 }
+
+/* Others on the canvas (presence.ts): their colour around the nodes they are
+   on, with their names; a dashed ghost where they are dragging one. */
+.canvas-card[data-peer] {
+  box-shadow: 0 0 0 2px var(--peer-color);
+}
+.canvas-peer {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  transform: translateY(-100%);
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: 4px 4px 0 0;
+  background: var(--peer-color);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.canvas-peer:empty {
+  display: none;
+}
+.canvas-ghost rect {
+  fill: color-mix(in srgb, var(--peer-color) 10%, transparent);
+  stroke: var(--peer-color);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  rx: 8px;
+}
+.canvas-ghost text {
+  fill: var(--peer-color);
+  font-size: 12px;
+  font-weight: 600;
+}

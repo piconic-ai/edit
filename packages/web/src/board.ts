@@ -27,6 +27,7 @@ import {
 } from './canvas.ts'
 import { type Box, EdgeLayer, shapesOf } from './edges.ts'
 import type { JsonPane } from './jsonpane.ts'
+import { type NodePeers, type Presence, peersOf, sameNodePeers, samePresence } from './presence.ts'
 import { Store } from './store.ts'
 import './components/CanvasBoard.tsx'
 
@@ -109,6 +110,14 @@ export class BoardView {
    * off whenever the page opens, and not remembered.
    */
   readonly showJson = new Store(false)
+  /** Others on each node, by id: who has it selected or is typing in it. */
+  readonly peers = new Store<Readonly<Record<string, NodePeers>>>({})
+  /** What this browser shares of where it is on the canvas. */
+  #presence: Presence = { selected: [] }
+  #layer: EdgeLayer | null = null
+  /** The drag position waiting for the next frame to be shared. */
+  #dragShare: { id: string; x: number; y: number } | null = null
+  #dragFrame = 0
   #doc: Y.Doc
   #awareness: Awareness
   #undo: Y.UndoManager
@@ -137,6 +146,38 @@ export class BoardView {
     this.element.className = 'canvas-slot'
     render(this.element, 'CanvasBoard', { view: this })
     for (const list of scope) list.observeDeep(() => this.#schedule())
+    awareness.on('change', () => this.#paintPeers())
+  }
+
+  /** Shares where this browser is on the canvas, when that changed. */
+  #share(next: Presence): void {
+    if (samePresence(this.#presence, next)) return
+    this.#presence = next
+    this.#awareness.setLocalStateField('canvas', {
+      selected: next.selected,
+      ...(next.editing && { editing: next.editing }),
+      ...(next.dragging && { dragging: next.dragging }),
+    })
+  }
+
+  /** Draws where the others are: outlines on their nodes, ghosts where they drag. */
+  #paintPeers(): void {
+    const { nodes, ghosts } = peersOf(this.#awareness.getStates(), this.#doc.clientID)
+    if (
+      !sameNodePeers(
+        untrack(() => this.peers.get()),
+        nodes,
+      )
+    )
+      this.peers.set(nodes)
+    this.#layer?.drawGhosts(
+      ghosts.flatMap((g) => {
+        const n = this.nodes.get(g.id)
+        if (!n) return []
+        const { width, height } = untrack(() => n.get())
+        return [{ ...g, width, height }]
+      }),
+    )
   }
 
   get active(): boolean {
@@ -197,7 +238,17 @@ export class BoardView {
       return
     }
     const layer = new EdgeLayer(svg, (id) => this.#selectEdge(id))
+    this.#layer = layer
+    this.#paintPeers()
     createRoot(() => {
+      // Shares which nodes are selected here, as they change.
+      createEffect(() => {
+        const selected = store
+          .nodes()
+          .filter((n) => n.selected)
+          .map((n) => n.id)
+        untrack(() => this.#share({ ...this.#presence, selected }))
+      })
       createEffect(() => {
         this.#edgesChanged.get()
         store.positionEpoch()
@@ -378,8 +429,26 @@ export class BoardView {
     for (const n of nodes) this.#dragging.add(n.id)
   }
 
+  /**
+   * Shares where a drag has the node, at most once a frame, so others see
+   * it move as a ghost. The document gets the move when the drag ends.
+   */
+  onNodeDrag(nodes: readonly NodeBase[]): void {
+    const n = nodes[0]
+    if (!n) return
+    this.#dragShare = { id: n.id, x: Math.round(n.position.x), y: Math.round(n.position.y) }
+    this.#dragFrame ||= requestAnimationFrame(() => {
+      this.#dragFrame = 0
+      if (this.#dragShare) this.#share({ ...this.#presence, dragging: this.#dragShare })
+    })
+  }
+
   /** A drag writes where it left the nodes once it ends, so others see one move. */
   onNodeDragStop(nodes: readonly NodeBase[]): void {
+    cancelAnimationFrame(this.#dragFrame)
+    this.#dragFrame = 0
+    this.#dragShare = null
+    this.#share({ ...this.#presence, dragging: undefined })
     moveNodes(
       this.#doc,
       nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })),
@@ -505,6 +574,7 @@ export class BoardView {
       ?.querySelector<HTMLElement>(`.bf-flow__node[data-id="${CSS.escape(id)}"] .canvas-editor`)
     if (!host) return
     this.editing.set(id)
+    this.#share({ ...this.#presence, editing: id })
     this.#mountEditor(host, id)
   }
 
@@ -546,6 +616,7 @@ export class BoardView {
     }
     this.#editor = null
     this.editing.set(null)
+    this.#share({ ...this.#presence, editing: undefined })
   }
 
   /** Undo and redo for the board, as the text editor has. */

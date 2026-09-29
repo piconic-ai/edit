@@ -59,9 +59,13 @@ export function CanvasCard(props: NodeBase) {
         return n.type
     }
   }
+  // Others on this node; their colour is a hex colour, from participants().
+  const peer = () => v.peers.get()[nodeId]
   const style = () => {
     const n = node()
-    return n ? `width: ${n.width}px; height: ${n.height}px; ${hexOf(n.color)}` : ''
+    const p = peer()
+    const peerColor = p ? ` --peer-color: ${p.color};` : ''
+    return n ? `width: ${n.width}px; height: ${n.height}px; ${hexOf(n.color)}${peerColor}` : ''
   }
 
   return (
@@ -69,9 +73,12 @@ export function CanvasCard(props: NodeBase) {
       className={`canvas-card canvas-card--${node()?.type ?? 'text'}`}
       data-color={presetOf(node()?.color)}
       data-editing={editing() ? '' : undefined}
+      data-peer={peer() ? '' : undefined}
       style={style()}
       ref={(el) => v.attachNode(el, nodeId)}
     >
+      {/* Who else is on it; empty, and hidden by CSS, when nobody is. */}
+      <span className="canvas-peer">{peer()?.names ?? ''}</span>
       {/* A target under a source on each side: edges start from the source,
           and the connection snaps to the other node's target. */}
       <Handle type="target" position={Position.Top} id="top" nodeId={nodeId} />
@@ -151,6 +158,7 @@ export function CanvasBoard(props: { view: BoardView }) {
             zoomOnDoubleClick={false}
             onInit={(store) => v.onInit(store)}
             onNodeDragStart={(_e, _node, nodes) => v.onNodeDragStart(nodes)}
+            onNodeDrag={(_e, _node, nodes) => v.onNodeDrag(nodes)}
             onNodeDragStop={(_e, _node, nodes) => v.onNodeDragStop(nodes)}
             onNodesDelete={(nodes) => v.onNodesDelete(nodes)}
             onEdgesDelete={(edges) => v.onEdgesDelete(edges)}

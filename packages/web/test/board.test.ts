@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { InternalFlowStore } from '@barefootjs/xyflow'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { Awareness } from 'y-protocols/awareness'
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { BoardView } from '../src/board.ts'
 import { EDGES, NODES, read, TEXT } from '../src/canvas.ts'
@@ -325,6 +325,78 @@ describe('BoardView', () => {
     expect(read(doc).nodes).toHaveLength(1)
     view.readOnly = true
     expect(json.status.get()).toEqual({ kind: 'closed' })
+  })
+
+  it('shares which nodes it has selected, types in and drags', async () => {
+    const doc = docOf([node('a'), node('b', { x: 200 })])
+    const view = setup(doc)
+    await tick()
+    const shared = () => awarenessOf(view).getLocalState()?.canvas
+    const store = storeOf(view)
+    store.setNodes((prev) => prev.map((n) => ({ ...n, selected: n.id === 'b' })))
+    await tick()
+    expect(shared()).toEqual({ selected: ['b'] })
+
+    view.edit('a')
+    expect(shared()).toEqual({ selected: ['b'], editing: 'a' })
+    view.finishEditing()
+    expect(shared()).toEqual({ selected: ['b'] })
+
+    const flow = view.element.querySelector('.bf-flow') as HTMLElement
+    const wrapper = view.element.querySelector('.bf-flow__node[data-id="a"]') as HTMLElement
+    const pointer = (type: string, target: EventTarget, x: number, y: number) =>
+      target.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }),
+      )
+    pointer('pointerdown', wrapper, 100, 100)
+    pointer('pointermove', flow, 130.4, 100)
+    await new Promise((r) => requestAnimationFrame(r))
+    expect(shared()).toMatchObject({ dragging: { id: 'a', x: 30, y: 0 } })
+    pointer('pointerup', flow, 130.4, 100)
+    expect(shared()).not.toHaveProperty('dragging')
+  })
+
+  it('shows others on the nodes they are on, and a ghost where they drag', async () => {
+    const doc = docOf([node('a'), node('b', { x: 200, width: 80, height: 40 })])
+    const view = setup(doc)
+    await tick()
+    // Someone else, with an awareness of their own, as the room relays it.
+    const other = new Awareness(new Y.Doc())
+    other.setLocalState({
+      user: { name: 'Ann', color: '#1f7a64' },
+      canvas: { selected: ['a'], dragging: { id: 'b', x: 300, y: 50 } },
+    })
+    applyAwarenessUpdate(
+      awarenessOf(view),
+      encodeAwarenessUpdate(other, [other.clientID]),
+      'remote',
+    )
+    await tick()
+    const card = view.element.querySelector(
+      '.bf-flow__node[data-id="a"] .canvas-card',
+    ) as HTMLElement
+    expect(card.hasAttribute('data-peer')).toBe(true)
+    expect(card.getAttribute('style')).toContain('--peer-color: #1f7a64')
+    expect(card.querySelector('.canvas-peer')?.textContent).toBe('Ann')
+    const other2 = view.element.querySelector(
+      '.bf-flow__node[data-id="b"] .canvas-card',
+    ) as HTMLElement
+    expect(other2.hasAttribute('data-peer')).toBe(false)
+    const ghost = view.element.querySelector('.canvas-ghost')
+    expect(ghost?.querySelector('rect')?.getAttribute('x')).toBe('300')
+    expect(ghost?.querySelector('rect')?.getAttribute('width')).toBe('80')
+    expect(ghost?.querySelector('text')?.textContent).toBe('Ann')
+
+    // They let go and move on.
+    other.setLocalState({ user: { name: 'Ann', color: '#1f7a64' }, canvas: { selected: [] } })
+    applyAwarenessUpdate(
+      awarenessOf(view),
+      encodeAwarenessUpdate(other, [other.clientID]),
+      'remote',
+    )
+    await tick()
+    expect(card.hasAttribute('data-peer')).toBe(false)
+    expect(view.element.querySelectorAll('.canvas-ghost')).toHaveLength(0)
   })
 
   it('changes nothing once the room has closed', async () => {
