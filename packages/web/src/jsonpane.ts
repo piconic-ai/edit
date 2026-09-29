@@ -48,8 +48,12 @@ export class JsonPane {
   #delay: number
   /** The JSON the pane and the document last agreed on. */
   #base: string
-  /** Edits sent and not answered yet, by id: what each one sent. */
-  #pending = new Map<string, { base: string; next: string }>()
+  /**
+   * The edit sent and not answered yet. One at a time: an edit sent while
+   * another is on its way would start from the same `base` and repeat its
+   * inserts when both are applied. The next goes once this one is answered.
+   */
+  #inFlight: { id: string; base: string; next: string } | null = null
   #timer: ReturnType<typeof setTimeout> | null = null
   #readOnly = new Compartment()
   #closed = false
@@ -99,7 +103,7 @@ export class JsonPane {
 
   /** Whether the pane holds nothing the document does not. */
   get clean(): boolean {
-    return this.#text === this.#base && this.#pending.size === 0
+    return this.#text === this.#base && !this.#inFlight
   }
 
   /**
@@ -143,12 +147,12 @@ export class JsonPane {
     this.#timer = null
     if (this.#closed) return
     const text = this.#text
+    // Waiting for an answer: checked again once it comes.
+    if (this.#inFlight) return
     if (text === this.#base) {
-      if (this.#pending.size === 0) {
-        this.status.set({ kind: 'synced' })
-        // Back to what the canvas was: take in what changed meanwhile.
-        this.#follow()
-      }
+      this.status.set({ kind: 'synced' })
+      // Back to what the canvas was: take in what changed meanwhile.
+      this.#follow()
       return
     }
     try {
@@ -157,34 +161,31 @@ export class JsonPane {
       this.status.set({ kind: 'invalid', message: (e as Error).message })
       return
     }
-    // Already on its way.
-    if ([...this.#pending.values()].some((p) => p.next === text)) return
     const bytes = new TextEncoder().encode(this.#base + text).length
     if (bytes > MAX_CANVAS_EDIT_BYTES) {
       this.status.set({ kind: 'too-large' })
       return
     }
-    const id = newId()
-    this.#pending.set(id, { base: this.#base, next: text })
-    this.#send({ kind: 'edit', id, base: this.#base, next: text })
+    this.#inFlight = { id: newId(), base: this.#base, next: text }
+    this.#send({ kind: 'edit', ...this.#inFlight })
     this.status.set({ kind: 'sending' })
   }
 
   /** The host's answer to an edit this pane sent; others' answers are not for it. */
   handle(message: CanvasMessage): void {
     if (message.kind === 'edit') return
-    const sent = this.#pending.get(message.id)?.next
-    if (sent === undefined) return
-    this.#pending.delete(message.id)
+    const sent = this.#inFlight
+    if (!sent || sent.id !== message.id) return
+    this.#inFlight = null
     if (message.kind === 'applied') {
-      this.#base = sent
-      if (this.#pending.size > 0) return
-      if (this.#text === sent) {
+      this.#base = sent.next
+      if (this.#text === sent.next) {
         this.status.set({ kind: 'synced' })
         // What others changed while this was being edited, now that it is in.
         this.#follow()
       } else {
-        this.status.set({ kind: 'editing' })
+        // Typed on meanwhile: that goes next, from what was just applied.
+        this.check()
       }
     } else {
       this.status.set({ kind: 'rejected', message: message.reason })
@@ -192,14 +193,13 @@ export class JsonPane {
   }
 
   /**
-   * After the connection came back. Frames sent or answered while it was
-   * down may be gone, so what waits for an answer is sent again, as it was
-   * and under the same id: the host answers an edit it already applied
+   * After the connection came back. A frame sent or answered while it was
+   * down may be gone, so the edit waiting for an answer is sent again, as it
+   * was and under the same id: the host answers an edit it already applied
    * without applying it twice.
    */
   reconnected(): void {
-    for (const [id, p] of this.#pending)
-      this.#send({ kind: 'edit', id, base: p.base, next: p.next })
+    if (this.#inFlight) this.#send({ kind: 'edit', ...this.#inFlight })
   }
 
   /** Once the room has closed: nothing can be sent, so nothing can be typed. */

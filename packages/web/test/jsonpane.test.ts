@@ -139,6 +139,25 @@ describe('JsonPane', () => {
     expect(lastEdit().base).toBe(base)
   })
 
+  it('sends one edit at a time, the next from what the first made', () => {
+    const { pane, sent, text, type, lastEdit } = setup()
+    const base = text()
+    const first = base.replace('"text":"a"', '"text":"a there"')
+    type(first)
+    pane.check()
+    // Typed on before the answer came: it waits rather than go from the same base.
+    const second = base.replace('"text":"a"', '"text":"a there friend"')
+    type(second)
+    pane.check()
+    expect(sent).toHaveLength(1)
+    pane.handle({ kind: 'applied', id: lastEdit().id })
+    expect(sent).toHaveLength(2)
+    expect(lastEdit()).toMatchObject({ base: first, next: second })
+    expect(pane.status.get()).toEqual({ kind: 'sending' })
+    pane.handle({ kind: 'applied', id: lastEdit().id })
+    expect(pane.status.get()).toEqual({ kind: 'synced' })
+  })
+
   it('does not undo what it took in from others', () => {
     const { doc, pane, sent, text } = setup()
     mapOf(doc, 'a').set('x', 42)
