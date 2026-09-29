@@ -44,6 +44,9 @@ type ClientOptions struct {
 	// OnAttachment is called with each attachment message from the room, on
 	// the connection's read loop: return quickly.
 	OnAttachment func(Attachment)
+	// OnCanvas is called with each canvas message from the room, on the
+	// connection's read loop: return quickly.
+	OnCanvas func(CanvasMessage)
 }
 
 // Client keeps a Doc and Awareness in sync with every other peer in a room.
@@ -266,6 +269,19 @@ func (c *Client) receive(data []byte) error {
 		}
 		return nil
 	}
+	if t == MessageCanvas {
+		m, err := DecodeCanvas(payload)
+		if errors.Is(err, ErrUnknownCanvasKind) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if c.opts.OnCanvas != nil {
+			c.opts.OnCanvas(m)
+		}
+		return nil
+	}
 	if t == MessageSync {
 		c.applying.Lock()
 		reply, err := ysync.ApplySyncMessage(c.doc, payload, c)
@@ -325,6 +341,17 @@ func (c *Client) SendAttachment(a Attachment) error {
 		return err
 	}
 	c.send(MessageAttachment, payload)
+	return nil
+}
+
+// SendCanvas sends a canvas message to everyone else in the room. Like every
+// other frame, it is dropped while disconnected.
+func (c *Client) SendCanvas(m CanvasMessage) error {
+	payload, err := EncodeCanvas(m)
+	if err != nil {
+		return err
+	}
+	c.send(MessageCanvas, payload)
 	return nil
 }
 

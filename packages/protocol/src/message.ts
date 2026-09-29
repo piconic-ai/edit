@@ -2,6 +2,7 @@ export const MessageType = {
   Sync: 0,
   Awareness: 1,
   Attachment: 2,
+  Canvas: 3,
 } as const
 export type MessageType = (typeof MessageType)[keyof typeof MessageType]
 
