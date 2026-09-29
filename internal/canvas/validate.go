@@ -1,7 +1,6 @@
 package canvas
 
 import (
-	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -77,23 +76,7 @@ func (v *validator) report(offset int, path, format string, args ...any) {
 }
 
 // describe names a JSON value's type for messages.
-func describe(n *jnode) string {
-	switch n.kind {
-	case kindObject:
-		return "an object"
-	case kindArray:
-		return "a list"
-	}
-	switch n.value.(type) {
-	case string:
-		return "a string"
-	case bool:
-		return "true or false"
-	case nil:
-		return "null"
-	}
-	return "a number"
-}
+func describe(n *jnode) string { return typeName(n.decode()) }
 
 // object checks n is an object with each key once, and returns its fields by key.
 func (v *validator) object(n *jnode, path string) (map[string]jfield, bool) {
@@ -182,46 +165,64 @@ func itemPath(path string, n *jnode) string {
 	return path
 }
 
-// id checks the required, unique id.
-func (v *validator) id(n *jnode, fields map[string]jfield, path string, seen map[string]bool) (string, bool) {
-	f, ok := fields["id"]
-	if !ok {
-		v.report(n.start, path, `has no "id"; add a unique string id`)
-		return "", false
-	}
-	id, ok := f.val.value.(string)
-	if !ok || f.val.kind != kindScalar || id == "" {
-		v.report(f.val.start, path, `"id" must be a non-empty string, not %s`, describe(f.val))
-		return "", false
-	}
-	if seen[id] {
-		v.report(f.val.start, path, "id %q is used more than once; ids must be unique", id)
-		return "", false
-	}
-	seen[id] = true
-	return id, true
+// issue is one rule a node or edge breaks. key is the field it is about,
+// which Parse points at when the field is there, or "" for the item.
+type issue struct {
+	key, msg string
 }
 
-// str checks an optional (or, with required, a required) string field, and returns it.
-func (v *validator) str(n *jnode, fields map[string]jfield, path, key string, required bool, allowed []string) (string, bool) {
-	f, ok := fields[key]
+// typeName names a decoded value's type for messages.
+func typeName(v any) string {
+	switch v.(type) {
+	case map[string]any:
+		return "an object"
+	case []any:
+		return "a list"
+	case string:
+		return "a string"
+	case bool:
+		return "true or false"
+	case nil:
+		return "null"
+	}
+	return "a number"
+}
+
+// checkID checks the required, unique id, and marks it seen.
+func checkID(values map[string]any, seen map[string]bool) (string, []issue) {
+	v, ok := values["id"]
+	if !ok {
+		return "", []issue{{"", `has no "id"; add a unique string id`}}
+	}
+	id, ok := v.(string)
+	if !ok || id == "" {
+		return "", []issue{{"id", fmt.Sprintf(`"id" must be a non-empty string, not %s`, typeName(v))}}
+	}
+	if seen[id] {
+		return "", []issue{{"id", fmt.Sprintf("id %q is used more than once; ids must be unique", id)}}
+	}
+	seen[id] = true
+	return id, nil
+}
+
+// checkString checks an optional (or, with required, a required) string
+// field, limited to allowed when it is not nil.
+func checkString(values map[string]any, key string, required bool, allowed []string) (string, []issue) {
+	v, ok := values[key]
 	if !ok {
 		if required {
-			v.report(n.start, path, "has no %q; add it as a string", key)
-			return "", false
+			return "", []issue{{"", fmt.Sprintf("has no %q; add it as a string", key)}}
 		}
-		return "", true
+		return "", nil
 	}
-	s, isString := f.val.value.(string)
-	if f.val.kind != kindScalar || !isString {
-		v.report(f.val.start, path, "%q must be a string, not %s", key, describe(f.val))
-		return "", false
+	s, ok := v.(string)
+	if !ok {
+		return "", []issue{{key, fmt.Sprintf("%q must be a string, not %s", key, typeName(v))}}
 	}
 	if allowed != nil && !slices.Contains(allowed, s) {
-		v.report(f.val.start, path, "%q is %q; it must be one of %s", key, s, quoteAll(allowed))
-		return "", false
+		return "", []issue{{key, fmt.Sprintf("%q is %q; it must be one of %s", key, s, quoteAll(allowed))}}
 	}
-	return s, true
+	return s, nil
 }
 
 func quoteAll(values []string) string {
@@ -232,71 +233,91 @@ func quoteAll(values []string) string {
 	return strings.Join(q, ", ")
 }
 
-func (v *validator) node(n *jnode, path string, ids map[string]bool) (item, bool) {
-	path = itemPath(path, n)
-	fields, ok := v.object(n, path)
-	if !ok {
-		return item{}, false
-	}
-	before := len(v.problems) + v.more
-	id, _ := v.id(n, fields, path, ids)
-	typ, _ := v.str(n, fields, path, "type", true, nil)
+// checkNode returns what is wrong with a node, the same rules for a file
+// (Parse) and a document (Read). ids collects the node ids seen.
+func checkNode(values map[string]any, ids map[string]bool) []issue {
+	_, issues := checkID(values, ids)
+	typ, more := checkString(values, "type", true, nil)
+	issues = append(issues, more...)
 	for _, key := range []string{"x", "y", "width", "height"} {
-		f, ok := fields[key]
+		v, ok := values[key]
 		if !ok {
-			v.report(n.start, path, "has no %q; add it as a number", key)
-			continue
+			issues = append(issues, issue{"", fmt.Sprintf("has no %q; add it as a number", key)})
+		} else if _, ok := number(v); !ok {
+			issues = append(issues, issue{key, fmt.Sprintf("%q must be a number, not %s", key, typeName(v))})
 		}
-		if _, isNum := f.val.value.(json.Number); !isNum || f.val.kind != kindScalar {
-			v.report(f.val.start, path, "%q must be a number, not %s", key, describe(f.val))
-		}
+	}
+	add := func(key string, required bool, allowed []string) {
+		_, more := checkString(values, key, required, allowed)
+		issues = append(issues, more...)
 	}
 	// Types the spec does not define are kept and drawn as a plain box.
 	switch typ {
 	case "text":
-		v.str(n, fields, path, "text", true, nil)
+		add("text", true, nil)
 	case "file":
-		v.str(n, fields, path, "file", true, nil)
-		v.str(n, fields, path, "subpath", false, nil)
+		add("file", true, nil)
+		add("subpath", false, nil)
 	case "link":
-		v.str(n, fields, path, "url", true, nil)
+		add("url", true, nil)
 	case "group":
-		v.str(n, fields, path, "label", false, nil)
-		v.str(n, fields, path, "background", false, nil)
-		v.str(n, fields, path, "backgroundStyle", false, backgroundStyles)
+		add("label", false, nil)
+		add("background", false, nil)
+		add("backgroundStyle", false, backgroundStyles)
 	}
-	v.str(n, fields, path, "color", false, nil)
-	if len(v.problems)+v.more > before {
-		return item{}, false
-	}
-	it := v.item(n)
-	it.id = id
-	return it, true
+	add("color", false, nil)
+	return issues
 }
 
-func (v *validator) edge(n *jnode, path string, ids, nodes map[string]bool) (item, bool) {
+// checkEdge returns what is wrong with an edge. ids collects the edge ids
+// seen; nodes are the ids of the nodes it may join.
+func checkEdge(values map[string]any, ids, nodes map[string]bool) []issue {
+	_, issues := checkID(values, ids)
+	for _, key := range []string{"fromNode", "toNode"} {
+		s, more := checkString(values, key, true, nil)
+		issues = append(issues, more...)
+		if more == nil && !nodes[s] {
+			issues = append(issues, issue{key, fmt.Sprintf("%q is %q, which is not the id of any node", key, s)})
+		}
+	}
+	for _, f := range []struct {
+		key     string
+		allowed []string
+	}{{"fromSide", sides}, {"toSide", sides}, {"fromEnd", ends}, {"toEnd", ends}, {"color", nil}, {"label", nil}} {
+		_, more := checkString(values, f.key, false, f.allowed)
+		issues = append(issues, more...)
+	}
+	return issues
+}
+
+// checked reports an item's issues where they are in the file, and returns
+// the item when it has none.
+func (v *validator) checked(n *jnode, path string, check func(map[string]any) []issue) (item, bool) {
 	path = itemPath(path, n)
 	fields, ok := v.object(n, path)
 	if !ok {
 		return item{}, false
 	}
-	before := len(v.problems) + v.more
-	id, _ := v.id(n, fields, path, ids)
-	for _, key := range []string{"fromNode", "toNode"} {
-		if s, ok := v.str(n, fields, path, key, true, nil); ok && !nodes[s] {
-			v.report(fields[key].val.start, path, "%q is %q, which is not the id of any node", key, s)
+	it := v.item(n)
+	issues := check(it.values)
+	for _, is := range issues {
+		offset := n.start
+		if f, ok := fields[is.key]; ok && is.key != "" {
+			offset = f.val.start
 		}
+		v.report(offset, path, "%s", is.msg)
 	}
-	v.str(n, fields, path, "fromSide", false, sides)
-	v.str(n, fields, path, "toSide", false, sides)
-	v.str(n, fields, path, "fromEnd", false, ends)
-	v.str(n, fields, path, "toEnd", false, ends)
-	v.str(n, fields, path, "color", false, nil)
-	v.str(n, fields, path, "label", false, nil)
-	if len(v.problems)+v.more > before {
+	if len(issues) > 0 {
 		return item{}, false
 	}
-	it := v.item(n)
-	it.id = id
+	it.id, _ = it.values["id"].(string)
 	return it, true
+}
+
+func (v *validator) node(n *jnode, path string, ids map[string]bool) (item, bool) {
+	return v.checked(n, path, func(values map[string]any) []issue { return checkNode(values, ids) })
+}
+
+func (v *validator) edge(n *jnode, path string, ids, nodes map[string]bool) (item, bool) {
+	return v.checked(n, path, func(values map[string]any) []issue { return checkEdge(values, ids, nodes) })
 }

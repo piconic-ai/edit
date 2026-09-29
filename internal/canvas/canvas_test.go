@@ -84,10 +84,19 @@ func TestObsidianSample(t *testing.T) {
 }
 
 func TestParseEmpty(t *testing.T) {
-	for _, text := range []string{"", " \n", "{}"} {
+	for _, text := range []string{"", " \n", "{}", "{}\n"} {
 		f := mustParse(t, text)
 		if len(f.Canvas.Nodes) != 0 || len(f.Canvas.Edges) != 0 {
 			t.Errorf("%q: %+v", text, f.Canvas)
+		}
+		// A file with neither list gets both, as Obsidian writes them: the one
+		// exception to writing a file back as it was.
+		want := "{\n\t\"nodes\":[],\n\t\"edges\":[]\n}"
+		if strings.HasSuffix(text, "}\n") {
+			want += "\n"
+		}
+		if got := string(Render(f.Canvas, f)); got != want {
+			t.Errorf("%q renders as %q", text, got)
 		}
 	}
 }
@@ -261,6 +270,8 @@ func TestProblems(t *testing.T) {
 		{"trailing comma", "{\"nodes\":[\n  {\"id\":\"a\"},\n]}", "]}", "", "comma before a closing bracket"},
 		{"comment", "{\n// note\n}", "//", "", "does not allow comments"},
 		{"missing comma", "{\"nodes\":[]\n\"edges\":[]}", `"edges"`, "", "comma is probably missing"},
+		{"missing comma in a list", "{\"nodes\":[{} {}]}", `{}]`, "", "comma is probably missing"},
+		{"missing colon", `{"nodes":[], "meta" "x"}`, `"x"`, "", "colon is probably missing"},
 		{"single quotes", "{'nodes':[]}", "'nodes'", "", "double quotes"},
 		{"after the end", "{} {}", "{}", "", "after top-level value"},
 		{"not an object", "[]", "[]", "", "must be an object, not a list"},
@@ -371,15 +382,69 @@ func TestReadNormalisesNumbers(t *testing.T) {
 	nodes := doc.GetArray(NodesKey)
 	doc.Transact(func(txn *crdt.Transaction) {
 		m := crdt.NewMapPrelim()
-		m.Set(txn, "a", float32(1.5))
-		m.Set(txn, "b", float64(3))
-		m.Set(txn, "c", 7)
+		m.Set(txn, "id", "g")
+		m.Set(txn, "type", "group")
+		m.Set(txn, "x", float32(1.5))
+		m.Set(txn, "y", float64(3))
+		m.Set(txn, "width", 7)
+		m.Set(txn, "height", uint8(2))
 		nodes.PushType(txn, m)
 	})
 	got := Read(doc).Nodes[0]
-	want := map[string]any{"a": 1.5, "b": int64(3), "c": int64(7)}
+	want := map[string]any{"id": "g", "type": "group", "x": 1.5, "y": int64(3), "width": int64(7), "height": int64(2)}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v", got)
+	}
+}
+
+// TestReadSkipsWhatAFileCannotHold: an edge to a node deleted meanwhile, and
+// items a newer or broken peer left incomplete, are not written to the file.
+func TestReadSkipsWhatAFileCannotHold(t *testing.T) {
+	f := mustParse(t, obsidianFile)
+	a := crdt.New()
+	Load(a, f.Canvas)
+	b := crdt.New()
+	if err := crdt.ApplyUpdateV1(b, a.EncodeStateAsUpdate(), nil); err != nil {
+		t.Fatal(err)
+	}
+	sa, sb := a.StateVector(), b.StateVector()
+	an := a.GetArray(NodesKey)
+	a.Transact(func(txn *crdt.Transaction) { an.Delete(txn, 3, 1) }) // g4
+	bn, be := b.GetArray(NodesKey), b.GetArray(EdgesKey)
+	b.Transact(func(txn *crdt.Transaction) {
+		e := crdt.NewMapPrelim()
+		e.Set(txn, "id", "e3")
+		e.Set(txn, "fromNode", "a1")
+		e.Set(txn, "toNode", "g4")
+		be.PushType(txn, e)
+		broken := crdt.NewMapPrelim()
+		broken.Set(txn, "id", "x9")
+		broken.Set(txn, "type", "text")
+		bn.PushType(txn, broken)
+		dup := crdt.NewMapPrelim()
+		for k, v := range f.Canvas.Nodes[1] {
+			dup.Set(txn, k, v)
+		}
+		bn.PushType(txn, dup)
+	})
+	_ = crdt.ApplyUpdateV1(a, crdt.EncodeStateAsUpdateV1(b, sb), nil)
+	_ = crdt.ApplyUpdateV1(b, crdt.EncodeStateAsUpdateV1(a, sa), nil)
+
+	c := Read(a)
+	var ids []string
+	for _, n := range c.Nodes {
+		ids = append(ids, n["id"].(string))
+	}
+	if !reflect.DeepEqual(ids, []string{"a1", "b2", "c3"}) {
+		t.Errorf("nodes = %v", ids)
+	}
+	for _, e := range c.Edges {
+		if e["id"] == "e3" {
+			t.Errorf("edge to the deleted node kept")
+		}
+	}
+	if _, err := Parse(Render(c, f)); err != nil {
+		t.Errorf("rendered canvas does not parse: %v", err)
 	}
 }
 

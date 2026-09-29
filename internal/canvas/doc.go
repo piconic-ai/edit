@@ -55,11 +55,27 @@ func newItem(txn *crdt.Transaction, values map[string]any) *crdt.YMap {
 }
 
 // Read returns the canvas in a document, with values as Parse decodes them.
+// Structure keeps the JSON valid but not the canvas: one person can delete a
+// node while another joins an edge to it, and a newer or broken peer can
+// leave out a field. Read skips what a file could not hold, by the rules
+// Parse applies, so what it returns always renders to a file Parse accepts.
+// packages/web skips the same, so the page and the file show one canvas.
 // Must not be called from inside a transaction.
 func Read(doc *crdt.Doc) Canvas {
 	c := Canvas{Extra: map[string]any{}}
-	c.Nodes = readItems(doc.GetArray(NodesKey))
-	c.Edges = readItems(doc.GetArray(EdgesKey))
+	nodeIDs, kept := map[string]bool{}, map[string]bool{}
+	for _, n := range readItems(doc.GetArray(NodesKey)) {
+		if len(checkNode(n, nodeIDs)) == 0 {
+			c.Nodes = append(c.Nodes, n)
+			kept[n["id"].(string)] = true
+		}
+	}
+	edgeIDs := map[string]bool{}
+	for _, e := range readItems(doc.GetArray(EdgesKey)) {
+		if len(checkEdge(e, edgeIDs, kept)) == 0 {
+			c.Edges = append(c.Edges, e)
+		}
+	}
 	extra := doc.GetMap(ExtraKey)
 	for _, k := range extra.Keys() {
 		v, _ := extra.Get(k)

@@ -3,7 +3,10 @@
 // structure, not text: nodes and edges are Y.Maps in Y.Arrays, so co-editing
 // on the canvas cannot produce invalid JSON. The file stays the source of
 // truth: it is written back in its own layout, and a file read and written
-// back unchanged is byte-identical.
+// back unchanged is byte-identical. The exceptions are a file with neither
+// list, such as {} or an empty file, which gets both as Obsidian writes them,
+// and a file in a layout this package does not know, which is rewritten once
+// in Obsidian's.
 package canvas
 
 import (
@@ -211,16 +214,23 @@ func syntaxProblem(text string, err error) Problem {
 	}
 	line, col := position(text, offset)
 	msg := "invalid JSON: " + message
-	if hint := syntaxHint(text, offset); hint != "" {
+	if hint := syntaxHint(text, offset, message); hint != "" {
 		msg += " (" + hint + ")"
 	}
 	return Problem{Line: line, Column: col, Message: msg}
 }
 
-// syntaxHint names the usual cause of a syntax error at offset, when there is one.
-func syntaxHint(text string, offset int) string {
+// syntaxHint names the usual cause of a syntax error at offset, when there
+// is one. message is the decoder's, which says what it expected there.
+func syntaxHint(text string, offset int, message string) string {
 	if offset >= len(text) {
 		return ""
+	}
+	switch {
+	case strings.Contains(message, "after object key:value pair"), strings.Contains(message, "after array element"):
+		return "a comma is probably missing before this"
+	case strings.Contains(message, "after object key"):
+		return "a colon is probably missing after the key"
 	}
 	switch text[offset] {
 	case '}', ']':
@@ -232,8 +242,6 @@ func syntaxHint(text string, offset int) string {
 		return "JSON does not allow comments"
 	case '\'':
 		return "JSON strings use double quotes"
-	case '"':
-		return "a comma is probably missing before this"
 	}
 	return ""
 }
