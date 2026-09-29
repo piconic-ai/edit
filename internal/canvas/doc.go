@@ -28,10 +28,12 @@ func Load(doc *crdt.Doc, c Canvas) {
 	extra := doc.GetMap(ExtraKey)
 	doc.Transact(func(txn *crdt.Transaction) {
 		for _, n := range c.Nodes {
-			nodes.PushType(txn, newItem(txn, n))
+			m, _ := newItem(txn, n)
+			nodes.PushType(txn, m)
 		}
 		for _, e := range c.Edges {
-			edges.PushType(txn, newItem(txn, e))
+			m, _ := newItem(txn, e)
+			edges.PushType(txn, m)
 		}
 		for k, v := range c.Extra {
 			extra.Set(txn, k, v)
@@ -39,19 +41,21 @@ func Load(doc *crdt.Doc, c Canvas) {
 	})
 }
 
-// newItem makes the Y.Map for a node or edge.
-func newItem(txn *crdt.Transaction, values map[string]any) *crdt.YMap {
+// newItem makes the Y.Map for a node or edge, and returns its text's Y.Text
+// when it has one.
+func newItem(txn *crdt.Transaction, values map[string]any) (*crdt.YMap, *crdt.YText) {
 	m := crdt.NewMapPrelim()
+	var text *crdt.YText
 	for k, v := range values {
 		if s, ok := v.(string); ok && k == TextKey {
-			t := crdt.NewTextPrelim()
-			t.Insert(txn, 0, s, nil)
-			m.Set(txn, k, t)
+			text = crdt.NewTextPrelim()
+			text.Insert(txn, 0, s, nil)
+			m.Set(txn, k, text)
 			continue
 		}
 		m.Set(txn, k, v)
 	}
-	return m
+	return m, text
 }
 
 // Read returns the canvas in a document, with values as Parse decodes them.
