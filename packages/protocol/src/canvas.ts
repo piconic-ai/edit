@@ -10,6 +10,11 @@ import * as encoding from 'lib0/encoding'
  * - edit: someone changed the canvas from `base` to `next`, both JSON Canvas text
  * - applied: the host applied the edit with this `id`
  * - rejected: the host did not apply the edit with this `id`, for `reason`
+ *
+ * An edit's `id` must be unique within the room, such as a random one: the
+ * host applies an id once and answers a repeat, sent again after a
+ * reconnect, without applying it, so two guests sharing an id would lose the
+ * second edit.
  */
 export type CanvasMessage =
   | { kind: 'edit'; id: string; base: string; next: string }

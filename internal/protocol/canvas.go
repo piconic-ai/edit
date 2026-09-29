@@ -34,6 +34,11 @@ const (
 
 // CanvasMessage is one canvas message. Which fields are set depends on Kind:
 // Edit has ID, Base and Next, Applied has ID, Rejected has ID and Reason.
+//
+// An edit's ID must be unique within the room, such as a random one: the
+// host applies an ID once and answers a repeat, sent again after a
+// reconnect, without applying it, so two guests sharing an ID would lose
+// the second edit.
 type CanvasMessage struct {
 	Kind   CanvasKind
 	ID     string
