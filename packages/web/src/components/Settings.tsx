@@ -99,7 +99,6 @@ export function Settings(props: { model: SettingsModel }) {
         className="icon"
         title="Settings"
         aria-label="Settings"
-        // @ts-expect-error: not typed by @barefootjs/jsx yet (piconic-ai/barefootjs#3236).
         popovertarget="settings"
         ref={(el) => {
           gear = el
@@ -125,7 +124,6 @@ export function Settings(props: { model: SettingsModel }) {
         id="settings"
         role="dialog"
         aria-label="Settings"
-        // @ts-expect-error: not typed by @barefootjs/jsx yet (piconic-ai/barefootjs#3236).
         popover=""
         ref={(el) => {
           panel = el
@@ -258,10 +256,9 @@ export function Settings(props: { model: SettingsModel }) {
               box = el
             }}
           >
-            {/* Labels as expressions: multi-line JSX text keeps its spaces (piconic-ai/barefootjs#3237). */}
             <div role="group" aria-labelledby="settings-group-light">
               <div className="settings-group-label" id="settings-group-light">
-                {'Light'}
+                Light
               </div>
               <div className="settings-cards">
                 {m.themes
@@ -283,7 +280,7 @@ export function Settings(props: { model: SettingsModel }) {
             </div>
             <div role="group" aria-labelledby="settings-group-dark">
               <div className="settings-group-label" id="settings-group-dark">
-                {'Dark'}
+                Dark
               </div>
               <div className="settings-cards">
                 {m.themes
