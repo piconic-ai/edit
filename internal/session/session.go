@@ -453,7 +453,7 @@ func (s *Session) handleCanvas(m protocol.CanvasMessage) {
 		return
 	}
 	var err error
-	s.Client.Do(func() { err = c.edit(m.Base, m.Next) })
+	s.Client.Do(func() { err = c.edit(m.ID, m.Base, m.Next) })
 	reply := protocol.CanvasMessage{Kind: protocol.CanvasApplied, ID: m.ID}
 	if err != nil {
 		reply = protocol.CanvasMessage{Kind: protocol.CanvasRejected, ID: m.ID, Reason: truncate(err.Error(), maxRejectReason)}

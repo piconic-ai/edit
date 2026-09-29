@@ -216,6 +216,28 @@ func TestCanvasAppliesJSONEditedInTheBrowser(t *testing.T) {
 	}
 	prototest.WaitFor(t, wait, func() bool { return readFile(t, f.file) == next }, "the edit to be saved")
 
+	// Sent again under the same id after a reconnect that lost the answer:
+	// answered again, not applied twice.
+	typed := strings.Replace(next, `"text":"Everyone"`, `"text":"Everyone here"`, 1)
+	for range 2 {
+		if err := g.SendCanvas(protocol.CanvasMessage{Kind: protocol.CanvasEdit, ID: "twice", Base: next, Next: typed}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prototest.WaitFor(t, wait, func() bool {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		n := 0
+		for _, m := range g.messages {
+			if m.ID == "twice" && m.Kind == protocol.CanvasApplied {
+				n++
+			}
+		}
+		return n == 2
+	}, "both to be answered")
+	prototest.WaitFor(t, wait, func() bool { return readFile(t, f.file) == typed }, "the edit to be saved once")
+	next = typed
+
 	bad := strings.Replace(next, `"x":300`, `"x":"300"`, 1)
 	if err := g.SendCanvas(protocol.CanvasMessage{Kind: protocol.CanvasEdit, ID: "e2", Base: next, Next: bad}); err != nil {
 		t.Fatal(err)

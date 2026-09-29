@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -55,7 +56,14 @@ type canvasContent struct {
 	// last is the file as last read or written: rendering keeps its layout
 	// and the text of what did not change.
 	last *canvas.File
+	// applied remembers the ids of the last edits applied from the browser,
+	// oldest first: one sent again after a reconnect whose answer was lost
+	// is answered, not applied twice (a second apply repeats inserts).
+	applied []string
 }
+
+// rememberedEdits bounds how many applied edit ids a canvas room remembers.
+const rememberedEdits = 256
 
 // newCanvasContent loads a canvas into the doc, or explains why the file is
 // not one.
@@ -101,7 +109,13 @@ func (c *canvasContent) merge(base, next string) error {
 
 // edit applies JSON someone edited by hand in the browser. Unlike an edit to
 // the file, it is not what the file holds, so the file keeps its layout.
-func (c *canvasContent) edit(base, next string) error {
+func (c *canvasContent) edit(id, base, next string) error {
+	c.mu.Lock()
+	seen := slices.Contains(c.applied, id)
+	c.mu.Unlock()
+	if seen {
+		return nil
+	}
 	b, err := canvas.Parse([]byte(base))
 	if err != nil {
 		return describeJSONError(err)
@@ -111,6 +125,12 @@ func (c *canvasContent) edit(base, next string) error {
 		return describeJSONError(err)
 	}
 	canvas.Apply(c.doc, b.Canvas, n.Canvas, editOrigin)
+	c.mu.Lock()
+	c.applied = append(c.applied, id)
+	if len(c.applied) > rememberedEdits {
+		c.applied = c.applied[len(c.applied)-rememberedEdits:]
+	}
+	c.mu.Unlock()
 	return nil
 }
 
