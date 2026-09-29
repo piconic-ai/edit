@@ -37,12 +37,18 @@ type setupOpts struct {
 	writeDelay time.Duration
 	// wrap wraps the host's connections.
 	wrap func(protocol.Conn) protocol.Conn
+	// name is the shared file's name; notes.md by default.
+	name    string
+	onError func(error)
 }
 
 func setup(t *testing.T, content string, o setupOpts) *fixture {
 	t.Helper()
 	f := &fixture{relay: prototest.NewRelay(true)}
-	f.file = filepath.Join(t.TempDir(), "notes.md")
+	if o.name == "" {
+		o.name = "notes.md"
+	}
+	f.file = filepath.Join(t.TempDir(), o.name)
 	if err := os.WriteFile(f.file, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +69,7 @@ func setup(t *testing.T, content string, o setupOpts) *fixture {
 		Server:     f.server.URL + "/",
 		WriteDelay: o.writeDelay,
 		Watch:      o.watch,
+		OnError:    o.onError,
 		Dial: func(ctx context.Context, url string, header http.Header) (protocol.Conn, error) {
 			c, err := f.relay.Dial(ctx, url, header)
 			if err == nil && o.wrap != nil {

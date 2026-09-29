@@ -14,11 +14,11 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/piconic-ai/ima/internal/attach"
 	"github.com/piconic-ai/ima/internal/filewriter"
-	"github.com/piconic-ai/ima/internal/merge"
 	"github.com/piconic-ai/ima/internal/protocol"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
@@ -51,13 +51,16 @@ type Options struct {
 
 type Session struct {
 	// URL is the share URL. Its fragment holds the key and must never be sent to the server.
-	URL    string
-	Doc    *crdt.Doc
+	URL string
+	Doc *crdt.Doc
+	// Text is the shared text, or nil when the file is a canvas, shared as
+	// nodes and edges.
 	Text   *crdt.YText
 	Client *protocol.Client
 	Writer *filewriter.Writer
 
 	file        string
+	content     content
 	awareness   *awareness.Awareness
 	attachments *attach.Attachments
 	watcher     *fsnotify.Watcher
@@ -73,6 +76,9 @@ type Session struct {
 
 	// syncing serializes syncs from disk, and lets Stop wait out one in flight.
 	syncing sync.Mutex
+	// invalidOnDisk is the invalid canvas last reported, so it is reported once.
+	// Guarded by syncing.
+	invalidOnDisk string
 
 	// Test seams, called during Stop.
 	beforeDestroy    func()
@@ -81,6 +87,9 @@ type Session struct {
 
 // fileOrigin tags changes merged in from the file.
 const fileOrigin = "file"
+
+// editOrigin tags a canvas someone edited by hand in the browser.
+const editOrigin = "edit"
 
 // Awareness timings of y-protocols: peers that stay silent for outdatedTimeout
 // are dropped, so renew our state well before that.
@@ -94,9 +103,23 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	if onError == nil {
 		onError = func(error) {}
 	}
-	content, ok := filewriter.ReadFile(opts.File)
+	initial, ok := filewriter.ReadFile(opts.File)
 	if !ok {
 		return nil, fmt.Errorf("cannot read %s", opts.File)
+	}
+	// Before creating a room, so a canvas that is not valid fails right away.
+	doc := crdt.New()
+	var shared content
+	var text *crdt.YText
+	if isCanvas(opts.File) {
+		c, err := newCanvasContent(doc, opts.File, initial)
+		if err != nil {
+			return nil, err
+		}
+		shared = c
+	} else {
+		c := newTextContent(doc, initial)
+		shared, text = c, c.text
 	}
 
 	server := strings.TrimRight(opts.Server, "/")
@@ -111,9 +134,6 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	}
 	wsURL := "ws" + strings.TrimPrefix(server, "http") + "/api/rooms/" + room.ID + "/ws"
 
-	doc := crdt.New()
-	text := doc.GetText("content")
-	doc.Transact(func(txn *crdt.Transaction) { text.Insert(txn, 0, content, nil) })
 	aw := awareness.New(uint64(doc.ClientID()))
 	name := opts.Name
 	if name == "" {
@@ -123,14 +143,18 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	if opts.Avatar != "" {
 		user["avatar"] = opts.Avatar
 	}
-	aw.SetLocalState(map[string]any{
+	state := map[string]any{
 		"role": "host",
 		"name": name,
 		"user": user,
 		"file": filepath.Base(opts.File),
 		// Browsers let people paste images only when the host says it saves them.
 		"attachments": map[string]any{"dir": attach.Dir, "maxBytes": attach.MaxBytes},
-	})
+	}
+	if _, ok := shared.(*canvasContent); ok {
+		state["format"] = formatCanvas
+	}
+	aw.SetLocalState(state)
 	blobKeys, err := protocol.DeriveBlobKeys(rawKey)
 	if err != nil {
 		return nil, err
@@ -141,10 +165,11 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		Doc:       doc,
 		Text:      text,
 		file:      opts.File,
+		content:   shared,
 		awareness: aw,
 		onError:   onError,
 	}
-	s.Writer = filewriter.New(opts.File, content, filewriter.Options{
+	s.Writer = filewriter.New(opts.File, initial, filewriter.Options{
 		Delay:            opts.WriteDelay,
 		OnError:          onError,
 		OnExternalChange: s.scheduleSyncFromDisk,
@@ -166,6 +191,7 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		OnError:   onError,
 		// Set below, before the client connects.
 		OnAttachment: func(m protocol.Attachment) { s.attachments.Handle(m) },
+		OnCanvas:     s.handleCanvas,
 	})
 	if err != nil {
 		return nil, err
@@ -184,8 +210,9 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	})
 
 	doc.OnUpdate(func(_ []byte, origin any) {
-		if origin == s.Client {
-			s.Writer.Schedule(s.Text.ToString())
+		// Both come in under the client's lock, so the doc can be read here.
+		if origin == s.Client || origin == editOrigin {
+			s.Writer.Schedule(s.content.render())
 		}
 	})
 	aw.OnChange(func(awareness.ChangeEvent) {
@@ -376,19 +403,75 @@ func (s *Session) syncFromDisk() {
 	// Rebase drops any pending write, which predates the merge.
 	s.Writer.Rebase(func(lastWritten string) string {
 		onDisk, ok := readSettled(s.file)
-		if !ok || onDisk == lastWritten {
+		if !ok {
 			return lastWritten
 		}
-		s.Client.Do(func() {
-			merge.ExternalEdit(s.Doc, s.Text, lastWritten, onDisk, fileOrigin)
-		})
+		if onDisk == lastWritten {
+			// Put back as it was after being invalid: what came in meanwhile
+			// could not be saved, so save it now.
+			changed = s.invalidOnDisk != ""
+			s.invalidOnDisk = ""
+			return lastWritten
+		}
+		var err error
+		s.Client.Do(func() { err = s.content.merge(lastWritten, onDisk) })
+		if err != nil {
+			// Wait for it to be fixed: saving now would clobber whatever
+			// someone is in the middle of writing.
+			if onDisk != s.invalidOnDisk {
+				s.invalidOnDisk = onDisk
+				s.onError(fmt.Errorf("%s changed outside ima, but ima cannot take the change in; it saves again once the file is fixed.\n%w", filepath.Base(s.file), err))
+			}
+			return lastWritten
+		}
+		s.invalidOnDisk = ""
 		changed = true
 		return onDisk
 	})
 	if changed {
 		// Remote edits made meanwhile are not on disk yet.
-		s.Writer.Schedule(s.Text.ToString())
+		s.Writer.Schedule(s.render())
 	}
+}
+
+// render returns the file as the doc has it now, under the client's lock so
+// remote updates cannot change the doc while it is read.
+func (s *Session) render() string {
+	var out string
+	s.Client.Do(func() { out = s.content.render() })
+	return out
+}
+
+// maxRejectReason keeps a rejection within what a canvas message carries.
+const maxRejectReason = 16 << 10
+
+// handleCanvas applies JSON someone edited by hand in the browser, and tells
+// the room whether it did.
+func (s *Session) handleCanvas(m protocol.CanvasMessage) {
+	c, ok := s.content.(*canvasContent)
+	if !ok || m.Kind != protocol.CanvasEdit {
+		return
+	}
+	var err error
+	s.Client.Do(func() { err = c.edit(m.Base, m.Next) })
+	reply := protocol.CanvasMessage{Kind: protocol.CanvasApplied, ID: m.ID}
+	if err != nil {
+		reply = protocol.CanvasMessage{Kind: protocol.CanvasRejected, ID: m.ID, Reason: truncate(err.Error(), maxRejectReason)}
+	}
+	if err := s.Client.SendCanvas(reply); err != nil {
+		s.onError(err)
+	}
+}
+
+// truncate cuts s to at most n bytes, on a character boundary.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // finalWriteAttempts bounds how often Stop retries when the file keeps changing
@@ -416,7 +499,7 @@ func (s *Session) Stop() error {
 		// Merge a last-second external edit while peers can still get it, and
 		// save right away: leaving can take a while, and a second Ctrl+C exits.
 		s.syncFromDisk()
-		s.Writer.Schedule(s.Text.ToString())
+		s.Writer.Schedule(s.render())
 		_ = s.Writer.Flush()
 
 		if s.beforeDestroy != nil {
@@ -430,7 +513,7 @@ func (s *Session) Stop() error {
 			if s.beforeFinalWrite != nil {
 				s.beforeFinalWrite(attempt)
 			}
-			s.Writer.Schedule(s.Text.ToString())
+			s.Writer.Schedule(s.render())
 			s.stopErr = s.Writer.Flush()
 			if !errors.Is(s.stopErr, filewriter.ErrExternalChange) || attempt == finalWriteAttempts {
 				break
