@@ -37,6 +37,20 @@ import './components/CanvasBoard.tsx'
  */
 export const BoardContext = createContext<BoardView | null>(null)
 
+/**
+ * The node editor's colours, from the page's: it has no editor theme, and
+ * CodeMirror's defaults are for a light page (a black caret, a pale
+ * selection), which vanish on a dark one. It keeps the card's font too, so
+ * the text does not change face while it is typed in.
+ */
+const nodeEditorTheme = EditorView.theme({
+  '.cm-scroller': { fontFamily: 'inherit', lineHeight: 'inherit' },
+  '.cm-content': { caretColor: 'var(--ink)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--ink)' },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
+    { background: 'color-mix(in srgb, var(--accent) 35%, transparent)' },
+})
+
 /** Marks the board's own edits, so the undo manager tracks them. */
 const BOARD_ORIGIN = Symbol('board')
 
@@ -600,6 +614,7 @@ export class BoardView {
         ]),
         markdown(),
         EditorView.lineWrapping,
+        nodeEditorTheme,
         yCollab(text, this.#awareness, { undoManager: this.#undo }),
         EditorView.domEventHandlers({ blur: () => this.finishEditing() }),
       ],

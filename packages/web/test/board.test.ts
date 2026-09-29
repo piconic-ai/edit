@@ -265,6 +265,14 @@ describe('BoardView', () => {
     expect(view.editing.get()).toBe('a')
     expect(card.dataset.editing).toBe('')
     expect(card.querySelector('.canvas-editor .cm-content')?.textContent).toBe('a')
+    // The caret takes the page's text colour, so it shows on a dark theme too.
+    const rules = [...document.querySelectorAll('style')].map((s) => s.textContent).join('\n')
+    const scope =
+      /\.(\S+) \.cm-cursor, \.\1 \.cm-dropCursor \{[^}]*border-left-color: var\(--ink\)/.exec(
+        rules,
+      )?.[1]
+    expect(scope).toBeDefined()
+    expect(card.querySelector('.cm-editor')?.classList.contains(scope as string)).toBe(true)
     view.finishEditing()
     expect(card.querySelector('.cm-editor')).toBeNull()
   })

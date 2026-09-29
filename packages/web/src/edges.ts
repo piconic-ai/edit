@@ -1,10 +1,13 @@
-import { getBezierPath, Position } from '@barefootjs/xyflow'
+import { getSmoothStepPath, Position } from '@barefootjs/xyflow'
 import type { CanvasEdge, CanvasNode, Side } from './canvas.ts'
 
 const SVG = 'http://www.w3.org/2000/svg'
 
 /** The id of the arrow <marker> CanvasBoard defines; it turns around at the start. */
 export const ARROW = 'canvas-arrow'
+
+/** How far an edge runs straight out of a side before it first bends. */
+const STEP_OFFSET = 24
 
 /** Where a node is on the board now, which may be ahead of the document while dragged. */
 export interface Box {
@@ -59,7 +62,7 @@ export interface EdgeShape {
   selected: boolean
 }
 
-/** Draws an edge as a curve between the middles of its sides. */
+/** Draws an edge as a line with square bends between the middles of its sides. */
 export function shapeOf(edge: CanvasEdge, from: Box, to: Box, selected: boolean): EdgeShape {
   // Sides the file leaves out are drawn facing each other, and not written back.
   const [fromFacing, toFacing] = facingSides(from, to)
@@ -67,13 +70,16 @@ export function shapeOf(edge: CanvasEdge, from: Box, to: Box, selected: boolean)
   const toSide = edge.toSide ?? toFacing
   const s = anchor(from, fromSide)
   const t = anchor(to, toSide)
-  const [d, labelX, labelY] = getBezierPath({
+  // A line with square bends, leaving and entering straight out of the sides.
+  const [d, labelX, labelY] = getSmoothStepPath({
     sourceX: s.x,
     sourceY: s.y,
     sourcePosition: POSITION[fromSide],
     targetX: t.x,
     targetY: t.y,
     targetPosition: POSITION[toSide],
+    borderRadius: 0,
+    offset: STEP_OFFSET,
   })
   return {
     id: edge.id,
