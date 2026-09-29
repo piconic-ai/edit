@@ -48,8 +48,8 @@ export class JsonPane {
   #delay: number
   /** The JSON the pane and the document last agreed on. */
   #base: string
-  /** Edits sent and not answered yet, by id: the text each one sent. */
-  #pending = new Map<string, string>()
+  /** Edits sent and not answered yet, by id: what each one sent. */
+  #pending = new Map<string, { base: string; next: string }>()
   #timer: ReturnType<typeof setTimeout> | null = null
   #readOnly = new Compartment()
   #closed = false
@@ -158,14 +158,14 @@ export class JsonPane {
       return
     }
     // Already on its way.
-    if ([...this.#pending.values()].includes(text)) return
+    if ([...this.#pending.values()].some((p) => p.next === text)) return
     const bytes = new TextEncoder().encode(this.#base + text).length
     if (bytes > MAX_CANVAS_EDIT_BYTES) {
       this.status.set({ kind: 'too-large' })
       return
     }
     const id = newId()
-    this.#pending.set(id, text)
+    this.#pending.set(id, { base: this.#base, next: text })
     this.#send({ kind: 'edit', id, base: this.#base, next: text })
     this.status.set({ kind: 'sending' })
   }
@@ -173,7 +173,7 @@ export class JsonPane {
   /** The host's answer to an edit this pane sent; others' answers are not for it. */
   handle(message: CanvasMessage): void {
     if (message.kind === 'edit') return
-    const sent = this.#pending.get(message.id)
+    const sent = this.#pending.get(message.id)?.next
     if (sent === undefined) return
     this.#pending.delete(message.id)
     if (message.kind === 'applied') {
@@ -193,13 +193,13 @@ export class JsonPane {
 
   /**
    * After the connection came back. Frames sent or answered while it was
-   * down are gone, so what was waiting for an answer is sent again: the host
-   * applies base → next as a three-way change, so a second time is harmless.
+   * down may be gone, so what waits for an answer is sent again, as it was
+   * and under the same id: the host answers an edit it already applied
+   * without applying it twice.
    */
   reconnected(): void {
-    if (this.#pending.size === 0) return
-    this.#pending.clear()
-    this.check()
+    for (const [id, p] of this.#pending)
+      this.#send({ kind: 'edit', id, base: p.base, next: p.next })
   }
 
   /** Once the room has closed: nothing can be sent, so nothing can be typed. */

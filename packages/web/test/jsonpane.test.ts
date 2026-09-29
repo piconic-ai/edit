@@ -148,17 +148,19 @@ describe('JsonPane', () => {
     expect(sent).toEqual([])
   })
 
-  it('sends again what went unanswered once the connection is back', () => {
+  it('sends again what went unanswered once the connection is back, as it was', () => {
     const { pane, sent, text, type, lastEdit } = setup()
     const base = text()
     const next = base.replace('"x":0', '"x":5')
     type(next)
     pane.check()
-    // The frame, or its answer, was lost while the connection was down.
+    const first = lastEdit()
+    // The frame, or its answer, was lost while the connection was down. The
+    // same id lets the host answer an edit it already applied, not apply it twice.
     pane.reconnected()
     expect(sent).toHaveLength(2)
-    expect(lastEdit()).toMatchObject({ base, next })
-    pane.handle({ kind: 'applied', id: lastEdit().id })
+    expect(lastEdit()).toEqual(first)
+    pane.handle({ kind: 'applied', id: first.id })
     expect(pane.status.get()).toEqual({ kind: 'synced' })
     // Nothing waiting: a reconnect sends nothing.
     pane.reconnected()
