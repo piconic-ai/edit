@@ -22,6 +22,16 @@ describe('thirdPartyLicenses', () => {
     expect(text).toContain('Copyright (c) 2021 uiw')
   })
 
+  it('lists what a package inlines in its own build, but not type declarations', () => {
+    const text: string = thirdPartyLicenses([moduleIn('@barefootjs/xyflow')], 'Intro.')
+    expect(text).toContain('@barefootjs/xyflow@')
+    expect(text).toMatch(/@xyflow\/system@[\d.]+ \(MIT\)/)
+    expect(text).toMatch(/d3-zoom@[\d.]+ \(ISC\)/)
+    expect(text).not.toContain('@types/')
+    // Kept external by its build, so listed only when bundled on its own.
+    expect(text).not.toContain('@barefootjs/client@')
+  })
+
   it('refuses packages with no license text at all', () => {
     const dir = join(mkdtempSync(join(tmpdir(), 'ima-licenses-')), 'node_modules', 'nolicense')
     mkdirSync(dir, { recursive: true })
