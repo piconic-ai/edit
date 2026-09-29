@@ -1,10 +1,14 @@
 import { defaultStore, type Store } from './storage.ts'
 import { type Readable, Store as Value } from './store.ts'
 
-export type ViewMode = 'editor' | 'split' | 'preview' | 'table'
+export type ViewMode = 'editor' | 'split' | 'preview' | 'table' | 'canvas'
 
-/** Which views a file has: Markdown has a preview, CSV and TSV a table. */
-export type ViewKind = 'markdown' | 'table' | 'plain'
+/**
+ * Which views a file has: Markdown has a preview, CSV and TSV a table, and a
+ * canvas, which the host shares as nodes and edges rather than text, only
+ * its board.
+ */
+export type ViewKind = 'markdown' | 'table' | 'canvas' | 'plain'
 
 export const VIEW_KEY = 'ima:view'
 export const TABLE_VIEW_KEY = 'ima:table-view'
@@ -31,6 +35,7 @@ const KINDS: Record<ViewKind, KindInfo> = {
       { mode: 'table', label: 'Table' },
     ],
   },
+  canvas: { key: null, modes: [{ mode: 'canvas', label: 'Canvas' }] },
   plain: { key: null, modes: [] },
 }
 
@@ -78,6 +83,7 @@ export function effectiveMode(
   kind: ViewKind = 'markdown',
 ): ViewMode {
   if (kind === 'plain') return 'editor'
+  if (kind === 'canvas') return 'canvas'
   if (kind === 'table') return chosen === 'editor' ? 'editor' : 'table'
   const mode = chosen && isModeOf('markdown', chosen) ? chosen : 'split'
   return narrow && mode === 'split' ? 'preview' : mode
@@ -101,7 +107,7 @@ export interface ViewButton {
   title: string | null
 }
 
-const ALL_MODES: readonly ViewMode[] = ['editor', 'split', 'preview', 'table']
+const ALL_MODES: readonly ViewMode[] = ['editor', 'split', 'preview', 'table', 'canvas']
 
 /**
  * Which view shows, and the Edit / Split / Preview buttons for Markdown or
@@ -178,7 +184,8 @@ export class ViewSwitch {
         return {
           mode: m,
           label: info?.label ?? '',
-          hidden: !info || (m === 'split' && this.#narrow),
+          // One view needs no buttons.
+          hidden: !info || modes.length < 2 || (m === 'split' && this.#narrow),
           pressed: m === mode,
           disabled: m === 'table' && error !== null,
           title: m === 'table' ? error : null,

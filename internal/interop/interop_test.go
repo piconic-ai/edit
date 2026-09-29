@@ -360,3 +360,55 @@ func (s *syncBuffer) String() string {
 	defer s.mu.Unlock()
 	return s.b.String()
 }
+
+func TestGoHostSharesACanvasWithJavaScriptGuest(t *testing.T) {
+	dir := protocolDir(t)
+	server := newServer(t)
+	file := filepath.Join(t.TempDir(), "board.canvas")
+	const board = "{\n" +
+		"\t\"nodes\":[\n" +
+		"\t\t{\"id\":\"a1\",\"type\":\"text\",\"text\":\"Hello\",\"x\":0,\"y\":0,\"width\":250,\"height\":60},\n" +
+		"\t\t{\"id\":\"b2\",\"type\":\"file\",\"file\":\"b.md\",\"x\":300,\"y\":0,\"width\":400,\"height\":400}\n" +
+		"\t],\n" +
+		"\t\"edges\":[\n" +
+		"\t\t{\"id\":\"e1\",\"fromNode\":\"a1\",\"toNode\":\"b2\"}\n" +
+		"\t]\n" +
+		"}"
+	if err := os.WriteFile(file, []byte(board), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := session.Start(context.Background(), session.Options{File: file, Server: server.URL, WriteDelay: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Stop() })
+	prototest.WaitFor(t, 5*time.Second, func() bool { return s.Client.Status() == protocol.StatusConnected }, "host connected")
+
+	share, _ := url.Parse(s.URL)
+	next := strings.Replace(board, `"file":"b.md"`, `"file":"c.md"`, 1)
+	guest := startGuest(t, "testdata/canvas.mjs", dir, wsURL(server), share.Fragment, board, next)
+
+	var shared struct {
+		Format      string
+		Nodes       []map[string]any
+		Edges       []map[string]any
+		TextIsYText bool
+	}
+	if line := guest.next("the shared canvas"); json.Unmarshal([]byte(line), &shared) != nil {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
+	}
+	if shared.Format != "canvas" || len(shared.Nodes) != 2 || len(shared.Edges) != 1 || !shared.TextIsYText || shared.Nodes[0]["text"] != "Hello" {
+		t.Fatalf("guest saw %+v", shared)
+	}
+	if line := guest.next("the reply"); line != "applied" {
+		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
+	}
+	guest.wait()
+
+	// The guest's move (1.5 comes as a float32), its typing and its hand-edited JSON, saved.
+	want := strings.Replace(next, `"text":"Hello","x":0`, `"text":"居間: Hello","x":1.5`, 1)
+	prototest.WaitFor(t, 5*time.Second, func() bool {
+		b, _ := os.ReadFile(file)
+		return string(b) == want
+	}, "the guest's edits to be saved")
+}

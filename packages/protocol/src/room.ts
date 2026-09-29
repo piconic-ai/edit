@@ -9,6 +9,7 @@ import {
   encodeAttachment,
   UnknownAttachmentKindError,
 } from './attachment.ts'
+import { type CanvasMessage, decodeCanvas, encodeCanvas, UnknownCanvasKindError } from './canvas.ts'
 import { decrypt, encrypt } from './cipher.ts'
 import { ROOM_CLOSED } from './close.ts'
 import {
@@ -48,6 +49,7 @@ export interface RoomClientOptions {
   onStatus?: (status: RoomStatus) => void
   onError?: (error: unknown) => void
   onAttachment?: (attachment: Attachment) => void
+  onCanvas?: (message: CanvasMessage) => void
 }
 
 const OPEN = 1
@@ -146,6 +148,14 @@ export class RoomClient {
     this.send(MessageType.Attachment, encodeAttachment(attachment))
   }
 
+  /**
+   * Sends a canvas message to everyone else in the room. Like every other
+   * frame, it is dropped while disconnected.
+   */
+  sendCanvas(message: CanvasMessage): void {
+    this.send(MessageType.Canvas, encodeCanvas(message))
+  }
+
   private async receive(data: Uint8Array): Promise<void> {
     let message: Message
     try {
@@ -168,6 +178,16 @@ export class RoomClient {
         decoding.readVarUint8Array(decoder),
         this,
       )
+    } else if (message.type === MessageType.Canvas) {
+      let canvas: CanvasMessage
+      try {
+        canvas = decodeCanvas(message.payload)
+      } catch (error) {
+        // Likewise for canvas kinds.
+        if (error instanceof UnknownCanvasKindError) return
+        throw error
+      }
+      this.opts.onCanvas?.(canvas)
     } else {
       let attachment: Attachment
       try {

@@ -3,6 +3,7 @@ import { Awareness } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import {
   type Attachment,
+  type CanvasMessage,
   encrypt,
   generateKey,
   importKey,
@@ -147,6 +148,32 @@ describe('RoomClient', () => {
     a.sendAttachment(sent)
     await vi.waitFor(() => expect(got).toEqual([sent]))
     expect(() => a.sendAttachment({ kind: 'want', hashes: [] })).toThrow()
+  })
+
+  it('delivers canvas messages', async () => {
+    const relay = new Relay()
+    const key = await importKey(generateKey())
+    const got: CanvasMessage[] = []
+    const a = await join(relay, key)
+    const doc = new Y.Doc()
+    const b = new RoomClient({
+      url: 'ws://test',
+      key,
+      doc,
+      awareness: new Awareness(doc),
+      createSocket: relay.create,
+      onCanvas: (m) => got.push(m),
+    })
+    clients.push(b)
+    b.connect()
+    await vi.waitFor(() => {
+      expect(a.status).toBe('connected')
+      expect(b.status).toBe('connected')
+    })
+    const sent: CanvasMessage = { kind: 'edit', id: 'e1', base: '{}', next: '{"nodes":[]}' }
+    a.sendCanvas(sent)
+    await vi.waitFor(() => expect(got).toEqual([sent]))
+    expect(() => a.sendCanvas({ kind: 'applied', id: '' })).toThrow()
   })
 
   it('skips message types from newer peers', async () => {

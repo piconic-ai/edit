@@ -11,6 +11,7 @@ const (
 	MessageSync       MessageType = 0
 	MessageAwareness  MessageType = 1
 	MessageAttachment MessageType = 2
+	MessageCanvas     MessageType = 3
 )
 
 // RoomClosed is the WebSocket close code sent to everyone in a room when its
@@ -35,7 +36,7 @@ func DecodeMessage(data []byte) (MessageType, []byte, error) {
 	}
 	t := MessageType(data[0])
 	switch t {
-	case MessageSync, MessageAwareness, MessageAttachment:
+	case MessageSync, MessageAwareness, MessageAttachment, MessageCanvas:
 		return t, data[1:], nil
 	}
 	return 0, nil, fmt.Errorf("%w: %d", ErrUnknownMessageType, data[0])

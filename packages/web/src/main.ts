@@ -18,8 +18,11 @@ import {
   saveAppearance,
 } from './appearance.ts'
 import { Attachments, hostAttachments, whyNoImages } from './attachments.ts'
+import { BoardView } from './board.ts'
+import { read as readCanvas, toJSON } from './canvas.ts'
 import { delimiterFor } from './csv.ts'
 import { avatarFor, fetchIdentity } from './identity.ts'
+import { JsonPane } from './jsonpane.ts'
 import { resolveLanguage } from './language.ts'
 import { NoticeBoard } from './notice.ts'
 import { applyPalette } from './palette.ts'
@@ -118,6 +121,8 @@ function settingsModel(
   vim: VimToggle,
   initial: Appearance,
   fontMode: Compartment,
+  /** Other editors on the page, which take the same reader theme. */
+  fontFollowers: readonly { view: EditorView; compartment: Compartment }[] = [],
 ): SettingsModel {
   const prefersDark = matchMedia(DARK_QUERY)
   let current = initial
@@ -147,8 +152,11 @@ function settingsModel(
     applyText(current)
     // A CSS variable change alone does not make CodeMirror remeasure line
     // heights, so the gutter would drift out of sync with the text (see
-    // readerTheme's doc comment in themes.ts).
-    editor.dispatch({ effects: fontMode.reconfigure(readerTheme()) })
+    // readerTheme's doc comment in themes.ts). Every editor gets the same
+    // instance, so the next call alternates for all of them.
+    const reader = readerTheme()
+    editor.dispatch({ effects: fontMode.reconfigure(reader) })
+    for (const f of fontFollowers) f.view.dispatch({ effects: f.compartment.reconfigure(reader) })
   }
   return {
     themes: THEMES,
@@ -208,6 +216,8 @@ async function joinRoom(
   const roomStatus = new Store<RoomStatus>('connecting')
   const fileName = new Store<string | null>(null)
   const people = new Store<readonly Participant[]>([])
+  // Set once the host says it shares a canvas as nodes and edges, not text.
+  let canvasRoom = false
   // The room closes as soon as the host leaves (or was never there).
   let parts: LayoutParts | undefined
   render(app, 'Layout', { onReady: (p: LayoutParts) => (parts = p) })
@@ -215,7 +225,7 @@ async function joinRoom(
   const { header, banner, main, source } = parts
   render(banner, 'EndedBanner', {
     status: roomStatus,
-    text: () => text.toString(),
+    text: () => (canvasRoom ? toJSON(readCanvas(doc)) : text.toString()),
     onReconnect: () => location.reload(),
   })
   // Filled in once the client exists; nothing is sent before it connects.
@@ -253,6 +263,8 @@ async function joinRoom(
   // Reused so switching back to Markdown does not reparse the document.
   const markdownSupport = markdown()
   const readOnly = [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+  // One instance for every editor on the page: readerTheme() alternates.
+  const reader = readerTheme()
   const undoManager = new Y.UndoManager(text)
   const editor = new EditorView({
     parent: source,
@@ -264,7 +276,7 @@ async function joinRoom(
       Prec.high(keymap.of(yUndoManagerKeymap)),
       language.of(markdownSupport),
       themeMode.of(theme.extension),
-      fontMode.of(readerTheme()),
+      fontMode.of(reader),
       wrap.of(lineWrapping(appearance.wrap)),
       editable.of([]),
       yCollab(text, awareness, { undoManager }),
@@ -294,8 +306,17 @@ async function joinRoom(
   const table = new TableView(text, awareness, undoManager, {
     onError: (error) => view.setTableError(error && describeError(error)),
   })
+  // The canvas as JSON, in the editor's theme; edits go to the host.
+  const jsonTheme = new Compartment()
+  const jsonFont = new Compartment()
+  const jsonPane = new JsonPane(doc, {
+    send: (m) => client?.sendCanvas(m),
+    extensions: [jsonTheme.of(theme.extension), jsonFont.of(reader)],
+  })
+  const board = new BoardView(doc, awareness, { json: jsonPane })
   parts.splitter.replaceChildren(splitter.element)
   parts.table.replaceChildren(table.element)
+  parts.canvas.replaceChildren(board.element)
   let following = 0
   editor.scrollDOM.addEventListener('scroll', () => {
     following ||= requestAnimationFrame(() => {
@@ -307,6 +328,7 @@ async function joinRoom(
     main.dataset.view = mode
     preview.active = mode === 'split' || mode === 'preview'
     table.active = mode === 'table'
+    board.active = mode === 'canvas'
     editor.requestMeasure()
     followEditor()
   }
@@ -319,14 +341,11 @@ async function joinRoom(
   })
 
   const vim = new VimToggle(editor, vimMode, () => vimExtension(undoManager))
-  const settings = settingsModel(
-    editor,
-    new ThemeSwitcher(editor, themeMode, theme.id),
-    wrap,
-    vim,
-    appearance,
-    fontMode,
-  )
+  const themes = new ThemeSwitcher(editor, themeMode, theme.id)
+  themes.follow(jsonPane.view, jsonTheme)
+  const settings = settingsModel(editor, themes, wrap, vim, appearance, fontMode, [
+    { view: jsonPane.view, compartment: jsonFont },
+  ])
   if (loadVimMode()) settings.setVim(true)
   render(header, 'Header', {
     file: fileName,
@@ -341,6 +360,7 @@ async function joinRoom(
     roomStatus.set(s)
     if (s === 'closed') {
       editor.dispatch({ effects: editable.reconfigure(readOnly) })
+      board.readOnly = true
     }
   }
 
@@ -349,6 +369,10 @@ async function joinRoom(
   const applyLanguage = async (fileName: string) => {
     if (fileName === languageFor) return
     languageFor = fileName
+    if (canvasRoom) {
+      view.setKind('canvas')
+      return
+    }
     const lang = resolveLanguage(fileName)
     const delimiter = delimiterFor(fileName)
     table.setDelimiter(delimiter)
@@ -374,6 +398,7 @@ async function joinRoom(
     people.set(participants(awareness.getStates(), doc.clientID))
     attachments.host = hostAttachments(awareness.getStates())
     const host = [...awareness.getStates().values()].find((s) => s.role === 'host')
+    if (host?.format === 'canvas') canvasRoom = true
     // Keep showing the file name after the host has gone.
     if (typeof host?.file === 'string') {
       fileName.set(host.file)
@@ -390,9 +415,13 @@ async function joinRoom(
     onStatus: (s) => {
       setStatus(s)
       renderPeople()
-      if (s === 'connected') attachments.reconnected()
+      if (s === 'connected') {
+        attachments.reconnected()
+        jsonPane.reconnected()
+      }
     },
     onAttachment: (a) => attachments.handle(a),
+    onCanvas: (m) => jsonPane.handle(m),
   })
   awareness.on('change', renderPeople)
 

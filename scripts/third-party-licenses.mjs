@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,6 +11,24 @@ const here = dirname(fileURLToPath(import.meta.url))
 const VENDORED = {
   'https://github.com/piconic-ai/barefootjs': 'barefootjs.txt',
   'https://github.com/uiwjs/react-codemirror': 'uiwjs-react-codemirror.txt',
+}
+
+/**
+ * Packages whose published build inlines their dependencies, so the bundler
+ * never sees those as modules of their own. Their dependencies are listed
+ * too, all the way down, except the ones named here, which stay external.
+ */
+const INLINES = {
+  '@barefootjs/xyflow': ['@barefootjs/client'],
+}
+
+/** Where `name` resolves from a package in `dir`, as Node.js would look for it. */
+function findPackage(dir, name) {
+  for (let d = dir; d !== dirname(d); d = dirname(d)) {
+    const candidate = join(d, 'node_modules', name)
+    if (existsSync(join(candidate, 'package.json'))) return candidate
+  }
+  return null
 }
 
 function repositoryUrl(pkg) {
@@ -31,16 +49,26 @@ function licenseText(dir, pkg) {
  */
 export function thirdPartyLicenses(files, intro) {
   const packages = new Map()
-  for (const file of files) {
-    const match = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(file.replace(/\\/g, '/'))
-    if (!match) continue
-    const dir = resolve(match[1])
-    if (packages.has(dir)) continue
+  const add = (dir, external = []) => {
+    if (packages.has(dir)) return
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
     const header = `${pkg.name}@${pkg.version} (${pkg.license})`
     const text = licenseText(dir, pkg)
     if (!text) throw new Error(`no license file found for ${header}`)
     packages.set(dir, { header, text: text.trim() })
+    const inlined = INLINES[pkg.name] ?? (external.length > 0 ? external : null)
+    if (!inlined) return
+    for (const dep of Object.keys(pkg.dependencies ?? {})) {
+      // Type declarations are not code, so no build inlines them.
+      if (inlined.includes(dep) || dep.startsWith('@types/')) continue
+      const depDir = findPackage(dir, dep)
+      if (!depDir) throw new Error(`${header} inlines ${dep}, which is not installed`)
+      add(depDir, inlined)
+    }
+  }
+  for (const file of files) {
+    const match = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(file.replace(/\\/g, '/'))
+    if (match) add(resolve(match[1]))
   }
   const sections = [...packages.values()]
     .sort((a, b) => a.header.localeCompare(b.header))
