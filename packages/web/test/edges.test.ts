@@ -35,14 +35,20 @@ describe('anchor', () => {
 })
 
 describe('shapeOf', () => {
-  it('runs between the sides the file names', () => {
+  it('runs between the sides the file names, with square bends', () => {
     const s = shapeOf(edge({ fromSide: 'bottom', toSide: 'top' }), box(0, 0), box(300, 0), false)
-    expect(s.d).toMatch(/^M50,50 C.* 350,0$/)
+    expect(s.d).toMatch(/^M50 50L/)
+    expect(s.d).toMatch(/L350 0$/)
+    // Straight out of the bottom, and straight into the top.
+    expect(s.d).toContain('50,74')
+    expect(s.d).toContain('350,-24')
+    // No curves: only moves and lines (zero-radius corners).
+    expect(s.d).not.toMatch(/[CS]/)
   })
 
   it('faces the nodes when the file names no sides', () => {
     const s = shapeOf(edge(), box(0, 0), box(300, 0), false)
-    expect(s.d).toMatch(/^M100,25 C.* 300,25$/)
+    expect(s.d).toMatch(/^M100 25L.*300 25$/)
   })
 
   it('has the spec defaults for ends, and the label and colour', () => {
@@ -121,7 +127,7 @@ describe('EdgeLayer', () => {
     expect(group?.hasAttribute('data-color')).toBe(false)
     expect(group?.getAttribute('style')).toBe('--card-color: #ff0000')
     expect(group?.hasAttribute('data-selected')).toBe(true)
-    expect(group?.querySelector('.canvas-edge-line')?.getAttribute('d')).toMatch(/^M50,50 /)
+    expect(group?.querySelector('.canvas-edge-line')?.getAttribute('d')).toMatch(/^M50 50L/)
 
     layer.draw([])
     expect(svg.querySelectorAll('.canvas-edge')).toHaveLength(0)
