@@ -222,7 +222,9 @@ func TestCanvasAppliesJSONEditedInTheBrowser(t *testing.T) {
 	}
 	prototest.WaitFor(t, wait, func() bool { _, ok := g.reply("e2"); return ok }, "a reply")
 	m, _ := g.reply("e2")
-	if m.Kind != protocol.CanvasRejected || !strings.Contains(m.Reason, `board.canvas:4:`) || !strings.Contains(m.Reason, `"x" must be a number, not a string`) {
+	if m.Kind != protocol.CanvasRejected || !strings.Contains(m.Reason, `line 4, column `) ||
+		!strings.Contains(m.Reason, `"x" must be a number, not a string`) ||
+		!strings.HasSuffix(m.Reason, "Fix the JSON and it is sent again.") || strings.Contains(m.Reason, "run ima again") {
 		t.Fatalf("reply = %+v", m)
 	}
 	if got := readFile(t, f.file); got != next {

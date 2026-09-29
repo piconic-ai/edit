@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -101,12 +102,40 @@ func (c *canvasContent) merge(base, next string) error {
 // edit applies JSON someone edited by hand in the browser. Unlike an edit to
 // the file, it is not what the file holds, so the file keeps its layout.
 func (c *canvasContent) edit(base, next string) error {
-	b, n, err := c.parsePair(base, next)
+	b, err := canvas.Parse([]byte(base))
 	if err != nil {
-		return err
+		return describeJSONError(err)
+	}
+	n, err := canvas.Parse([]byte(next))
+	if err != nil {
+		return describeJSONError(err)
 	}
 	canvas.Apply(c.doc, b.Canvas, n.Canvas, editOrigin)
 	return nil
+}
+
+// describeJSONError explains why JSON someone edited in the browser is not a
+// canvas. They see it under the text they typed, so it points into that text
+// rather than into the file, and asks them to fix it there.
+func describeJSONError(err error) error {
+	var e *canvas.Error
+	if !errors.As(err, &e) {
+		return err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Not a valid JSON Canvas (%s):\n", canvas.Spec)
+	for _, p := range e.Problems {
+		fmt.Fprintf(&b, "  line %d, column %d: ", p.Line, p.Column)
+		if p.Path != "" {
+			b.WriteString(p.Path + ": ")
+		}
+		b.WriteString(p.Message + "\n")
+	}
+	if e.More > 0 {
+		fmt.Fprintf(&b, "  and %d more\n", e.More)
+	}
+	b.WriteString("Fix the JSON and it is sent again.")
+	return errors.New(b.String())
 }
 
 func (c *canvasContent) parsePair(base, next string) (*canvas.File, *canvas.File, error) {
