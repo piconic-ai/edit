@@ -226,21 +226,20 @@ func syntaxHint(text string, offset int, message string) string {
 	if offset >= len(text) {
 		return ""
 	}
+	c := text[offset]
 	switch {
+	// A comment can follow anything, so it is named before what the decoder expected.
+	case c == '/' || c == '#':
+		return "JSON does not allow comments"
 	case strings.Contains(message, "after object key:value pair"), strings.Contains(message, "after array element"):
 		return "a comma is probably missing before this"
 	case strings.Contains(message, "after object key"):
 		return "a colon is probably missing after the key"
-	}
-	switch text[offset] {
-	case '}', ']':
-		before := strings.TrimRight(text[:offset], " \t\r\n")
-		if strings.HasSuffix(before, ",") {
+	case c == '}' || c == ']':
+		if strings.HasSuffix(strings.TrimRight(text[:offset], " \t\r\n"), ",") {
 			return "JSON does not allow a comma before a closing bracket"
 		}
-	case '/', '#':
-		return "JSON does not allow comments"
-	case '\'':
+	case c == '\'':
 		return "JSON strings use double quotes"
 	}
 	return ""

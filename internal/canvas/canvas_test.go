@@ -269,6 +269,8 @@ func TestProblems(t *testing.T) {
 	}{
 		{"trailing comma", "{\"nodes\":[\n  {\"id\":\"a\"},\n]}", "]}", "", "comma before a closing bracket"},
 		{"comment", "{\n// note\n}", "//", "", "does not allow comments"},
+		{"comment after a value", "{\n\t\"nodes\":[] // the nodes\n}", "//", "", "does not allow comments"},
+		{"comment after an element", "{\"nodes\":[{} # one\n]}", "#", "", "does not allow comments"},
 		{"missing comma", "{\"nodes\":[]\n\"edges\":[]}", `"edges"`, "", "comma is probably missing"},
 		{"missing comma in a list", "{\"nodes\":[{} {}]}", `{}]`, "", "comma is probably missing"},
 		{"missing colon", `{"nodes":[], "meta" "x"}`, `"x"`, "", "colon is probably missing"},
