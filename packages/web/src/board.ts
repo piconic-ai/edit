@@ -240,6 +240,9 @@ export class BoardView {
     for (const id of [...this.nodes.keys()]) {
       if (!ids.includes(id)) {
         this.nodes.delete(id)
+        // Deleted mid-drag or mid-resize by someone else: no stop will come,
+        // and a node restored under the same id must follow the document.
+        this.#dragging.delete(id)
         this.#resizers.get(id)?.()
         this.#resizers.delete(id)
       }

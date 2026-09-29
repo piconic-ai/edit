@@ -156,6 +156,31 @@ describe('BoardView', () => {
     expect(positions().a).toEqual({ x: 5, y: 9 })
   })
 
+  it('lets a node deleted mid-drag follow the document once restored', async () => {
+    const doc = docOf([node('a'), node('b', { x: 200 })])
+    const view = setup(doc)
+    await tick()
+    const store = storeOf(view)
+    const flow = view.element.querySelector('.bf-flow') as HTMLElement
+    const wrapper = view.element.querySelector('.bf-flow__node[data-id="a"]') as HTMLElement
+    const pointer = (type: string, target: EventTarget, x: number, y: number) =>
+      target.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }),
+      )
+    pointer('pointerdown', wrapper, 100, 100)
+    pointer('pointermove', flow, 110, 100)
+    // Someone else deletes it meanwhile, then undoes the delete.
+    const undo = new Y.UndoManager(doc.getArray(NODES), { trackedOrigins: new Set(['remote']) })
+    remote(doc, () => doc.getArray(NODES).delete(0, 1))
+    await tick()
+    pointer('pointerup', flow, 110, 100)
+    undo.undo()
+    await tick()
+    remote(doc, () => mapOf(doc, 'a').set('x', 300))
+    await tick()
+    expect(store.nodes().find((n) => n.id === 'a')?.position).toEqual({ x: 300, y: 0 })
+  })
+
   it('writes nothing for a click on a node', async () => {
     const doc = docOf([node('a')])
     const view = setup(doc)
