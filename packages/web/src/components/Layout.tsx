@@ -14,6 +14,8 @@ export interface LayoutParts {
   /** Where the Split divider and the table view go, between and after the panes. */
   splitter: HTMLElement
   table: HTMLElement
+  /** Where the canvas board goes. */
+  canvas: HTMLElement
 }
 
 /** The room page: header, the ended banner, notices, and the editor with its panes. */
@@ -70,6 +72,12 @@ export function Layout(props: { onReady: (parts: LayoutParts) => void }) {
           className="table-host"
           ref={(el) => {
             parts.table = el
+          }}
+        />
+        <div
+          className="canvas-host"
+          ref={(el) => {
+            parts.canvas = el
           }}
         />
       </main>

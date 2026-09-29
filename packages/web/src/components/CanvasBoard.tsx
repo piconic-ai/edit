@@ -1,0 +1,134 @@
+'use client'
+
+import { useContext } from '@barefootjs/client'
+import { type EdgeBase, type NodeBase, Position } from '@barefootjs/xyflow'
+import { BoardContext, type BoardView, MAX_ZOOM, MIN_ZOOM } from '../board.ts'
+import { Flow, Handle } from './xyflow/index.tsx'
+
+/** Only web links open from a link node; anything else is shown, not followed. */
+const webUrl = (url: string | undefined) => (url && /^https?:\/\//i.test(url) ? url : undefined)
+
+/** A node's colour: a preset "1" to "6" goes to CSS, a hex colour is set as it is. */
+const presetOf = (color: string | undefined) => (color && /^[1-6]$/.test(color) ? color : undefined)
+const hexOf = (color: string | undefined) =>
+  color && /^#[0-9a-f]{3,8}$/i.test(color) ? `--card-color: ${color};` : ''
+
+/**
+ * One node of the board: its body by type, a handle on every side to draw an
+ * edge from or to, and an editor in place of the text while someone types.
+ * xyflow hands it the node; the view comes from BoardContext.
+ */
+export function CanvasCard(props: NodeBase) {
+  const v = useContext(BoardContext) as BoardView
+  const nodeId = props.id
+  const node = () => v.nodes.get(nodeId)?.get()
+  const editing = () => v.editing.get() === nodeId
+  // What the body shows: a text node's text, a file's path, a group's label.
+  const bodyText = () => {
+    const n = node()
+    if (!n) return ''
+    switch (n.type) {
+      case 'text':
+        return n.text ?? ''
+      case 'file':
+        return `${n.file ?? ''}${n.subpath ?? ''}`
+      case 'group':
+        return n.label ?? ''
+      default:
+        return n.type
+    }
+  }
+  const style = () => {
+    const n = node()
+    return n ? `width: ${n.width}px; height: ${n.height}px; ${hexOf(n.color)}` : ''
+  }
+
+  return (
+    <div
+      className={`canvas-card canvas-card--${node()?.type ?? 'text'}`}
+      data-color={presetOf(node()?.color)}
+      data-editing={editing() ? '' : undefined}
+      style={style()}
+      ref={(el) => v.attachNode(el, nodeId)}
+    >
+      {/* A target under a source on each side: edges start from the source,
+          and the connection snaps to the other node's target. */}
+      <Handle type="target" position={Position.Top} id="top" nodeId={nodeId} />
+      <Handle type="source" position={Position.Top} id="top" nodeId={nodeId} />
+      <Handle type="target" position={Position.Right} id="right" nodeId={nodeId} />
+      <Handle type="source" position={Position.Right} id="right" nodeId={nodeId} />
+      <Handle type="target" position={Position.Bottom} id="bottom" nodeId={nodeId} />
+      <Handle type="source" position={Position.Bottom} id="bottom" nodeId={nodeId} />
+      <Handle type="target" position={Position.Left} id="left" nodeId={nodeId} />
+      <Handle type="source" position={Position.Left} id="left" nodeId={nodeId} />
+      {/* Always there, so the editor the view puts in it stays put; shown
+          while someone types, in place of the text. */}
+      <div className="canvas-editor nodrag nowheel" />
+      {/* One body for every type, and a link that CSS shows for link nodes
+          only: without conditionals, as text inside a conditional branch,
+          and a `hidden` binding, do not update when rendered in the browser. */}
+      <div className="canvas-body">{bodyText()}</div>
+      <a
+        className="canvas-link nodrag"
+        href={webUrl(node()?.url)}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {node()?.url ?? ''}
+      </a>
+    </div>
+  )
+}
+
+/**
+ * Draws a BoardView (board.ts) with @barefootjs/xyflow: pan and zoom, the
+ * nodes as cards, the edges with their arrows and labels. Every change goes
+ * back to the view, which writes it to the shared document.
+ */
+export function CanvasBoard(props: { view: BoardView }) {
+  const v = props.view
+  return (
+    <BoardContext.Provider value={v}>
+      <section
+        className="canvas-view"
+        aria-label="Canvas"
+        onKeyDown={(e) => v.onKey(e)}
+        // One handler for the board: xyflow captures the pointer on a node's
+        // element, so a double click lands there rather than on the card.
+        onDoubleClick={(e) => v.onDoubleClick(e)}
+      >
+        <svg className="canvas-markers" aria-hidden="true" width="0" height="0">
+          <defs>
+            <marker
+              id="canvas-arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M0,0 L10,5 L0,10 z" />
+            </marker>
+          </defs>
+        </svg>
+        <Flow
+          // The view fills them in from the document once the flow exists.
+          nodes={[] as NodeBase[]}
+          edges={[] as EdgeBase[]}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
+          zoomOnDoubleClick={false}
+          onInit={(store) => v.onInit(store)}
+          onNodesDelete={(nodes) => v.onNodesDelete(nodes)}
+          onEdgesDelete={(edges) => v.onEdgesDelete(edges)}
+          onConnect={(c) => v.onConnect(c)}
+          renderNode={CanvasCard}
+        />
+        <p className="canvas-hint" hidden={!v.empty.get()}>
+          Double-click to add a card.
+        </p>
+      </section>
+    </BoardContext.Provider>
+  )
+}

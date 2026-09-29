@@ -82,6 +82,11 @@ describe('effectiveMode', () => {
     expect(effectiveMode('editor', true, 'table')).toBe('editor')
   })
 
+  it('opens a canvas as its board', () => {
+    expect(effectiveMode(null, false, 'canvas')).toBe('canvas')
+    expect(effectiveMode('editor', true, 'canvas')).toBe('canvas')
+  })
+
   it('always shows the editor for other files', () => {
     expect(effectiveMode('preview', false, 'plain')).toBe('editor')
   })
@@ -148,6 +153,16 @@ describe('ViewSwitch', () => {
     view.setKind('markdown')
     expect(view.mode).toBe('preview')
     expect(allHidden()).toBe(false)
+  })
+
+  it('shows a canvas as its board alone, with no buttons, on any screen', () => {
+    const { view, applied, allHidden } = setup({ stored: 'editor', narrow: true })
+    view.setKind('canvas')
+    expect(view.mode).toBe('canvas')
+    expect(applied.at(-1)).toBe('canvas')
+    expect(allHidden()).toBe(true)
+    view.choose('editor')
+    expect(view.mode).toBe('canvas')
   })
 
   it('offers Text and Table for tables, remembered apart from Markdown', () => {
