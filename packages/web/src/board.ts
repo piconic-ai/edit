@@ -176,13 +176,7 @@ export class BoardView {
       return
     }
     const layer = new EdgeLayer(svg, (id) => this.#selectEdge(id))
-    let wasDragging = false
     createRoot(() => {
-      createEffect(() => {
-        const dragging = store.dragging()
-        if (wasDragging && !dragging) untrack(() => this.#dragEnded(store))
-        wasDragging = dragging
-      })
       createEffect(() => {
         this.#edgesChanged.get()
         store.positionEpoch()
@@ -230,7 +224,6 @@ export class BoardView {
 
   #publish(): void {
     const canvas = read(this.#doc)
-    const last = new Map(this.#canvas.nodes.map((n) => [n.id, n]))
     this.#canvas = canvas
     const ids = canvas.nodes.map((n) => n.id)
     for (const n of canvas.nodes) {
@@ -260,15 +253,10 @@ export class BoardView {
     const store = this.#store
     if (!store) return
     const prev = new Map(untrack(store.nodes).map((n) => [n.id, n]))
-    const dragging = untrack(store.dragging)
     const nodes = canvas.nodes.map((n): NodeBase => {
       const p = prev.get(n.id)
-      // A node being dragged or resized here stays where the pointer has
-      // it: while dragging, that is one xyflow has away from the document.
-      const was = last.get(n.id)
-      const moved = !!p && !!was && (p.position.x !== was.x || p.position.y !== was.y)
-      const held = p && (this.#dragging.has(n.id) || (dragging && moved))
-      const position = held ? p.position : { x: n.x, y: n.y }
+      // A node being dragged or resized here stays where the pointer has it.
+      const position = p && this.#dragging.has(n.id) ? p.position : { x: n.x, y: n.y }
       if (
         p &&
         p.position.x === position.x &&
@@ -362,21 +350,18 @@ export class BoardView {
     })
   }
 
-  /**
-   * The nodes a drag moved, from where xyflow has them against where the
-   * document does. @barefootjs/xyflow 0.39 keeps onNodeDragStart and
-   * onNodeDragStop but never calls them, so the board watches its dragging
-   * flag instead, and writes the moves once the drag ends.
-   */
-  #dragEnded(store: FlowStore): void {
-    const doc = new Map(this.#canvas.nodes.map((n) => [n.id, n]))
-    const moves = untrack(store.nodes)
-      .filter((n) => {
-        const d = doc.get(n.id)
-        return d && (Math.round(n.position.x) !== d.x || Math.round(n.position.y) !== d.y)
-      })
-      .map((n) => ({ id: n.id, x: n.position.x, y: n.position.y }))
-    if (moves.length > 0) moveNodes(this.#doc, moves, BOARD_ORIGIN)
+  onNodeDragStart(nodes: readonly NodeBase[]): void {
+    for (const n of nodes) this.#dragging.add(n.id)
+  }
+
+  /** A drag writes where it left the nodes once it ends, so others see one move. */
+  onNodeDragStop(nodes: readonly NodeBase[]): void {
+    moveNodes(
+      this.#doc,
+      nodes.map((n) => ({ id: n.id, x: n.position.x, y: n.position.y })),
+      BOARD_ORIGIN,
+    )
+    for (const n of nodes) this.#dragging.delete(n.id)
   }
 
   onNodesDelete(nodes: readonly NodeBase[]): void {

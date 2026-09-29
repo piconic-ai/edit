@@ -120,6 +120,8 @@ export function CanvasBoard(props: { view: BoardView }) {
           maxZoom={MAX_ZOOM}
           zoomOnDoubleClick={false}
           onInit={(store) => v.onInit(store)}
+          onNodeDragStart={(_e, _node, nodes) => v.onNodeDragStart(nodes)}
+          onNodeDragStop={(_e, _node, nodes) => v.onNodeDragStop(nodes)}
           onNodesDelete={(nodes) => v.onNodesDelete(nodes)}
           onEdgesDelete={(edges) => v.onEdgesDelete(edges)}
           onConnect={(c) => v.onConnect(c)}

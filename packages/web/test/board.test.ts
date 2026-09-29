@@ -128,23 +128,45 @@ describe('BoardView', () => {
     const view = setup(doc)
     await tick()
     const store = storeOf(view)
-    store.setDragging(true)
-    store.setNodes((prev) =>
-      prev.map((n) => (n.id === 'a' ? { ...n, position: { x: 40.4, y: 9.6 } } : n)),
-    )
+    const flow = view.element.querySelector('.bf-flow') as HTMLElement
+    const wrapper = view.element.querySelector('.bf-flow__node[data-id="a"]') as HTMLElement
+    const pointer = (type: string, target: EventTarget, x: number, y: number) =>
+      target.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }),
+      )
+    // xyflow's own drag handler, as a person drags node a.
+    pointer('pointerdown', wrapper, 100, 100)
+    pointer('pointermove', flow, 140.5, 109.25)
     // Someone else moves b meanwhile: a stays under the pointer, b moves.
     remote(doc, () => mapOf(doc, 'b').set('y', 70))
     await tick()
     const positions = () => Object.fromEntries(store.nodes().map((n) => [n.id, n.position]))
-    expect(positions()).toEqual({ a: { x: 40.4, y: 9.6 }, b: { x: 200, y: 70 } })
+    expect(positions()).toEqual({ a: { x: 40.5, y: 9.25 }, b: { x: 200, y: 70 } })
     expect(read(doc).nodes[0]).toMatchObject({ x: 0, y: 0 })
 
-    store.setDragging(false)
-    await tick()
+    pointer('pointerup', flow, 140.5, 109.25)
     expect(read(doc).nodes.map((n) => [n.id, n.x, n.y])).toEqual([
-      ['a', 40, 10],
+      ['a', 41, 9],
       ['b', 200, 70],
     ])
+    await tick()
+    // Released: the next change from the document moves it again.
+    remote(doc, () => mapOf(doc, 'a').set('x', 5))
+    await tick()
+    expect(positions().a).toEqual({ x: 5, y: 9 })
+  })
+
+  it('writes nothing for a click on a node', async () => {
+    const doc = docOf([node('a')])
+    const view = setup(doc)
+    await tick()
+    const before = Y.encodeStateAsUpdate(doc)
+    const wrapper = view.element.querySelector('.bf-flow__node[data-id="a"]') as HTMLElement
+    for (const type of ['pointerdown', 'pointerup']) {
+      wrapper.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1 }))
+    }
+    await tick()
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before)
   })
 
   it('adds an edge from side to side, and not from a node to itself', async () => {
