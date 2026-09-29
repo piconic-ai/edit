@@ -49,8 +49,13 @@ const node = (id: string, extra: object = {}) => ({
   ...extra,
 })
 
+const awarenesses = new WeakMap<BoardView, Awareness>()
+const awarenessOf = (view: BoardView) => awarenesses.get(view) as Awareness
+
 function setup(doc: Y.Doc) {
-  const view = new BoardView(doc, new Awareness(doc))
+  const awareness = new Awareness(doc)
+  const view = new BoardView(doc, awareness)
+  awarenesses.set(view, awareness)
   document.body.append(view.element)
   views.push(view)
   view.active = true
@@ -211,6 +216,38 @@ describe('BoardView', () => {
     expect(card.querySelector('.canvas-editor .cm-content')?.textContent).toBe('a')
     view.finishEditing()
     expect(card.querySelector('.cm-editor')).toBeNull()
+  })
+
+  it('gives xyflow nothing new when only a text changes, and redraws an edge whose label does', async () => {
+    const doc = docOf(
+      [node('a'), node('b', { x: 200 })],
+      [{ id: 'ab', fromNode: 'a', toNode: 'b' }],
+    )
+    const view = setup(doc)
+    await tick()
+    const store = storeOf(view)
+    const nodes = store.nodes()
+    const edges = store.edges()
+    remote(doc, () => (mapOf(doc, 'a').get(TEXT) as Y.Text).insert(1, 'bc'))
+    await tick()
+    expect(texts(view)).toEqual(['abc', 'b'])
+    expect(store.nodes()).toBe(nodes)
+    expect(store.edges()).toBe(edges)
+
+    remote(doc, () => (doc.getArray(EDGES).get(0) as Y.Map<unknown>).set('label', 'uses'))
+    await tick()
+    expect(store.edges()).toBe(edges)
+    expect(view.element.querySelector('.canvas-edge-label')?.textContent).toBe('uses')
+  })
+
+  it('clears its cursor for others once it stops typing in a node', async () => {
+    const doc = docOf([node('a')])
+    const view = setup(doc)
+    await tick()
+    view.edit('a')
+    expect(view.editing.get()).toBe('a')
+    view.finishEditing()
+    expect(awarenessOf(view).getLocalState()?.cursor).toBeNull()
   })
 
   it('changes nothing once the room has closed', async () => {

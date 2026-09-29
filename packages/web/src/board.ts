@@ -68,6 +68,11 @@ export interface Connection {
 const asSide = (handle: string | null): Side | undefined =>
   SIDES.includes(handle as Side) ? (handle as Side) : undefined
 
+/** Whether two lists hold the very same items, in order. */
+function sameItems<T>(a: readonly T[], b: readonly T[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i])
+}
+
 /** Two nodes that look the same, so a publish can keep xyflow's copy. */
 function sameNode(a: CanvasNode, b: CanvasNode): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof CanvasNode>
@@ -108,6 +113,9 @@ export class BoardView {
   #editor: EditorView | null = null
   #scheduled = false
   #readOnly = false
+  /** Bumped when the edges change in a way only edges.ts draws. */
+  #edgesChanged = new Store(0)
+  #drawnEdges = ''
 
   constructor(doc: Y.Doc, awareness: Awareness) {
     this.#doc = doc
@@ -176,6 +184,7 @@ export class BoardView {
         wasDragging = dragging
       })
       createEffect(() => {
+        this.#edgesChanged.get()
         store.positionEpoch()
         const lookup = store.nodeLookup()
         const selected = new Set(
@@ -252,55 +261,66 @@ export class BoardView {
     if (!store) return
     const prev = new Map(untrack(store.nodes).map((n) => [n.id, n]))
     const dragging = untrack(store.dragging)
-    store.setNodes(
-      canvas.nodes.map((n): NodeBase => {
-        const p = prev.get(n.id)
-        // A node being dragged or resized here stays where the pointer has
-        // it: while dragging, that is one xyflow has away from the document.
-        const was = last.get(n.id)
-        const moved = !!p && !!was && (p.position.x !== was.x || p.position.y !== was.y)
-        const held = p && (this.#dragging.has(n.id) || (dragging && moved))
-        const position = held ? p.position : { x: n.x, y: n.y }
-        if (
-          p &&
-          p.position.x === position.x &&
-          p.position.y === position.y &&
-          p.width === n.width &&
-          p.height === n.height &&
-          p.type === n.type
-        ) {
-          return p
-        }
-        return {
-          id: n.id,
-          type: n.type,
-          position,
-          width: n.width,
-          height: n.height,
-          data: {},
-          selected: p?.selected,
-          // Groups sit behind the nodes in them.
-          zIndex: n.type === 'group' ? -1 : 0,
-        }
+    const nodes = canvas.nodes.map((n): NodeBase => {
+      const p = prev.get(n.id)
+      // A node being dragged or resized here stays where the pointer has
+      // it: while dragging, that is one xyflow has away from the document.
+      const was = last.get(n.id)
+      const moved = !!p && !!was && (p.position.x !== was.x || p.position.y !== was.y)
+      const held = p && (this.#dragging.has(n.id) || (dragging && moved))
+      const position = held ? p.position : { x: n.x, y: n.y }
+      if (
+        p &&
+        p.position.x === position.x &&
+        p.position.y === position.y &&
+        p.width === n.width &&
+        p.height === n.height &&
+        p.type === n.type
+      ) {
+        return p
+      }
+      return {
+        id: n.id,
+        type: n.type,
+        position,
+        width: n.width,
+        height: n.height,
+        data: {},
+        selected: p?.selected,
+        // Groups sit behind the nodes in them.
+        zIndex: n.type === 'group' ? -1 : 0,
+      }
+    })
+    // Typing in a text node changes no node xyflow has: then it gets nothing,
+    // so a keystroke does not rebuild its lookups or redraw every edge.
+    if (!sameItems(nodes, untrack(store.nodes))) store.setNodes(nodes)
+
+    const current = untrack(store.edges)
+    const selected = new Set(current.filter((e) => e.selected).map((e) => e.id))
+    // xyflow keeps the edges for selecting and deleting; edges.ts draws them.
+    const edges = canvas.edges.map(
+      (e): EdgeBase => ({
+        id: e.id,
+        source: e.fromNode,
+        target: e.toNode,
+        hidden: true,
+        selected: selected.has(e.id),
       }),
     )
-    const selected = new Set(
-      untrack(store.edges)
-        .filter((e) => e.selected)
-        .map((e) => e.id),
-    )
-    // xyflow keeps the edges for selecting and deleting; edges.ts draws them.
-    store.setEdges(
-      canvas.edges.map(
-        (e): EdgeBase => ({
-          id: e.id,
-          source: e.fromNode,
-          target: e.toNode,
-          hidden: true,
-          selected: selected.has(e.id),
-        }),
-      ),
-    )
+    const unchanged =
+      edges.length === current.length &&
+      edges.every((e, i) => {
+        const c = current[i]
+        return c && c.id === e.id && c.source === e.source && c.target === e.target
+      })
+    if (!unchanged) store.setEdges(edges)
+    // What xyflow does not know about an edge (sides, ends, label, colour)
+    // redraws the edge layer by itself.
+    const drawn = JSON.stringify(canvas.edges)
+    if (drawn !== this.#drawnEdges) {
+      this.#drawnEdges = drawn
+      this.#edgesChanged.set(untrack(() => this.#edgesChanged.get()) + 1)
+    }
     if (!this.#fitted && canvas.nodes.length > 0) {
       this.#fitted = true
       this.#fit()
@@ -508,7 +528,12 @@ export class BoardView {
   }
 
   finishEditing(): void {
-    this.#editor?.destroy()
+    if (this.#editor) {
+      this.#editor.destroy()
+      // yCollab clears the cursor only while its view has focus, and a
+      // destroyed view never updates again: others would keep seeing it.
+      this.#awareness.setLocalStateField('cursor', null)
+    }
     this.#editor = null
     this.editing.set(null)
   }
