@@ -37,13 +37,11 @@ describe('anchor', () => {
 describe('shapeOf', () => {
   it('runs between the sides the file names, with square bends', () => {
     const s = shapeOf(edge({ fromSide: 'bottom', toSide: 'top' }), box(0, 0), box(300, 0), false)
-    expect(s.d).toMatch(/^M50 50L/)
-    expect(s.d).toMatch(/L350 0$/)
-    // Straight out of the bottom, and straight into the top.
-    expect(s.d).toContain('50,74')
-    expect(s.d).toContain('350,-24')
-    // No curves: only moves and lines (zero-radius corners).
-    expect(s.d).not.toMatch(/[CS]/)
+    // Straight out of the bottom and into the top, with square bends: xyflow's
+    // zero-radius bends are degenerate Qs whose control point is the corner.
+    expect(s.d).toBe(
+      'M50 50L 50,74Q 50,74 50,74L 200,74Q 200,74 200,74L 200,-24Q 200,-24 200,-24L 350,-24Q 350,-24 350,-24L350 0',
+    )
   })
 
   it('faces the nodes when the file names no sides', () => {
