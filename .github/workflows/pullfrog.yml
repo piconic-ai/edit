@@ -30,6 +30,6 @@ jobs:
         uses: pullfrog/pullfrog@ce127b38d7f0c6c5e2c40ccd290adc4c5652357f # v0.1.82
         with:
           prompt: ${{ inputs.prompt }}
-          model: openai/gpt-5.6-terra
+          model: openai/gpt-6.1-sol
           push: restricted
           timeout: 20m
