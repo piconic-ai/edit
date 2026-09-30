@@ -1,5 +1,41 @@
 # Changelog
 
+## [v0.0.3](https://github.com/piconic-ai/edit/compare/v0.0.2...v0.0.3) - 2026-09-30
+
+- Try ima behind Cloudflare Access on an ima-lab Worker by @kfly8 in https://github.com/piconic-ai/edit/pull/9
+- Sign in to Cloudflare Access with cloudflared, and speak plainly by @kfly8 in https://github.com/piconic-ai/edit/pull/19
+- Pick the editor language from the file extension by @kfly8 in https://github.com/piconic-ai/edit/pull/18
+- Add Vim keybindings to the browser editor by @kfly8 in https://github.com/piconic-ai/edit/pull/21
+- Add a Markdown preview pane with images and videos by @kfly8 in https://github.com/piconic-ai/edit/pull/22
+- Start a room on a scratch file when ima runs without a file by @kfly8 in https://github.com/piconic-ai/edit/pull/25
+- Explain why a file cannot be shared, suggesting close names by @kfly8 in https://github.com/piconic-ai/edit/pull/26
+- Let readers pick the editor theme, page scheme and text settings by @kfly8 in https://github.com/piconic-ai/edit/pull/27
+- Fix Tab and last-line dd/p in Vim mode by @kfly8 in https://github.com/piconic-ai/edit/pull/28
+- Make the editor usable on phones by @kfly8 in https://github.com/piconic-ai/edit/pull/29
+- Colour the whole page in one theme, picked from a gallery by @kfly8 in https://github.com/piconic-ai/edit/pull/30
+- Edit CSV and TSV files as a table by @kfly8 in https://github.com/piconic-ai/edit/pull/31
+- Build the web UI with BarefootJS, starting with the ended banner by @kfly8 in https://github.com/piconic-ai/edit/pull/33
+- Move the header to a BarefootJS component by @kfly8 in https://github.com/piconic-ai/edit/pull/34
+- Finish moving the web UI to BarefootJS (settings, table, menu, layout), with #32 by @kfly8 in https://github.com/piconic-ai/edit/pull/35
+- Make the table look and work more like a spreadsheet by @kfly8 in https://github.com/piconic-ai/edit/pull/32
+- Read stores as signals in components, and stop republishing unchanged peers by @kfly8 in https://github.com/piconic-ai/edit/pull/36
+- Reconfigure the reader theme so line height changes remeasure the gutter by @kfly8 in https://github.com/piconic-ai/edit/pull/37
+- Remove the Font (Monospace/Proportional) setting by @kfly8 in https://github.com/piconic-ai/edit/pull/38
+- Add attachment messages and blob encryption to the protocol by @kfly8 in https://github.com/piconic-ai/edit/pull/39
+- Store encrypted attachments in R2 while the host is connected by @kfly8 in https://github.com/piconic-ai/edit/pull/40
+- Save pasted images beside the file on the host by @kfly8 in https://github.com/piconic-ai/edit/pull/41
+- Paste and drop images into the editor by @kfly8 in https://github.com/piconic-ai/edit/pull/42
+- Show images added during the session in the preview by @kfly8 in https://github.com/piconic-ai/edit/pull/43
+- Move to BarefootJS 0.39.1 and drop the workarounds it made unnecessary by @kfly8 in https://github.com/piconic-ai/edit/pull/49
+- Read and write JSON Canvas files as shared structure by @kfly8 in https://github.com/piconic-ai/edit/pull/45
+- Share a .canvas as nodes and edges by @kfly8 in https://github.com/piconic-ai/edit/pull/46
+- Show a canvas room as a board to edit together by @kfly8 in https://github.com/piconic-ai/edit/pull/48
+- Edit a canvas as JSON beside the board by @kfly8 in https://github.com/piconic-ai/edit/pull/50
+- Show others on a canvas: what they select, type in and drag by @kfly8 in https://github.com/piconic-ai/edit/pull/51
+- Canvas: edges with square bends, and a visible caret on dark themes by @kfly8 in https://github.com/piconic-ai/edit/pull/52
+- ci: use Codex Terra for Pullfrog by @kfly8 in https://github.com/piconic-ai/edit/pull/53
+- chore: rename ima to piconic edit by @kfly8 in https://github.com/piconic-ai/edit/pull/54
+
 ## [v0.0.2](https://github.com/piconic-ai/edit/compare/v0.0.1...v0.0.2) - 2026-09-25
 
 - Close a room as soon as its host leaves by @kfly8 in https://github.com/piconic-ai/edit/pull/4
