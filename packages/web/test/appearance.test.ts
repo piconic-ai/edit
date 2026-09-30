@@ -94,7 +94,7 @@ describe('parseAppearance', () => {
 })
 
 describe('parseAppearance with settings from earlier versions', () => {
-  const legacy = { page: 'system', editor: 'page', light: 'ima-light', dark: 'ima-dark' }
+  const legacy = { page: 'system', editor: 'page', light: 'pedit-light', dark: 'pedit-dark' }
 
   it('keeps following the OS on the defaults', () => {
     expect(parseAppearance(legacy, false).theme).toBeNull()
@@ -108,7 +108,7 @@ describe('parseAppearance with settings from earlier versions', () => {
     expect(parseAppearance({ ...legacy, dark: 'dracula' }, false).theme).toBeNull()
   })
 
-  it('keeps a chosen scheme or editor pin, mapping the removed ima themes to GitHub', () => {
+  it('keeps a chosen scheme or editor pin, mapping the removed pedit themes to GitHub', () => {
     expect(parseAppearance({ ...legacy, page: 'dark' }, false).theme).toBe('github-dark')
     expect(parseAppearance({ ...legacy, page: 'light', dark: 'dracula' }, true).theme).toBe(
       'github-light',

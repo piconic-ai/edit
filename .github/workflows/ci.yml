@@ -43,11 +43,11 @@ jobs:
         run: go vet ./...
 
       - name: Go test
-        # IMA_INTEROP makes the interop test fail rather than skip without Node.js deps.
-        run: IMA_INTEROP=1 go test -race ./...
+        # PEDIT_INTEROP makes the interop test fail rather than skip without Node.js deps.
+        run: PEDIT_INTEROP=1 go test -race ./...
 
       - name: Go cross-compile
         run: |
           for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
-            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/ima
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/pedit
           done

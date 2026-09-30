@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 )
 
-// createScratch creates an empty Markdown file in dir for `ima` run without a
+// createScratch creates an empty Markdown file in dir for `pedit` run without a
 // file. The name carries the time so scratch files sort and do not collide;
 // if one exists anyway, a counter is added. It never overwrites a file.
 func createScratch(dir string, now func() string) (string, error) {
-	base := "ima-" + now()
+	base := "pedit-" + now()
 	for n := 1; ; n++ {
 		name := base + ".md"
 		if n > 1 {

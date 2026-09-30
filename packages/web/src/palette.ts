@@ -145,7 +145,7 @@ export function systemVars(light: PagePalette, dark: PagePalette): Record<string
  * colours before the theme registry has loaded. Keep its boot script in step
  * with the names and value forms here.
  */
-export const PALETTE_KEY = 'ima:palette'
+export const PALETTE_KEY = 'pedit:palette'
 
 export function applyPalette(
   vars: Record<string, string>,

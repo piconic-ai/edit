@@ -1,4 +1,4 @@
-// Command ima shares a local text file and co-edits it with others in their browser.
+// Command pedit shares a local text file and co-edits it with others in their browser.
 package main
 
 import (
@@ -18,9 +18,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/access"
-	"github.com/piconic-ai/ima/internal/clipboard"
-	"github.com/piconic-ai/ima/internal/session"
+	"github.com/piconic-ai/edit/internal/access"
+	"github.com/piconic-ai/edit/internal/clipboard"
+	"github.com/piconic-ai/edit/internal/session"
 	"golang.org/x/term"
 )
 
@@ -38,16 +38,16 @@ func getVersion() string {
 	return "dev"
 }
 
-const defaultServer = "https://ima.piconic.ai"
+const defaultServer = "https://edit.piconic.ai"
 
-const usage = `Usage: ima [file]
+const usage = `Usage: pedit [file]
 
 Share a local text file and co-edit it with others in their browser.
 Edits are written back to the file. Press Ctrl+C to finish.
-Without a file, ima starts on a new empty ima-<time>.md in the current directory.
+Without a file, pedit starts on a new empty pedit-<time>.md in the current directory.
 
 Environment:
-  IMA_SERVER  ima server URL (default: ` + defaultServer + `)
+  PEDIT_SERVER  pedit server URL (default: ` + defaultServer + `)
 
 A server behind Cloudflare Access signs you in with cloudflared.`
 
@@ -77,11 +77,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		name, err := createScratch(".", func() string { return time.Now().Format("2006-01-02-150405") })
 		if err != nil {
 			dir, _ := os.Getwd()
-			fmt.Fprintf(stderr, "ima: could not create a scratch file in %s: %v\nRun ima <file> to share an existing file instead.\n", dir, err)
+			fmt.Fprintf(stderr, "pedit: could not create a scratch file in %s: %v\nRun pedit <file> to share an existing file instead.\n", dir, err)
 			return 1
 		}
 		arg = name
-		// Say where the text is if ima ends before sharing it; finish
+		// Say where the text is if pedit ends before sharing it; finish
 		// says so once it is shared.
 		defer func() {
 			if !shared {
@@ -93,7 +93,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	file, err := filepath.Abs(arg)
 	if err != nil {
-		fmt.Fprintln(stderr, "ima:", err)
+		fmt.Fprintln(stderr, "pedit:", err)
 		return 1
 	}
 	if msg := checkFile(arg); msg != "" {
@@ -101,7 +101,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	server := os.Getenv("IMA_SERVER")
+	server := os.Getenv("PEDIT_SERVER")
 	if server == "" {
 		server = defaultServer
 	}
@@ -134,7 +134,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			out.imageSaved(filepath.Join(filepath.Dir(arg), filepath.FromSlash(path)))
 		},
 		OnError: func(err error) {
-			if os.Getenv("IMA_DEBUG") != "" {
+			if os.Getenv("PEDIT_DEBUG") != "" {
 				fmt.Fprintln(stderr, "\nima:", err)
 			}
 		},
@@ -147,7 +147,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		out.signInTimedOut(signInLimit)
 		return 1
 	case err != nil:
-		fmt.Fprintln(stderr, "ima:", err)
+		fmt.Fprintln(stderr, "pedit:", err)
 		return 1
 	}
 
@@ -169,7 +169,7 @@ func finish(out *ui, stderr io.Writer, arg string, scratch bool, stop func() err
 	out.stopLive()
 	out.saving(arg)
 	if err := stop(); err != nil {
-		fmt.Fprintf(stderr, "ima: could not save %s: %v\n", arg, err)
+		fmt.Fprintf(stderr, "pedit: could not save %s: %v\n", arg, err)
 		return 1
 	}
 	out.saved(arg)
@@ -192,8 +192,8 @@ func username() string {
 	return u.Username
 }
 
-// signInLimit is how long ima waits for the user to sign in. cloudflared
-// cannot tell when the user clicks Deny, so without a limit ima would wait
+// signInLimit is how long pedit waits for the user to sign in. cloudflared
+// cannot tell when the user clicks Deny, so without a limit pedit would wait
 // for as long as cloudflared does.
 const signInLimit = 5 * time.Minute
 
@@ -229,7 +229,7 @@ func start(ctx context.Context, signIn func(context.Context, string) (string, er
 	}
 	token, err := signIn(ctx, opts.Server)
 	if errors.Is(err, access.ErrNoCloudflared) {
-		return nil, fmt.Errorf("%s is behind Cloudflare Access. Install cloudflared to sign in (for example, brew install cloudflared) and run ima again", opts.Server)
+		return nil, fmt.Errorf("%s is behind Cloudflare Access. Install cloudflared to sign in (for example, brew install cloudflared) and run pedit again", opts.Server)
 	}
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func start(ctx context.Context, signIn func(context.Context, string) (string, er
 		// Signed in, yet turned away: the session was revoked, or this
 		// account is not allowed in. cloudflared keeps the token until it
 		// expires, so it has to be removed to sign in again.
-		return nil, fmt.Errorf("%s did not accept your sign-in. To sign in again, remove the saved sign-in (rm ~/.cloudflared/*-token) and run ima again. If it still fails, ask whoever runs the server to let you in", opts.Server)
+		return nil, fmt.Errorf("%s did not accept your sign-in. To sign in again, remove the saved sign-in (rm ~/.cloudflared/*-token) and run pedit again. If it still fails, ask whoever runs the server to let you in", opts.Server)
 	}
 	return s, err
 }

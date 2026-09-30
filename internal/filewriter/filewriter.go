@@ -15,7 +15,7 @@ import (
 // WriteAtomic writes the file atomically: a temp file in the same directory,
 // then rename over. The file's mode is kept.
 func WriteAtomic(path, content string) error {
-	tmp := filepath.Join(filepath.Dir(path), fmt.Sprintf(".%s.ima-%d.tmp", filepath.Base(path), os.Getpid()))
+	tmp := filepath.Join(filepath.Dir(path), fmt.Sprintf(".%s.pedit-%d.tmp", filepath.Base(path), os.Getpid()))
 	mode := fs.FileMode(0o644)
 	if st, err := os.Stat(path); err == nil {
 		mode = st.Mode().Perm()
@@ -101,9 +101,9 @@ func (w *Writer) Schedule(content string) {
 	w.timer = time.AfterFunc(w.delay, func() { _ = w.Flush() })
 }
 
-// ErrExternalChange means the file changed outside ima since the last write,
+// ErrExternalChange means the file changed outside pedit since the last write,
 // so the write was skipped to avoid clobbering it.
-var ErrExternalChange = errors.New("file changed outside ima")
+var ErrExternalChange = errors.New("file changed outside pedit")
 
 // Flush writes any pending content now and returns once it is written.
 func (w *Writer) Flush() error {

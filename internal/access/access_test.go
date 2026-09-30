@@ -38,7 +38,7 @@ func (f *fakeCloudflared) run(_ context.Context, stdout, stderr io.Writer, args 
 		fmt.Fprintln(stdout, f.token)
 	case "login":
 		// Like cloudflared, in pieces.
-		fmt.Fprint(stderr, "A browser window should have opened at the following URL:\n\nhttps://ima.example.com/cdn-cgi/")
+		fmt.Fprint(stderr, "A browser window should have opened at the following URL:\n\nhttps://pedit.example.com/cdn-cgi/")
 		fmt.Fprint(stderr, "access/cli?token=abc\n\nIf the browser failed to open, please visit the URL above directly in your browser.\n")
 		if f.loginErr != nil {
 			return f.loginErr
@@ -54,11 +54,11 @@ func (f *fakeCloudflared) run(_ context.Context, stdout, stderr io.Writer, args 
 func TestTokenUsesSignedInToken(t *testing.T) {
 	token := jwt("k@example.com", now.Add(time.Hour))
 	f := &fakeCloudflared{token: token}
-	got, err := (&Cloudflared{Run: f.run, Now: func() time.Time { return now }}).Token(context.Background(), "https://ima.example.com")
+	got, err := (&Cloudflared{Run: f.run, Now: func() time.Time { return now }}).Token(context.Background(), "https://pedit.example.com")
 	if err != nil || got != token {
 		t.Fatalf("Token = %q, %v", got, err)
 	}
-	if want := []string{"access token -app=https://ima.example.com"}; fmt.Sprint(f.calls) != fmt.Sprint(want) {
+	if want := []string{"access token -app=https://pedit.example.com"}; fmt.Sprint(f.calls) != fmt.Sprint(want) {
 		t.Fatalf("calls = %q", f.calls)
 	}
 }
@@ -73,18 +73,18 @@ func TestTokenSignsInWhenNeeded(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var urls []string
 			c := &Cloudflared{Run: f.run, Now: func() time.Time { return now }, OnSignIn: func(u string) { urls = append(urls, u) }}
-			got, err := c.Token(context.Background(), "https://ima.example.com")
+			got, err := c.Token(context.Background(), "https://pedit.example.com")
 			if err != nil || got != fresh {
 				t.Fatalf("Token = %q, %v", got, err)
 			}
-			if !strings.Contains(fmt.Sprint(f.calls), "access login --quiet https://ima.example.com") {
+			if !strings.Contains(fmt.Sprint(f.calls), "access login --quiet https://pedit.example.com") {
 				t.Fatalf("calls = %q", f.calls)
 			}
 			// Kept off for now; see the comment in Token.
 			if strings.Contains(fmt.Sprint(f.calls), "--auto-close") {
 				t.Fatalf("passes --auto-close: %q", f.calls)
 			}
-			if want := []string{"https://ima.example.com/cdn-cgi/access/cli?token=abc"}; fmt.Sprint(urls) != fmt.Sprint(want) {
+			if want := []string{"https://pedit.example.com/cdn-cgi/access/cli?token=abc"}; fmt.Sprint(urls) != fmt.Sprint(want) {
 				t.Fatalf("sign-in URLs = %q", urls)
 			}
 		})
@@ -92,11 +92,11 @@ func TestTokenSignsInWhenNeeded(t *testing.T) {
 }
 
 // cloudflared does not replace a token that has not expired yet, so in the
-// last minute of an Access session ima gets the same token back after login.
+// last minute of an Access session pedit gets the same token back after login.
 func TestTokenAboutToExpire(t *testing.T) {
 	last := jwt("k@example.com", now.Add(10*time.Second))
 	f := &fakeCloudflared{token: last, login: jwt("k@example.com", now.Add(24*time.Hour)), now: now}
-	got, err := (&Cloudflared{Run: f.run, Now: func() time.Time { return now }}).Token(context.Background(), "https://ima.example.com")
+	got, err := (&Cloudflared{Run: f.run, Now: func() time.Time { return now }}).Token(context.Background(), "https://pedit.example.com")
 	if err != nil || got != last {
 		t.Fatalf("Token = %q, %v", got, err)
 	}
@@ -107,9 +107,9 @@ func TestTokenAboutToExpire(t *testing.T) {
 
 func TestTokenReportsFailedSignIn(t *testing.T) {
 	f := &fakeCloudflared{loginErr: errors.New("exit status 1")}
-	_, err := (&Cloudflared{Run: f.run, Now: func() time.Time { return now }}).Token(context.Background(), "https://ima.example.com")
+	_, err := (&Cloudflared{Run: f.run, Now: func() time.Time { return now }}).Token(context.Background(), "https://pedit.example.com")
 	// cloudflared's output explains what went wrong.
-	if err == nil || !strings.Contains(err.Error(), "could not sign in to https://ima.example.com") || !strings.Contains(err.Error(), "browser failed to open") {
+	if err == nil || !strings.Contains(err.Error(), "could not sign in to https://pedit.example.com") || !strings.Contains(err.Error(), "browser failed to open") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -131,7 +131,7 @@ func TestTokenReportsCallerStoppingSignIn(t *testing.T) {
 		return errors.New("signal: killed")
 	}
 	for ctx, want := range map[context.Context]error{cancelled: context.Canceled, timedOut: context.DeadlineExceeded} {
-		_, err := (&Cloudflared{Run: run}).Token(ctx, "https://ima.example.com")
+		_, err := (&Cloudflared{Run: run}).Token(ctx, "https://pedit.example.com")
 		if !errors.Is(err, want) {
 			t.Errorf("err = %v, want %v", err, want)
 		}
@@ -140,7 +140,7 @@ func TestTokenReportsCallerStoppingSignIn(t *testing.T) {
 
 func TestTokenWithoutCloudflared(t *testing.T) {
 	run := func(context.Context, io.Writer, io.Writer, ...string) error { return ErrNoCloudflared }
-	_, err := (&Cloudflared{Run: run}).Token(context.Background(), "https://ima.example.com")
+	_, err := (&Cloudflared{Run: run}).Token(context.Background(), "https://pedit.example.com")
 	if !errors.Is(err, ErrNoCloudflared) {
 		t.Fatalf("err = %v", err)
 	}

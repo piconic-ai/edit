@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 const (

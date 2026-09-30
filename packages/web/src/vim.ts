@@ -4,7 +4,7 @@ import { type EditorView, keymap, ViewPlugin, type ViewUpdate } from '@codemirro
 import type * as Y from 'yjs'
 import { defaultStore, type Store } from './storage.ts'
 
-export const VIM_KEY = 'ima:vim'
+export const VIM_KEY = 'pedit:vim'
 
 /** Vim mode is off unless this browser turned it on before. */
 export function loadVimMode(store: Store | null = defaultStore()): boolean {

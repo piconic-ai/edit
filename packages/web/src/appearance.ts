@@ -6,7 +6,7 @@ import { DEFAULT_THEME, type Scheme, themeInfo, themeOrDefault } from './themes.
  * Stored as JSON under one key. index.html reads the same key before the first
  * paint, so keep its boot script in step with the shape and ranges here.
  */
-export const APPEARANCE_KEY = 'ima:appearance'
+export const APPEARANCE_KEY = 'pedit:appearance'
 
 export interface Appearance {
   /**
@@ -51,7 +51,10 @@ function clamp(
 const isScheme = (v: unknown): v is Scheme => v === 'light' || v === 'dark'
 
 /** Themes that were removed, and what readers who picked them see now. */
-const RENAMED: Record<string, string> = { 'ima-light': 'github-light', 'ima-dark': 'github-dark' }
+const RENAMED: Record<string, string> = {
+  'pedit-light': 'github-light',
+  'pedit-dark': 'github-dark',
+}
 
 /**
  * Earlier versions stored a scheme ('system', 'light' or 'dark'), an optional

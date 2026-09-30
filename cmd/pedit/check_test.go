@@ -53,27 +53,27 @@ func TestCheckFileMissing(t *testing.T) {
 		arg  string
 		want string
 	}{
-		{"notse.md", `ima: notse.md does not exist.
+		{"notse.md", `pedit: notse.md does not exist.
 
   Did you mean this one?
-    ima notes.md
+    pedit notes.md
 
-ima only shares files that already exist. To start from an empty file, run ` + "`ima`" + ` with no argument or create the file first.`},
-		{"docs/todo", `ima: docs/todo does not exist.
+pedit only shares files that already exist. To start from an empty file, run ` + "`pedit`" + ` with no argument or create the file first.`},
+		{"docs/todo", `pedit: docs/todo does not exist.
 
   Did you mean one of these?
-    ima docs/todo.md
-    ima docs/todo.txt
+    pedit docs/todo.md
+    pedit docs/todo.txt
 
-ima only shares files that already exist.`},
+pedit only shares files that already exist.`},
 		{"my-notes.md", `
   Did you mean this one?
-    ima 'my notes.md'
+    pedit 'my notes.md'
 `},
 		// Nothing close: no "Did you mean" block.
-		{"main.go", "ima: main.go does not exist.\n\nima only shares files that already exist."},
+		{"main.go", "pedit: main.go does not exist.\n\npedit only shares files that already exist."},
 		// Only the given directory is searched.
-		{"todo.md", "ima: todo.md does not exist.\n\nima only shares"},
+		{"todo.md", "pedit: todo.md does not exist.\n\npedit only shares"},
 	}
 	for _, tt := range tests {
 		if got := checkFile(tt.arg); !strings.Contains(got, tt.want) {
@@ -84,7 +84,7 @@ ima only shares files that already exist.`},
 
 func TestCheckFileMissingParent(t *testing.T) {
 	inDir(t, nil)
-	want := "ima: drafts/ does not exist, so drafts/notes.md cannot be there."
+	want := "pedit: drafts/ does not exist, so drafts/notes.md cannot be there."
 	if got := checkFile("drafts/notes.md"); got != want {
 		t.Fatalf("got %q", got)
 	}
@@ -98,17 +98,17 @@ func TestCheckFileDirectory(t *testing.T) {
 	if err := os.Mkdir("docs/sub", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	want := `ima: docs/ is a directory. ima shares a single file.
+	want := `pedit: docs/ is a directory. pedit shares a single file.
 
   Pick one of these:
-    ima docs/a.md
-    ima 'docs/b c.txt'`
+    pedit docs/a.md
+    pedit 'docs/b c.txt'`
 	if got := checkFile("docs/"); got != want {
 		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
 	}
 
 	t.Chdir("docs")
-	if got := checkFile("."); !strings.Contains(got, "    ima a.md\n") {
+	if got := checkFile("."); !strings.Contains(got, "    pedit a.md\n") {
 		t.Fatalf("got:\n%s", got)
 	}
 }
@@ -119,7 +119,7 @@ func TestCheckFileDirectoryWithManyFiles(t *testing.T) {
 		files["docs/"+n+".md"] = 0o644
 	}
 	inDir(t, files)
-	if got := checkFile("docs"); got != "ima: docs is a directory. ima shares a single file." {
+	if got := checkFile("docs"); got != "pedit: docs is a directory. pedit shares a single file." {
 		t.Fatalf("got:\n%s", got)
 	}
 }
@@ -143,9 +143,9 @@ func TestCheckFilePermissions(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod("locked", 0o755) })
 	tests := map[string]string{
-		"secret.md":       "ima: cannot read secret.md: permission denied.",
-		"readonly.md":     "ima: readonly.md is read-only. ima writes edits back to it, so it needs write permission.",
-		"locked/notes.md": "ima: cannot save to locked/notes.md: ima saves by replacing the file, which needs write permission on locked/.",
+		"secret.md":       "pedit: cannot read secret.md: permission denied.",
+		"readonly.md":     "pedit: readonly.md is read-only. pedit writes edits back to it, so it needs write permission.",
+		"locked/notes.md": "pedit: cannot save to locked/notes.md: pedit saves by replacing the file, which needs write permission on locked/.",
 	}
 	for arg, want := range tests {
 		if got := checkFile(arg); got != want {
@@ -161,7 +161,7 @@ func TestCheckFileUnreadableDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod("locked", 0o755) })
-	if got := checkFile("locked/notes.md"); got != "ima: cannot read locked/notes.md: permission denied." {
+	if got := checkFile("locked/notes.md"); got != "pedit: cannot read locked/notes.md: permission denied." {
 		t.Fatalf("got %q", got)
 	}
 }

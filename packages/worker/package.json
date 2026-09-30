@@ -1,19 +1,19 @@
 {
-  "name": "@ima/worker",
+  "name": "@pedit/worker",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @ima/web build && wrangler dev",
-    "deploy": "pnpm --filter @ima/web build && wrangler deploy",
+    "dev": "pnpm --filter @pedit/web build && wrangler dev",
+    "deploy": "pnpm --filter @pedit/web build && wrangler deploy",
     "cf-typegen": "wrangler types",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "deploy:lab": "pnpm --filter @ima/web build && wrangler deploy --env lab",
-    "preview": "pnpm --filter @ima/web build && wrangler preview"
+    "deploy:lab": "pnpm --filter @pedit/web build && wrangler deploy --env lab",
+    "preview": "pnpm --filter @pedit/web build && wrangler preview"
   },
   "dependencies": {
-    "@ima/protocol": "workspace:^",
+    "@pedit/protocol": "workspace:^",
     "hono": "^4.13.9"
   },
   "devDependencies": {

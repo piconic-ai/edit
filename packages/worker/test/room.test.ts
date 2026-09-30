@@ -11,7 +11,7 @@ interface Room {
 }
 
 async function createRoom(): Promise<Room> {
-  const res = await exports.default.fetch('https://ima.test/api/rooms', { method: 'POST' })
+  const res = await exports.default.fetch('https://pedit.test/api/rooms', { method: 'POST' })
   expect(res.status).toBe(201)
   return res.json<Room>()
 }
@@ -23,7 +23,7 @@ interface Peer {
 }
 
 function upgrade(id: string, headers: Record<string, string> = {}): Promise<Response> {
-  return exports.default.fetch(`https://ima.test/api/rooms/${id}/ws`, {
+  return exports.default.fetch(`https://pedit.test/api/rooms/${id}/ws`, {
     headers: { Upgrade: 'websocket', ...headers },
   })
 }
@@ -61,9 +61,9 @@ describe('rooms', () => {
   })
 
   it('rejects malformed ids, plain requests and wrong host tokens', async () => {
-    expect((await exports.default.fetch('https://ima.test/api/rooms/nope/ws')).status).toBe(400)
+    expect((await exports.default.fetch('https://pedit.test/api/rooms/nope/ws')).status).toBe(400)
     const room = await createRoom()
-    expect((await exports.default.fetch(`https://ima.test/api/rooms/${room.id}/ws`)).status).toBe(
+    expect((await exports.default.fetch(`https://pedit.test/api/rooms/${room.id}/ws`)).status).toBe(
       426,
     )
     const other = await createRoom()
@@ -104,7 +104,7 @@ describe('rooms', () => {
 
   it('ignores a role header sent by a client', async () => {
     const room = await createRoom()
-    const guest = await connect(room.id, { 'X-Ima-Host': '1' })
+    const guest = await connect(room.id, { 'X-Pedit-Host': '1' })
     expect((await guest.closed).code).toBe(ROOM_CLOSED)
   })
 
@@ -159,7 +159,7 @@ describe('rooms', () => {
 const blobId = (n: number) => `blob${String(n).padStart(18, '0')}`
 
 function blobUrl(room: Room | string, id: string): string {
-  return `https://ima.test/api/rooms/${typeof room === 'string' ? room : room.id}/blobs/${id}`
+  return `https://pedit.test/api/rooms/${typeof room === 'string' ? room : room.id}/blobs/${id}`
 }
 
 const putBlob = (room: Room, id: string, body: Uint8Array<ArrayBuffer>) =>

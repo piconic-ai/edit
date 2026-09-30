@@ -15,7 +15,7 @@ function licenses(): Plugin {
         fileName: 'THIRD_PARTY_LICENSES.txt',
         source: thirdPartyLicenses(
           [...this.getModuleIds()],
-          'The ima web editor bundles the following third-party packages.',
+          'The pedit web editor bundles the following third-party packages.',
         ),
       })
     },

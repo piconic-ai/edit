@@ -1,7 +1,7 @@
 'use client'
 
 import { createEffect, createMemo, createSignal } from '@barefootjs/client'
-import type { RoomStatus } from '@ima/protocol'
+import type { RoomStatus } from '@pedit/protocol'
 import { initials } from '../identity.ts'
 import type { Participant } from '../room.ts'
 import type { SettingsModel } from '../settings.ts'
@@ -60,7 +60,7 @@ export function Header(props: HeaderProps) {
 
   return (
     <header>
-      <span className="brand">ima</span>
+      <span className="brand">piconic edit</span>
       <span className="file">{file() ?? ''}</span>
       <span className="status" data-status={status()}>
         <span className="dot" />

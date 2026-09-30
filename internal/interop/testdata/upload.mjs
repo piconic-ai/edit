@@ -60,7 +60,7 @@ const png = new Uint8Array([
   0x0a,
   0x1a,
   0x0a,
-  ...new TextEncoder().encode('ima 居間'),
+  ...new TextEncoder().encode('pedit 居間'),
 ])
 const hash = await protocol.contentHash(png)
 const put = await fetch(await blobUrl(hash), {

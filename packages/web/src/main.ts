@@ -2,7 +2,7 @@ import { render } from '@barefootjs/client/runtime'
 import { markdown } from '@codemirror/lang-markdown'
 import { Compartment, EditorState, type Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { deriveBlobKeys, importKey, RoomClient, type RoomStatus } from '@ima/protocol'
+import { deriveBlobKeys, importKey, RoomClient, type RoomStatus } from '@pedit/protocol'
 import { basicSetup } from 'codemirror'
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
 import { Awareness } from 'y-protocols/awareness'
@@ -53,7 +53,7 @@ import './components/Notice.tsx'
 import type { LayoutParts } from './components/Layout.tsx'
 import './style.css'
 
-const NAME_KEY = 'ima:name'
+const NAME_KEY = 'pedit:name'
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 const app = document.getElementById('app') as HTMLElement
 
@@ -402,7 +402,7 @@ async function joinRoom(
     // Keep showing the file name after the host has gone.
     if (typeof host?.file === 'string') {
       fileName.set(host.file)
-      document.title = `${host.file} · ima`
+      document.title = `${host.file} · piconic edit`
       void applyLanguage(host.file)
     }
   }

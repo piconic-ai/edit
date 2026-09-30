@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/piconic-ai/ima/internal/canvas"
-	"github.com/piconic-ai/ima/internal/merge"
+	"github.com/piconic-ai/edit/internal/canvas"
+	"github.com/piconic-ai/edit/internal/merge"
 	"github.com/reearth/ygo/crdt"
 )
 
@@ -18,7 +18,7 @@ import (
 type content interface {
 	// render returns the file as the doc has it now.
 	render() string
-	// merge takes in an edit made to the file outside ima, from base (what we
+	// merge takes in an edit made to the file outside pedit, from base (what we
 	// last wrote) to next. It fails, changing nothing, when next cannot be
 	// taken in.
 	merge(base, next string) error

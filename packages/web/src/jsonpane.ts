@@ -1,7 +1,7 @@
 import { json } from '@codemirror/lang-json'
 import { Compartment, EditorState, type Extension, Transaction } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { type CanvasMessage, MAX_CANVAS_EDIT_BYTES } from '@ima/protocol'
+import { type CanvasMessage, MAX_CANVAS_EDIT_BYTES } from '@pedit/protocol'
 import { basicSetup } from 'codemirror'
 import type * as Y from 'yjs'
 import { EDGES, NODES, newId, read, toJSON } from './canvas.ts'

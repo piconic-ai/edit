@@ -19,15 +19,15 @@ function mount(name: string, props: Record<string, unknown> = {}) {
 }
 
 describe('Landing', () => {
-  it('says what ima is and links to the install guide', () => {
+  it('says what piconic edit is and links to the install guide', () => {
     const el = mount('Landing')
-    expect(el.querySelector('h1')?.textContent).toBe('ima')
-    expect(el.querySelector('code')?.textContent).toBe('ima notes.md')
+    expect(el.querySelector('h1')?.textContent).toBe('piconic edit')
+    expect(el.querySelector('code')?.textContent).toBe('pedit notes.md')
     expect(el.querySelector('p')?.textContent).toBe(
-      'Co-edit a local text file, right now. Run ima notes.md and share the link it prints. How to install',
+      'Co-edit a local text file, right now. Run pedit notes.md and share the link it prints. How to install',
     )
     expect(el.querySelector('a')?.getAttribute('href')).toBe(
-      'https://github.com/piconic-ai/ima#install',
+      'https://github.com/piconic-ai/edit#install',
     )
   })
 })

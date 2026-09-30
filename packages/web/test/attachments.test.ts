@@ -6,7 +6,7 @@ import {
   deriveBlobKeys,
   encryptBlob,
   generateKey,
-} from '@ima/protocol'
+} from '@pedit/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import {
   AttachmentError,

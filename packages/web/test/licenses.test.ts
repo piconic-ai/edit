@@ -33,7 +33,7 @@ describe('thirdPartyLicenses', () => {
   })
 
   it('refuses packages with no license text at all', () => {
-    const dir = join(mkdtempSync(join(tmpdir(), 'ima-licenses-')), 'node_modules', 'nolicense')
+    const dir = join(mkdtempSync(join(tmpdir(), 'pedit-licenses-')), 'node_modules', 'nolicense')
     mkdirSync(dir, { recursive: true })
     writeFileSync(
       join(dir, 'package.json'),

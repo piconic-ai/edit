@@ -1,8 +1,8 @@
-# ima
+# piconic edit
 
 A CLI that lets you co-edit a local text file with other people, right now.
-`ima <file>` prints a URL; others join from their browser.
-The name comes from the Japanese 居間 (living room) and 今 (now).
+`pedit <file>` prints a URL; others join from their browser.
+The service is named piconic edit; its CLI is `pedit`.
 
 ## Principles
 - The host's local file is the source of truth. The server never sees plaintext. The only content it keeps is encrypted attachments (R2), and only while the room's host is connected; the room deletes them when the host leaves. No permanent storage, no public URLs.
@@ -11,10 +11,10 @@ The name comes from the Japanese 居間 (living room) and 今 (now).
 - The minimal version only co-edits a single text file. No auth, comments, or AI features.
 
 ## Layout
-- cmd/ima, internal/: the `ima` command (Go, single binary). internal/protocol mirrors packages/protocol on top of reearth/ygo; keep the wire format in sync
+- cmd/pedit, internal/: the `pedit` command (Go, single binary). internal/protocol mirrors packages/protocol on top of reearth/ygo; keep the wire format in sync
 - packages/protocol: encryption, message format and room client for the web (pnpm workspace)
 - packages/worker: Hono + Durable Objects (WebSocket Hibernation API) + R2 for encrypted attachments. Also serves the web assets.
-- packages/web: editor built on CodeMirror 6 + y-codemirror.next. UI components are BarefootJS (`src/components/*.tsx`, client-side rendering only: the server never sees content). Write new UI as components with signals; do not use BarefootJS's ready-made UI components, keep ima's own CSS. The exception is xyflow for the canvas board: `src/components/xyflow/` is the registry copy from `bf add xyflow`, kept as upstream has it apart from changes marked `ima:`. State from outside (room status, Yjs) reaches components as a `Store` (`src/store.ts`): a signal made once outside the components (in main.ts or a class like `TableView`), which components just read with `store.get()` in their JSX. Components never subscribe per instance. Publish a new value only when it changed, so every cell or row reading it does not re-run. Where behaviour is heavy (the table, the context menu, the Split divider), a class keeps the state and publishes it as stores, and a component draws it and hands its events back (`TableView` + `TableGrid.tsx`).
+- packages/web: editor built on CodeMirror 6 + y-codemirror.next. UI components are BarefootJS (`src/components/*.tsx`, client-side rendering only: the server never sees content). Write new UI as components with signals; do not use BarefootJS's ready-made UI components, keep pedit's own CSS. The exception is xyflow for the canvas board: `src/components/xyflow/` is the registry copy from `bf add xyflow`, kept as upstream has it apart from changes marked `pedit:`. State from outside (room status, Yjs) reaches components as a `Store` (`src/store.ts`): a signal made once outside the components (in main.ts or a class like `TableView`), which components just read with `store.get()` in their JSX. Components never subscribe per instance. Publish a new value only when it changed, so every cell or row reading it does not re-run. Where behaviour is heavy (the table, the context menu, the Split divider), a class keeps the state and publishes it as stores, and a component draws it and hands its events back (`TableView` + `TableGrid.tsx`).
 
 ## Stack
 CLI: Go / ygo (pure-Go Yjs) / coder/websocket

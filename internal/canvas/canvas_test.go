@@ -351,7 +351,7 @@ func TestReport(t *testing.T) {
 	}
 	want := "board.canvas is not a valid JSON Canvas (https://jsoncanvas.org/spec/1.0/):\n" +
 		"  board.canvas:2:1: nodes[0] (id \"a\"): has no \"text\"; add it as a string\n" +
-		"Fix the file and run ima again."
+		"Fix the file and run pedit again."
 	if got := e.Report("board.canvas"); got != want {
 		t.Errorf("got\n%s\nwant\n%s", got, want)
 	}

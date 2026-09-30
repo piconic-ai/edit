@@ -8,12 +8,12 @@ import (
 	"os"
 	"testing"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 // blobVectors pins the attachment crypto so the TypeScript side
 // (packages/protocol/test/blob.test.ts) can check it computes the same.
-// Regenerate with IMA_UPDATE_VECTORS=1 go test ./internal/protocol/.
+// Regenerate with PEDIT_UPDATE_VECTORS=1 go test ./internal/protocol/.
 const blobVectorsFile = "testdata/blob-vectors.json"
 
 type blobVectors struct {
@@ -50,7 +50,7 @@ func blobKeys(t *testing.T, key string) *protocol.BlobKeys {
 }
 
 func TestBlobVectors(t *testing.T) {
-	if os.Getenv("IMA_UPDATE_VECTORS") != "" {
+	if os.Getenv("PEDIT_UPDATE_VECTORS") != "" {
 		writeBlobVectors(t)
 	}
 	data, err := os.ReadFile(blobVectorsFile)
@@ -81,7 +81,7 @@ func writeBlobVectors(t *testing.T) {
 	key := vectorKey()
 	keys := blobKeys(t, key)
 	v := blobVectors{Key: key}
-	for _, p := range [][]byte{{}, []byte("hello, ima"), []byte("\x89PNG\r\n\x1a\n居間🌏")} {
+	for _, p := range [][]byte{{}, []byte("hello, pedit"), []byte("\x89PNG\r\n\x1a\n居間🌏")} {
 		hash := protocol.ContentHash(p)
 		id, err := keys.BlobID(hash)
 		if err != nil {

@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="referrer" content="no-referrer" />
     <meta name="color-scheme" content="light dark" />
-    <title>ima</title>
+    <title>piconic edit</title>
     <script>
       // Applies the stored appearance before the first paint, so the page does not flash.
       // main.ts validates it again (appearance.ts); this only has to never throw.
       try {
-        var stored = JSON.parse(localStorage.getItem('ima:appearance') || 'null')
+        var stored = JSON.parse(localStorage.getItem('pedit:appearance') || 'null')
         var root = document.documentElement
         if (stored && typeof stored === 'object') {
           if (typeof stored.fontSize === 'number' && stored.fontSize >= 12 && stored.fontSize <= 24)
@@ -19,7 +19,7 @@
             root.style.setProperty('--editor-line-height', String(stored.lineHeight))
         }
         // The page colours of the reader's theme, as palette.ts last applied them.
-        var palette = JSON.parse(localStorage.getItem('ima:palette') || 'null')
+        var palette = JSON.parse(localStorage.getItem('pedit:palette') || 'null')
         var names = ['--bg', '--panel', '--ink', '--muted', '--line', '--accent', '--code-bg', '--warn-bg', '--warn-ink']
         var hex = '#[0-9a-f]{6}([0-9a-f]{2})?'
         var color = new RegExp('^(' + hex + '|light-dark\\(' + hex + ', ' + hex + '\\))$')

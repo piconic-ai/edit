@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/piconic-ai/ima/internal/protocol"
-	"github.com/piconic-ai/ima/internal/protocol/prototest"
-	"github.com/piconic-ai/ima/internal/session"
+	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol/prototest"
+	"github.com/piconic-ai/edit/internal/session"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )
@@ -99,7 +99,7 @@ func newServer(t *testing.T) *httptest.Server {
 }
 
 // protocolDir returns packages/protocol, or skips the test when its
-// dependencies or Node.js are missing (unless IMA_INTEROP requires it).
+// dependencies or Node.js are missing (unless PEDIT_INTEROP requires it).
 func protocolDir(t *testing.T) string {
 	dir, err := filepath.Abs("../../packages/protocol")
 	if err != nil {
@@ -108,7 +108,7 @@ func protocolDir(t *testing.T) string {
 	_, nodeErr := exec.LookPath("node")
 	_, depsErr := os.Stat(filepath.Join(dir, "node_modules", "yjs"))
 	if nodeErr != nil || depsErr != nil {
-		if os.Getenv("IMA_INTEROP") != "" {
+		if os.Getenv("PEDIT_INTEROP") != "" {
 			t.Fatalf("node or packages/protocol dependencies missing (run pnpm install)")
 		}
 		t.Skip("needs node and pnpm install")
@@ -196,7 +196,7 @@ func TestAttachmentsWithJavaScriptGuest(t *testing.T) {
 		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())
 	}
 	// The guest encrypted and named the blob the way the host does.
-	const content = "\x89PNG\r\n\x1a\nima 居間"
+	const content = "\x89PNG\r\n\x1a\npedit 居間"
 	if uploaded.Hash != protocol.ContentHash([]byte(content)) {
 		t.Fatalf("hash = %s", uploaded.Hash)
 	}
@@ -258,7 +258,7 @@ func TestGoHostSavesImagesFromJavaScriptGuest(t *testing.T) {
 	guest := startGuest(t, "testdata/upload.mjs", dir, server.URL, roomID, share.Fragment, protocol.ContentHash(earlier))
 
 	// The guest pasted an image: the host saved it.
-	pasted := []byte("\x89PNG\r\n\x1a\nima 居間")
+	pasted := []byte("\x89PNG\r\n\x1a\npedit 居間")
 	path := "assets/" + protocol.ContentHash(pasted) + ".png"
 	if line := guest.next("the stored reply"); line != "stored "+path {
 		t.Fatalf("guest said %q\n%s", line, guest.stderr.String())

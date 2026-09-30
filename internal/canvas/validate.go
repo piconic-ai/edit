@@ -49,7 +49,7 @@ func (e *Error) Report(name string) string {
 	if e.More > 0 {
 		fmt.Fprintf(&b, "  and %d more\n", e.More)
 	}
-	b.WriteString("Fix the file and run ima again.")
+	b.WriteString("Fix the file and run pedit again.")
 	return b.String()
 }
 

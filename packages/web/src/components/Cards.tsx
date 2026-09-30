@@ -2,19 +2,18 @@
 
 import { onMount } from '@barefootjs/client'
 
-/** The page at `/`, for someone who opened ima without a room link. */
+/** The page at `/`, for someone who opened piconic edit without a room link. */
 export function Landing() {
   return (
     <div className="center">
       <div className="card">
-        <h1>ima</h1>
+        <h1>piconic edit</h1>
         <p>
           {'Co-edit a local text file, right now. Run '}
-          <code>ima notes.md</code>
+          <code>pedit notes.md</code>
           {' and share the link it prints. '}
-          <a href="https://github.com/piconic-ai/ima#install">How to install</a>
+          <a href="https://github.com/piconic-ai/edit#install">How to install</a>
         </p>
-        <p>居間 (living room) + 今 (now).</p>
       </div>
     </div>
   )

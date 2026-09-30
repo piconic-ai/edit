@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 func TestGenerateKey(t *testing.T) {
@@ -43,7 +43,7 @@ func newCipher(t *testing.T) *protocol.Cipher {
 
 func TestCipher(t *testing.T) {
 	c := newCipher(t)
-	plaintext := []byte("hello, ima")
+	plaintext := []byte("hello, pedit")
 
 	t.Run("round-trips plaintext", func(t *testing.T) {
 		ciphertext := c.Encrypt(plaintext)

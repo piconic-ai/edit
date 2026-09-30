@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	blobEncInfo = "ima blob enc v1"
-	blobIDInfo  = "ima blob id v1"
+	blobEncInfo = "pedit blob enc v1"
+	blobIDInfo  = "pedit blob id v1"
 )
 
 var (

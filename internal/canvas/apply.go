@@ -3,12 +3,12 @@ package canvas
 import (
 	"sort"
 
-	"github.com/piconic-ai/ima/internal/merge"
+	"github.com/piconic-ai/edit/internal/merge"
 	"github.com/reearth/ygo/crdt"
 )
 
 // Apply makes in a document the change from base to next: an edit made to the
-// file outside ima, or JSON someone edited by hand in the browser. The
+// file outside pedit, or JSON someone edited by hand in the browser. The
 // document may have moved on from base meanwhile, and what others changed
 // there is kept unless the change touches the same field. Nodes and edges are
 // matched by id; a text node's text merges by character.

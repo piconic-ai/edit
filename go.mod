@@ -1,4 +1,4 @@
-module github.com/piconic-ai/ima
+module github.com/piconic-ai/edit
 
 go 1.25
 

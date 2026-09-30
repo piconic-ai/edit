@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/access"
-	"github.com/piconic-ai/ima/internal/session"
+	"github.com/piconic-ai/edit/internal/access"
+	"github.com/piconic-ai/edit/internal/session"
 )
 
 func TestRunArgs(t *testing.T) {
@@ -22,11 +22,11 @@ func TestRunArgs(t *testing.T) {
 		stdout string
 		stderr string
 	}{
-		{args: []string{"--help"}, code: 0, stdout: "Usage: ima [file]"},
-		{args: []string{"-h"}, code: 0, stdout: "IMA_SERVER"},
+		{args: []string{"--help"}, code: 0, stdout: "Usage: pedit [file]"},
+		{args: []string{"-h"}, code: 0, stdout: "PEDIT_SERVER"},
 		{args: []string{"--version"}, code: 0, stdout: "dev"},
-		{args: []string{"a.md", "b.md"}, code: 2, stderr: "Usage: ima [file]"},
-		{args: []string{""}, code: 2, stderr: "Usage: ima [file]"},
+		{args: []string{"a.md", "b.md"}, code: 2, stderr: "Usage: pedit [file]"},
+		{args: []string{""}, code: 2, stderr: "Usage: pedit [file]"},
 		{args: []string{"does-not-exist.md"}, code: 1, stderr: "does-not-exist.md does not exist."},
 		{args: []string{"."}, code: 1, stderr: ". is a directory."},
 	}
@@ -45,7 +45,7 @@ func TestCreateScratch(t *testing.T) {
 	t.Run("new", func(t *testing.T) {
 		dir := t.TempDir()
 		name, err := createScratch(dir, now)
-		if err != nil || name != "ima-2026-09-26-143012.md" {
+		if err != nil || name != "pedit-2026-09-26-143012.md" {
 			t.Fatalf("= %q, %v", name, err)
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, name)); err != nil || len(b) != 0 {
@@ -54,16 +54,16 @@ func TestCreateScratch(t *testing.T) {
 	})
 	t.Run("collision", func(t *testing.T) {
 		dir := t.TempDir()
-		for _, name := range []string{"ima-2026-09-26-143012.md", "ima-2026-09-26-143012-2.md"} {
+		for _, name := range []string{"pedit-2026-09-26-143012.md", "pedit-2026-09-26-143012-2.md"} {
 			if err := os.WriteFile(filepath.Join(dir, name), []byte("keep"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}
 		name, err := createScratch(dir, now)
-		if err != nil || name != "ima-2026-09-26-143012-3.md" {
+		if err != nil || name != "pedit-2026-09-26-143012-3.md" {
 			t.Fatalf("= %q, %v", name, err)
 		}
-		if b, _ := os.ReadFile(filepath.Join(dir, "ima-2026-09-26-143012.md")); string(b) != "keep" {
+		if b, _ := os.ReadFile(filepath.Join(dir, "pedit-2026-09-26-143012.md")); string(b) != "keep" {
 			t.Fatalf("existing file changed: %q", b)
 		}
 	})
@@ -80,7 +80,7 @@ func TestRunWithoutFileInReadOnlyDir(t *testing.T) {
 	t.Chdir(dir)
 	var stdout, stderr strings.Builder
 	code := run(nil, &stdout, &stderr)
-	if code != 1 || !strings.Contains(stderr.String(), "could not create a scratch file in") || !strings.Contains(stderr.String(), "Run ima <file>") {
+	if code != 1 || !strings.Contains(stderr.String(), "could not create a scratch file in") || !strings.Contains(stderr.String(), "Run pedit <file>") {
 		t.Fatalf("run() = %d\nstdout: %s\nstderr: %s", code, stdout.String(), stderr.String())
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
@@ -98,7 +98,7 @@ func TestFinish(t *testing.T) {
 		not     []string
 	}{
 		{name: "file", code: 0, stdout: []string{"✓ Saved notes.md"}, not: []string{"Resume with"}},
-		{name: "scratch", scratch: true, code: 0, stdout: []string{"✓ Saved notes.md", "Saved to notes.md", "Resume with: ima notes.md"}},
+		{name: "scratch", scratch: true, code: 0, stdout: []string{"✓ Saved notes.md", "Saved to notes.md", "Resume with: pedit notes.md"}},
 		{name: "scratch not saved", scratch: true, stopErr: errors.New("disk full"), code: 1, not: []string{"Saved", "Resume with"}},
 	}
 	for _, tt := range tests {
@@ -138,7 +138,7 @@ func readOnlyDir(t *testing.T) string {
 	return dir
 }
 
-// accessServer stands in for an ima server behind Cloudflare Access: without
+// accessServer stands in for a piconic edit server behind Cloudflare Access: without
 // a valid token, Access sends requests to its login page.
 func accessServer(t *testing.T, valid string) *httptest.Server {
 	t.Helper()
@@ -147,7 +147,7 @@ func accessServer(t *testing.T, valid string) *httptest.Server {
 		case strings.HasPrefix(r.URL.Path, "/cdn-cgi/access/"):
 			_, _ = w.Write([]byte("<html>Sign in</html>"))
 		case r.Header.Get("Cf-Access-Token") != valid:
-			http.Redirect(w, r, "/cdn-cgi/access/login/ima", http.StatusFound)
+			http.Redirect(w, r, "/cdn-cgi/access/login/pedit", http.StatusFound)
 		default:
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":"AAAAAAAAAAAAAAAAAAAAAA","hostToken":"host-token"}`))
@@ -233,7 +233,7 @@ func TestWithSignInLimit(t *testing.T) {
 	}
 
 	t.Run("signed in", func(t *testing.T) {
-		got, err := withSignInLimit(context.Background(), time.Minute, "https://ima.example.com", func(context.Context, string) (string, error) { return userToken, nil })
+		got, err := withSignInLimit(context.Background(), time.Minute, "https://pedit.example.com", func(context.Context, string) (string, error) { return userToken, nil })
 		if err != nil || got != userToken {
 			t.Fatalf("= %q, %v", got, err)
 		}
@@ -241,19 +241,19 @@ func TestWithSignInLimit(t *testing.T) {
 	t.Run("cancelled with Ctrl+C", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		time.AfterFunc(10*time.Millisecond, cancel)
-		if _, err := withSignInLimit(ctx, time.Minute, "https://ima.example.com", waitForever); !errors.Is(err, errSignInCancelled) {
+		if _, err := withSignInLimit(ctx, time.Minute, "https://pedit.example.com", waitForever); !errors.Is(err, errSignInCancelled) {
 			t.Fatalf("err = %v", err)
 		}
 	})
 	t.Run("out of time", func(t *testing.T) {
-		if _, err := withSignInLimit(context.Background(), 10*time.Millisecond, "https://ima.example.com", waitForever); !errors.Is(err, errSignInTimedOut) {
+		if _, err := withSignInLimit(context.Background(), 10*time.Millisecond, "https://pedit.example.com", waitForever); !errors.Is(err, errSignInTimedOut) {
 			t.Fatalf("err = %v", err)
 		}
 	})
 	t.Run("failed", func(t *testing.T) {
 		failed := errors.New("could not sign in")
 		fail := func(context.Context, string) (string, error) { return "", failed }
-		if _, err := withSignInLimit(context.Background(), time.Minute, "https://ima.example.com", fail); !errors.Is(err, failed) {
+		if _, err := withSignInLimit(context.Background(), time.Minute, "https://pedit.example.com", fail); !errors.Is(err, failed) {
 			t.Fatalf("err = %v", err)
 		}
 	})
