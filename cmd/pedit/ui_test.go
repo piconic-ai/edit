@@ -232,7 +232,7 @@ func TestHostOf(t *testing.T) {
 	for in, want := range map[string]string{
 		"https://edit-lab.piconic.ai":  "edit-lab.piconic.ai",
 		"https://edit-lab.piconic.ai/": "edit-lab.piconic.ai",
-		"http://localhost:8787":       "localhost:8787",
+		"http://localhost:8787":        "localhost:8787",
 	} {
 		if got := hostOf(in); got != want {
 			t.Errorf("hostOf(%q) = %q", in, got)
