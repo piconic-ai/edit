@@ -14,7 +14,6 @@ export function Landing() {
           {' and share the link it prints. '}
           <a href="https://github.com/piconic-ai/edit#install">How to install</a>
         </p>
-        <p>居間 (living room) + 今 (now).</p>
       </div>
     </div>
   )
