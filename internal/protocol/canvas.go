@@ -14,7 +14,7 @@ type CanvasKind uint64
 // Canvas messages carry JSON someone edited by hand in a canvas room. The
 // browser does not change the shared structure itself: it sends what it
 // started from and what it made, and the host applies the change the way it
-// applies an edit to the file made outside ima.
+// applies an edit to the file made outside pedit.
 const (
 	// CanvasEdit: someone changed the canvas from Base to Next, both JSON Canvas text.
 	CanvasEdit CanvasKind = 0

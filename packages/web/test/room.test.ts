@@ -27,8 +27,8 @@ describe('parseRoomLocation', () => {
 
 describe('roomSocketUrl', () => {
   it('builds a key-free WebSocket URL on the same host', () => {
-    expect(roomSocketUrl({ protocol: 'https:', host: 'ima.piconic.ai' }, id)).toBe(
-      `wss://ima.piconic.ai/api/rooms/${id}/ws`,
+    expect(roomSocketUrl({ protocol: 'https:', host: 'edit.piconic.ai' }, id)).toBe(
+      `wss://edit.piconic.ai/api/rooms/${id}/ws`,
     )
     expect(roomSocketUrl({ protocol: 'http:', host: 'localhost:8787' }, id)).toBe(
       `ws://localhost:8787/api/rooms/${id}/ws`,
@@ -84,7 +84,7 @@ describe('participants and hostile colours', () => {
 })
 
 describe('sanitizeUser', () => {
-  it('replaces hostile colours in place, with the colours ima would pick', () => {
+  it('replaces hostile colours in place, with the colours pedit would pick', () => {
     const state: Record<string, unknown> = {
       user: { name: 'Mallory', color: HOSTILE, colorLight: HOSTILE },
     }

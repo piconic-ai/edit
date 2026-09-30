@@ -1,5 +1,5 @@
 /**
- * Who the collaborator is, when ima runs behind Cloudflare Access.
+ * Who the collaborator is, when pedit runs behind Cloudflare Access.
  *
  * Access answers `/cdn-cgi/access/get-identity` itself, so the Worker never
  * sees this request. The name and avatar only travel inside the encrypted

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 // ui is what the person sharing the file reads. They are not necessarily an
@@ -88,7 +88,7 @@ func (u *ui) signInCancelled() {
 
 // signInTimedOut is shown when signing in took longer than limit.
 func (u *ui) signInTimedOut(limit time.Duration) {
-	u.print("", u.yellow("Sign-in did not finish in "+minutes(limit)+".")+" Run ima again to try again.", "")
+	u.print("", u.yellow("Sign-in did not finish in "+minutes(limit)+".")+" Run pedit again to try again.", "")
 }
 
 func minutes(d time.Duration) string {
@@ -185,13 +185,13 @@ func (u *ui) saved(file string) {
 	u.print(u.green("✓")+" Saved "+file+". The link no longer works.", "")
 }
 
-// scratch names the scratch file ima created and how to open it again.
+// scratch names the scratch file pedit created and how to open it again.
 func (u *ui) scratch(file string) {
 	u.print("Saved to "+file, u.resume(file), "")
 }
 
 func (u *ui) resume(file string) string {
-	return "Resume with: " + u.bold("ima "+file)
+	return "Resume with: " + u.bold("pedit "+file)
 }
 
 // render redraws the live line. Callers hold u.mu.

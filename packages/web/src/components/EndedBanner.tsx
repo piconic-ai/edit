@@ -1,7 +1,7 @@
 'use client'
 
 import { createSignal, onCleanup } from '@barefootjs/client'
-import type { RoomStatus } from '@ima/protocol'
+import type { RoomStatus } from '@pedit/protocol'
 import { copyText } from '../copy.ts'
 import type { Readable } from '../store.ts'
 

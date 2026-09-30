@@ -12,8 +12,8 @@ export interface BlobKeys {
   id: CryptoKey
 }
 
-const ENC_INFO = 'ima blob enc v1'
-const ID_INFO = 'ima blob id v1'
+const ENC_INFO = 'pedit blob enc v1'
+const ID_INFO = 'pedit blob id v1'
 
 /** A content hash: the first 128 bits of SHA-256, as 32 lowercase hex digits. */
 export const HASH_PATTERN = /^[0-9a-f]{32}$/

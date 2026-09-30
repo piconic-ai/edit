@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 func TestUIWithoutTerminal(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, false, false)
 	u.setStatus(protocol.StatusConnected) // not shown before sharing
-	u.signIn("ima.example.com", "https://ima.example.com/cdn-cgi/access/cli?token=abc")
+	u.signIn("pedit.example.com", "https://pedit.example.com/cdn-cgi/access/cli?token=abc")
 	u.signedIn("k@example.com")
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", true, false)
+	u.sharing("notes.md", "https://pedit.example.com/r/AAAA#key", true, false)
 	u.setPeople([]string{"Alice"})
 	u.setPeople([]string{"Alice"}) // unchanged
 	u.setStatus(protocol.StatusDisconnected)
@@ -26,11 +26,11 @@ func TestUIWithoutTerminal(t *testing.T) {
 	u.saved("notes.md")
 
 	want := `
-  Sign in to ima.example.com
+  Sign in to pedit.example.com
   Your browser opened. Sign in there, then come back here.
 
   If it did not open, use this link:
-  https://ima.example.com/cdn-cgi/access/cli?token=abc
+  https://pedit.example.com/cdn-cgi/access/cli?token=abc
 
   Clicked Deny, or changed your mind? Press Ctrl+C to stop.
 
@@ -39,7 +39,7 @@ func TestUIWithoutTerminal(t *testing.T) {
   notes.md is ready to write together.
 
   Send this link to the people you want to invite:
-    https://ima.example.com/r/AAAA#key
+    https://pedit.example.com/r/AAAA#key
     Copied to your clipboard.
 
   Press Ctrl+C when you are done. Everything is saved to notes.md.
@@ -65,13 +65,13 @@ func TestUIWithoutTerminal(t *testing.T) {
 func TestUIOnTerminal(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, false)
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false, false)
+	u.sharing("notes.md", "https://pedit.example.com/r/AAAA#key", false, false)
 	u.setStatus(protocol.StatusConnected)
 	u.stopLive()
 	got := out.String()
 	for _, want := range []string{
 		"\x1b[1mnotes.md is ready to write together.\x1b[0m",
-		"    \x1b[36;4mhttps://ima.example.com/r/AAAA#key\x1b[0m\n",
+		"    \x1b[36;4mhttps://pedit.example.com/r/AAAA#key\x1b[0m\n",
 		// The live line is rewritten in place.
 		"\r\x1b[2K  \x1b[33m○\x1b[0m Connecting…",
 		"\r\x1b[2K  \x1b[32m●\x1b[0m Just you so far\n",
@@ -88,7 +88,7 @@ func TestUIOnTerminal(t *testing.T) {
 func TestUIImageSaved(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, false, false)
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false, false)
+	u.sharing("notes.md", "https://pedit.example.com/r/AAAA#key", false, false)
 	u.setStatus(protocol.StatusConnected)
 	u.imageSaved("assets/0123.png")
 	if !strings.HasSuffix(out.String(), "  ● Just you so far\n  Saved an image to assets/0123.png\n") {
@@ -98,7 +98,7 @@ func TestUIImageSaved(t *testing.T) {
 	// On a terminal it goes above the live line, which comes back.
 	out.Reset()
 	u = newUI(&out, true, false)
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", false, false)
+	u.sharing("notes.md", "https://pedit.example.com/r/AAAA#key", false, false)
 	u.setStatus(protocol.StatusConnected)
 	u.imageSaved("assets/0123.png")
 	want := "\r\x1b[2K  \x1b[2mSaved an image to assets/0123.png\x1b[0m\n\r\x1b[2K  \x1b[32m●\x1b[0m Just you so far"
@@ -110,7 +110,7 @@ func TestUIImageSaved(t *testing.T) {
 func TestUIWithoutColor(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, true) // NO_COLOR
-	u.sharing("notes.md", "https://ima.example.com/r/AAAA#key", true, false)
+	u.sharing("notes.md", "https://pedit.example.com/r/AAAA#key", true, false)
 	u.saved("notes.md")
 	if got := out.String(); strings.Contains(got, "\x1b[1m") || strings.Contains(got, "\x1b[3") {
 		t.Fatalf("colors despite NO_COLOR: %q", got)
@@ -120,25 +120,25 @@ func TestUIWithoutColor(t *testing.T) {
 func TestUIScratch(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, false, false)
-	u.sharing("ima-2026-09-26-143012.md", "https://ima.example.com/r/AAAA#key", false, true)
+	u.sharing("pedit-2026-09-26-143012.md", "https://pedit.example.com/r/AAAA#key", false, true)
 	u.stopLive()
-	u.saved("ima-2026-09-26-143012.md")
-	u.scratch("ima-2026-09-26-143012.md")
+	u.saved("pedit-2026-09-26-143012.md")
+	u.scratch("pedit-2026-09-26-143012.md")
 	want := `
-  ima-2026-09-26-143012.md is ready to write together.
+  pedit-2026-09-26-143012.md is ready to write together.
 
   Send this link to the people you want to invite:
-    https://ima.example.com/r/AAAA#key
+    https://pedit.example.com/r/AAAA#key
 
-  Press Ctrl+C when you are done. Everything is saved to ima-2026-09-26-143012.md.
+  Press Ctrl+C when you are done. Everything is saved to pedit-2026-09-26-143012.md.
 
-  Resume with: ima ima-2026-09-26-143012.md
+  Resume with: pedit pedit-2026-09-26-143012.md
 
   ○ Connecting…
-  ✓ Saved ima-2026-09-26-143012.md. The link no longer works.
+  ✓ Saved pedit-2026-09-26-143012.md. The link no longer works.
 
-  Saved to ima-2026-09-26-143012.md
-  Resume with: ima ima-2026-09-26-143012.md
+  Saved to pedit-2026-09-26-143012.md
+  Resume with: pedit pedit-2026-09-26-143012.md
 
 `
 	if out.String() != want {
@@ -149,8 +149,8 @@ func TestUIScratch(t *testing.T) {
 func TestUISignsInOnAlternateScreen(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, false)
-	u.signIn("ima.example.com", "https://ima.example.com/cdn-cgi/access/cli?token=abc")
-	u.signIn("ima.example.com", "https://ima.example.com/cdn-cgi/access/cli?token=def") // stays put
+	u.signIn("pedit.example.com", "https://pedit.example.com/cdn-cgi/access/cli?token=abc")
+	u.signIn("pedit.example.com", "https://pedit.example.com/cdn-cgi/access/cli?token=def") // stays put
 	u.endSignIn()
 	u.endSignIn() // no-op
 	u.signedIn("k@example.com")
@@ -167,7 +167,7 @@ func TestUISignsInOnAlternateScreen(t *testing.T) {
 func TestUILeavesAlternateScreenWhenSignInFails(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, true, false)
-	u.signIn("ima.example.com", "https://ima.example.com/cdn-cgi/access/cli")
+	u.signIn("pedit.example.com", "https://pedit.example.com/cdn-cgi/access/cli")
 	u.endSignIn()
 	if got := out.String(); !strings.HasSuffix(got, "\x1b[?1049l") {
 		t.Fatalf("got %q", got)
@@ -177,10 +177,10 @@ func TestUILeavesAlternateScreenWhenSignInFails(t *testing.T) {
 func TestUIKeepsSignInWithoutTerminal(t *testing.T) {
 	var out strings.Builder
 	u := newUI(&out, false, false)
-	u.signIn("ima.example.com", "https://ima.example.com/cdn-cgi/access/cli")
+	u.signIn("pedit.example.com", "https://pedit.example.com/cdn-cgi/access/cli")
 	u.endSignIn()
 	u.signedIn("")
-	if got := out.String(); strings.Contains(got, "\x1b[") || !strings.Contains(got, "Sign in to ima.example.com") {
+	if got := out.String(); strings.Contains(got, "\x1b[") || !strings.Contains(got, "Sign in to pedit.example.com") {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -194,7 +194,7 @@ func TestUIWhenSignInStops(t *testing.T) {
   Sign-in cancelled. Nothing was shared.
 
 
-  Sign-in did not finish in 5 minutes. Run ima again to try again.
+  Sign-in did not finish in 5 minutes. Run pedit again to try again.
 
 `
 	if out.String() != want {
@@ -230,8 +230,8 @@ func TestWhoIsHere(t *testing.T) {
 
 func TestHostOf(t *testing.T) {
 	for in, want := range map[string]string{
-		"https://ima-lab.piconic.ai":  "ima-lab.piconic.ai",
-		"https://ima-lab.piconic.ai/": "ima-lab.piconic.ai",
+		"https://edit-lab.piconic.ai":  "edit-lab.piconic.ai",
+		"https://edit-lab.piconic.ai/": "edit-lab.piconic.ai",
 		"http://localhost:8787":       "localhost:8787",
 	} {
 		if got := hostOf(in); got != want {

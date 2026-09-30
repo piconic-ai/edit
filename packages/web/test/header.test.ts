@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render } from '@barefootjs/client/runtime'
-import type { RoomStatus } from '@ima/protocol'
+import type { RoomStatus } from '@pedit/protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import '../src/components/Header.tsx'
 import type { Participant } from '../src/room.ts'

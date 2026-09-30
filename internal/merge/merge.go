@@ -1,4 +1,4 @@
-// Package merge applies edits made to the file outside ima onto the shared text.
+// Package merge applies edits made to the file outside pedit onto the shared text.
 package merge
 
 import (
@@ -84,7 +84,7 @@ func utf16Offsets(rs []rune) []int {
 }
 
 // ExternalEdit applies the change from base to next (an edit made to the file
-// outside ima) onto text, which may meanwhile have diverged from base through
+// outside pedit) onto text, which may meanwhile have diverged from base through
 // remote edits. Remote edits are kept unless the external edit replaced the same
 // region. The caller must keep text from changing concurrently.
 func ExternalEdit(doc *crdt.Doc, text *crdt.YText, base, next string, origin any) {

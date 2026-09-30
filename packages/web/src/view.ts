@@ -10,8 +10,8 @@ export type ViewMode = 'editor' | 'split' | 'preview' | 'table' | 'canvas'
  */
 export type ViewKind = 'markdown' | 'table' | 'canvas' | 'plain'
 
-export const VIEW_KEY = 'ima:view'
-export const TABLE_VIEW_KEY = 'ima:table-view'
+export const VIEW_KEY = 'pedit:view'
+export const TABLE_VIEW_KEY = 'pedit:table-view'
 export const NARROW_QUERY = '(max-width: 720px)'
 
 interface KindInfo {

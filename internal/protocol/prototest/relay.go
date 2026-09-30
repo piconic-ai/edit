@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 // Relay relays every frame to all other connections.

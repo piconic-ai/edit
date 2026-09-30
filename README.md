@@ -1,28 +1,28 @@
-# ima
+# piconic edit
 
 Co-edit a local text file with others, right now.
 
 ```sh
-ima notes.md
+pedit notes.md
 ```
 
-`ima` prints a link (and copies it to your clipboard). Paste it into Slack or wherever; whoever opens it edits the file with you in their browser. No install or account for them. Edits land in your local file about a second later. Press Ctrl+C to finish: the final state is written and the room closes.
+`pedit` prints a link (and copies it to your clipboard). Paste it into Slack or wherever; whoever opens it edits the file with you in their browser. No install or account for them. Edits land in your local file about a second later. Press Ctrl+C to finish: the final state is written and the room closes.
 
-No file in mind yet? Run `ima` on its own: it creates an empty `ima-<time>.md` (for example `ima-2026-09-26-143012.md`) in the current directory and shares that. It never overwrites a file, and when you finish it tells you the name so you can resume later with `ima ima-2026-09-26-143012.md`. `ima <file>` itself only shares files that already exist.
+No file in mind yet? Run `pedit` on its own: it creates an empty `pedit-<time>.md` (for example `pedit-2026-09-26-143012.md`) in the current directory and shares that. It never overwrites a file, and when you finish it tells you the name so you can resume later with `pedit pedit-2026-09-26-143012.md`. `pedit <file>` itself only shares files that already exist.
 
-Any UTF-8 text file works, not only Markdown: `ima main.go`, `ima data.csv` or `ima board.canvas`. The editor picks syntax highlighting from the file extension and falls back to Markdown when there is none or it is unknown; `.txt`, `.csv` and `.tsv` stay plain text.
+Any UTF-8 text file works, not only Markdown: `pedit main.go`, `pedit data.csv` or `pedit board.canvas`. The editor picks syntax highlighting from the file extension and falls back to Markdown when there is none or it is unknown; `.txt`, `.csv` and `.tsv` stay plain text.
 
 Markdown files open with a rendered preview next to the editor (preview only on phones); switch between Edit, Split and Preview in the header. The preview shows images and videos from absolute URLs already in the document, and plays bare YouTube and Vimeo links.
 
-Paste or drop an image (PNG, JPEG, GIF or WebP) into a Markdown file, and ima saves it next to the file as `assets/<hash>.png` and links it where you put it. Location and other metadata are removed first, and images over 10 MB are scaled down. The preview shows these images to everyone in the session; other images at relative paths show their alt text, since they live on your disk.
+Paste or drop an image (PNG, JPEG, GIF or WebP) into a Markdown file, and pedit saves it next to the file as `assets/<hash>.png` and links it where you put it. Location and other metadata are removed first, and images over 10 MB are scaled down. The preview shows these images to everyone in the session; other images at relative paths show their alt text, since they live on your disk.
 
-**Why "ima"?** It comes from two Japanese words read *ima*: 居間 (the living room, where you casually invite people in) and 今 (now). You invite people into your place to write together, right now, and the document never leaves your home.
+**Why "piconic edit"?** It is the piconic service for inviting people into a local document and editing it together, right now.
 
 ## How it works
 
 ```
-your machine                     Cloudflare (ima.piconic.ai)           collaborators
-notes.md  <->  ima CLI  <--wss-->  Worker -> Room (Durable Object)  <--wss-->  browser editor
+your machine                     Cloudflare (edit.piconic.ai)           collaborators
+notes.md  <->  pedit CLI  <--wss-->  Worker -> Room (Durable Object)  <--wss-->  browser editor
 ```
 
 - Your local file is the source of truth, and pasted images are saved beside it. The server keeps nothing but those images, encrypted, while you are connected, and deletes them when the session ends.
@@ -33,13 +33,13 @@ notes.md  <->  ima CLI  <--wss-->  Worker -> Room (Durable Object)  <--wss-->  b
 
 ## Install
 
-`ima` is a single binary with no runtime dependencies. With Go 1.25 or later:
+`pedit` is a single binary with no runtime dependencies. With Go 1.25 or later:
 
 ```sh
-go install github.com/piconic-ai/ima/cmd/ima@latest
+go install github.com/piconic-ai/edit/cmd/pedit@latest
 ```
 
-Set `IMA_SERVER` to use a server other than `https://ima.piconic.ai`.
+Set `PEDIT_SERVER` to use a server other than `https://edit.piconic.ai`.
 
 ## Development
 
@@ -57,13 +57,13 @@ go vet ./...
 Run everything locally:
 
 ```sh
-pnpm --filter @ima/worker dev                  # builds the web editor, serves on http://localhost:8787
-IMA_SERVER=http://localhost:8787 go run ./cmd/ima notes.md
+pnpm --filter @pedit/worker dev                  # builds the web editor, serves on http://localhost:8787
+PEDIT_SERVER=http://localhost:8787 go run ./cmd/pedit notes.md
 ```
 
 | Path | What it is |
 | --- | --- |
-| `cmd/ima`, `internal/` | The `ima` command (Go). `internal/protocol` mirrors `packages/protocol` on top of [ygo](https://github.com/reearth/ygo) |
+| `cmd/pedit`, `internal/` | The `pedit` command (Go). `internal/protocol` mirrors `packages/protocol` on top of [ygo](https://github.com/reearth/ygo) |
 | `packages/protocol` | Encryption, message framing and the Yjs room client used by the web editor |
 | `packages/worker` | Hono Worker + `Room` Durable Object (WebSocket Hibernation API); also serves the web editor |
 | `packages/web` | CodeMirror 6 editor for collaborators; UI components in BarefootJS |
@@ -76,9 +76,9 @@ is shared by both implementations: change them together.
   peers can add more.
 - Attachments (images) are named by content: `hash` is the first 128 bits of
   SHA-256 of the bytes, in hex. Their bytes are encrypted with a key derived
-  from the room key (HKDF-SHA256, info `ima blob enc v1`) and stored under
+  from the room key (HKDF-SHA256, info `pedit blob enc v1`) and stored under
   `blobId`, the first 128 bits of HMAC-SHA256 over `hash` with another derived
-  key (info `ima blob id v1`), in base64url. The server sees neither the
+  key (info `pedit blob id v1`), in base64url. The server sees neither the
   content nor its hash.
 - Attachment messages carry a lib0 varint kind and fields: `0` announce
   (hash, mime), `1` want (hashes), `2` stored (hash, path), `3` rejected
@@ -87,27 +87,27 @@ is shared by both implementations: change them together.
 
 ## Releases and deploys
 
-Production (`ima.piconic.ai`) deploys when a tagpr release PR is merged
+Production (`edit.piconic.ai`) deploys when a tagpr release PR is merged
 (see `.github/workflows/tagpr.yml`): the merge tags the release, the workflow
 fast-forwards the `release` branch to the tag, and Cloudflare Workers Builds
 deploys `release`. Every other branch gets its own
 [Worker Preview](https://developers.cloudflare.com/workers/previews/) on push, at
-`https://<branch-name>-ima.<subdomain>.workers.dev`, with its own Durable Object
+`https://<branch-name>-edit.<subdomain>.workers.dev`, with its own Durable Object
 namespace and its own logs under the Preview's Observability tab (Cloudflare
-dashboard → ima Worker → Previews). Previews are configured by the `previews`
+dashboard → piconic edit Worker → Previews). Previews are configured by the `previews`
 block in `packages/worker/wrangler.jsonc`.
 
 To try a Preview with the CLI:
 
 ```sh
-IMA_SERVER=https://<branch-name>-ima.<subdomain>.workers.dev go run ./cmd/ima notes.md
+PEDIT_SERVER=https://<branch-name>-edit.<subdomain>.workers.dev go run ./cmd/pedit notes.md
 ```
 
-Workers Builds settings (Cloudflare dashboard → ima Worker → Settings → Build):
+Workers Builds settings (Cloudflare dashboard → piconic edit Worker → Settings → Build):
 
 | Setting | Value |
 | --- | --- |
-| Git repository | `piconic-ai/ima` |
+| Git repository | `piconic-ai/edit` |
 | Root directory | `/` |
 | Production branch | `release` |
 | Build command | *(empty)* |
@@ -123,44 +123,44 @@ needs its bucket, with a lifecycle rule that expires anything a failed
 deletion leaves behind:
 
 ```sh
-for bucket in ima-blobs ima-blobs-preview ima-lab-blobs; do
-  pnpm --filter @ima/worker exec wrangler r2 bucket create "$bucket"
-  pnpm --filter @ima/worker exec wrangler r2 bucket lifecycle add "$bucket" expire-rooms rooms/ --expire-days 1
+for bucket in edit-blobs edit-blobs-preview edit-lab-blobs; do
+  pnpm --filter @pedit/worker exec wrangler r2 bucket create "$bucket"
+  pnpm --filter @pedit/worker exec wrangler r2 bucket lifecycle add "$bucket" expire-rooms rooms/ --expire-days 1
 done
 ```
 
-`ima-blobs` is production's, `ima-blobs-preview` is shared by every Preview,
-and `ima-lab-blobs` is the lab's.
+`edit-blobs` is production's, `edit-blobs-preview` is shared by every Preview,
+and `edit-lab-blobs` is the lab's.
 
 ### Lab
 
-`ima-lab.piconic.ai` is a second Worker (`ima-lab`) for experiments that should
+`edit-lab.piconic.ai` is a second Worker (`edit-lab`) for experiments that should
 not touch production, such as putting the whole host behind Cloudflare Access.
 It is defined as the `lab` environment in `packages/worker/wrangler.jsonc`, has
 its own Durable Object namespace, and is deployed by hand:
 
 ```sh
 pnpm run deploy:lab
-IMA_SERVER=https://ima-lab.piconic.ai go run ./cmd/ima notes.md
+PEDIT_SERVER=https://edit-lab.piconic.ai go run ./cmd/pedit notes.md
 ```
 
-Deploying it is also a rehearsal of self-hosting ima on another Cloudflare account.
+Deploying it is also a rehearsal of self-hosting pedit on another Cloudflare account.
 
 ### Behind Cloudflare Access
 
-ima works on a host protected by a Cloudflare Access self-hosted application.
+pedit works on a host protected by a Cloudflare Access self-hosted application.
 
 - Collaborators sign in with Access and join without typing a name. The editor
   reads their name from `/cdn-cgi/access/get-identity`, which Access answers
   itself, and their avatar from the IdP's `picture` claim or Gravatar.
-- The host just runs `ima notes.md`. When the server is behind Access, ima
+- The host just runs `pedit notes.md`. When the server is behind Access, pedit
   signs in with [cloudflared](https://github.com/cloudflare/cloudflared): the
   browser opens once per Access session, and the host joins as themselves,
   with a Gravatar avatar from their email. Install cloudflared first, for
   example with `brew install cloudflared`.
 
-The token is read once when ima starts. If the Access session expires while
-sharing (24 hours by default), ima cannot reconnect until it is restarted.
+The token is read once when pedit starts. If the Access session expires while
+sharing (24 hours by default), pedit cannot reconnect until it is restarted.
 
 The Worker runs on the Workers Free plan (100,000 requests a day). It uses a
 SQLite-backed Durable Object and no D1 or KV. `piconic.ai` must be on the same

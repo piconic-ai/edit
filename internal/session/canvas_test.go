@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/piconic-ai/ima/internal/canvas"
-	"github.com/piconic-ai/ima/internal/protocol"
-	"github.com/piconic-ai/ima/internal/protocol/prototest"
+	"github.com/piconic-ai/edit/internal/canvas"
+	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol/prototest"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )
@@ -126,7 +126,7 @@ func TestInvalidCanvasFailsBeforeARoomIsMade(t *testing.T) {
 		"board.canvas is not a valid JSON Canvas",
 		`board.canvas:2:1: nodes[0] (id "a"): has no "height"`,
 		`board.canvas:2:1: nodes[0] (id "a"): has no "text"`,
-		"Fix the file and run ima again.",
+		"Fix the file and run pedit again.",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error lacks %q:\n%v", want, err)
@@ -174,7 +174,7 @@ func TestCanvasTakesInEditsToTheFile(t *testing.T) {
 	}
 	prototest.WaitFor(t, wait, func() bool { return g.text("a1") == "Hello there" }, "the guest to see the edit")
 
-	// Saved half-way: ima waits instead of saving over it, and says why once.
+	// Saved half-way: pedit waits instead of saving over it, and says why once.
 	broken := edited[:len(edited)-3]
 	if err := os.WriteFile(f.file, []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestCanvasTakesInEditsToTheFile(t *testing.T) {
 		t.Fatalf("the file was saved over while invalid:\n%s", got)
 	}
 	mu.Lock()
-	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "board.canvas changed outside ima") || !strings.Contains(errs[0].Error(), "ends too early") {
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), "board.canvas changed outside pedit") || !strings.Contains(errs[0].Error(), "ends too early") {
 		t.Errorf("errors = %v", errs)
 	}
 	mu.Unlock()
@@ -246,7 +246,7 @@ func TestCanvasAppliesJSONEditedInTheBrowser(t *testing.T) {
 	m, _ := g.reply("e2")
 	if m.Kind != protocol.CanvasRejected || !strings.Contains(m.Reason, `line 4, column `) ||
 		!strings.Contains(m.Reason, `"x" must be a number, not a string`) ||
-		!strings.HasSuffix(m.Reason, "Fix the JSON and it is sent again.") || strings.Contains(m.Reason, "run ima again") {
+		!strings.HasSuffix(m.Reason, "Fix the JSON and it is sent again.") || strings.Contains(m.Reason, "run pedit again") {
 		t.Fatalf("reply = %+v", m)
 	}
 	if got := readFile(t, f.file); got != next {

@@ -1,10 +1,10 @@
 import { DurableObject } from 'cloudflare:workers'
-import { ROOM_CLOSED } from '@ima/protocol/close'
+import { ROOM_CLOSED } from '@pedit/protocol/close'
 
 export const MAX_PEERS = 32
 export const MAX_MESSAGE_BYTES = 1024 * 1024
 /** Set by the Worker (never by clients) on the host's upgrade request. */
-export const HOST_HEADER = 'X-Ima-Host'
+export const HOST_HEADER = 'X-Pedit-Host'
 
 /** An attachment of up to 10 MiB, plus its AES-GCM IV and tag. */
 export const MAX_BLOB_BYTES = 10 * 1024 * 1024 + 28

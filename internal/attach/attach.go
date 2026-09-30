@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 const (
@@ -73,7 +73,7 @@ var (
 type Options struct {
 	// File is the shared file; attachments go to Dir beside it.
 	File string
-	// Server is the base URL of the ima server, and Room the room id.
+	// Server is the base URL of the piconic edit server, and Room the room id.
 	Server string
 	Room   string
 	// Header is sent with every request to the server, such as the Cloudflare
@@ -351,7 +351,7 @@ func (a *Attachments) save(hash, ext string, content []byte) (string, bool, erro
 		return "", false, err
 	}
 
-	tmp, err := os.CreateTemp(dir, ".ima-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".pedit-*.tmp")
 	if err != nil {
 		return "", false, err
 	}

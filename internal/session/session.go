@@ -1,4 +1,4 @@
-// Package session shares a local file in an ima room.
+// Package session shares a local file in a piconic edit room.
 package session
 
 import (
@@ -17,22 +17,22 @@ import (
 	"unicode/utf8"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/piconic-ai/ima/internal/attach"
-	"github.com/piconic-ai/ima/internal/filewriter"
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/attach"
+	"github.com/piconic-ai/edit/internal/filewriter"
+	"github.com/piconic-ai/edit/internal/protocol"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )
 
 type Options struct {
 	File string
-	// Server is the base URL of the ima server, e.g. https://ima.piconic.ai
+	// Server is the base URL of the piconic edit server, e.g. https://edit.piconic.ai
 	Server string
 	Name   string
 	// Avatar is the URL of the host's picture, shown to the others.
 	Avatar     string
 	WriteDelay time.Duration
-	// Watch streams edits made to the file outside ima into the room.
+	// Watch streams edits made to the file outside pedit into the room.
 	Watch bool
 	// Header is sent with every request to the server, such as the Cloudflare
 	// Access token of whoever signed in.
@@ -307,11 +307,11 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 	}
 	var r room
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil || r.ID == "" {
-		return nil, fmt.Errorf("failed to create a room: %s did not answer like an ima server (check IMA_SERVER)", server)
+		return nil, fmt.Errorf("failed to create a room: %s did not answer like a piconic edit server (check PEDIT_SERVER)", server)
 	}
 	if r.HostToken == "" {
 		// Servers before host tokens cannot close a room when its host leaves.
-		return nil, fmt.Errorf("failed to create a room: %s did not return a host token; the server is older than this ima and needs an update", server)
+		return nil, fmt.Errorf("failed to create a room: %s did not return a host token; the server is older than this pedit and needs an update", server)
 	}
 	return &r, nil
 }
@@ -397,7 +397,7 @@ func (s *Session) scheduleSyncFromDisk() {
 }
 
 // syncFromDisk merges the file's current content into the doc if it changed
-// outside ima, against what we last wrote. The caller must hold s.syncing.
+// outside pedit, against what we last wrote. The caller must hold s.syncing.
 func (s *Session) syncFromDisk() {
 	changed := false
 	// Rebase drops any pending write, which predates the merge.
@@ -420,7 +420,7 @@ func (s *Session) syncFromDisk() {
 			// someone is in the middle of writing.
 			if onDisk != s.invalidOnDisk {
 				s.invalidOnDisk = onDisk
-				s.onError(fmt.Errorf("%s changed outside ima, but ima cannot take the change in; it saves again once the file is fixed.\n%w", filepath.Base(s.file), err))
+				s.onError(fmt.Errorf("%s changed outside pedit, but pedit cannot take the change in; it saves again once the file is fixed.\n%w", filepath.Base(s.file), err))
 			}
 			return lastWritten
 		}
@@ -475,7 +475,7 @@ func truncate(s string, n int) string {
 }
 
 // finalWriteAttempts bounds how often Stop retries when the file keeps changing
-// outside ima while it tries to save.
+// outside pedit while it tries to save.
 const finalWriteAttempts = 3
 
 // Stop leaves the room and writes the final state to the file. It reports an

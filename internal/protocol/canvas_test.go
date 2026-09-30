@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/piconic-ai/ima/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol"
 )
 
 func TestCanvasRoundTrip(t *testing.T) {

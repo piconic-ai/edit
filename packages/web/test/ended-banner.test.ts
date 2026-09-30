@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { render } from '@barefootjs/client/runtime'
-import type { RoomStatus } from '@ima/protocol'
+import type { RoomStatus } from '@pedit/protocol'
 import { describe, expect, it, vi } from 'vitest'
 import '../src/components/EndedBanner.tsx'
 import { Store } from '../src/store.ts'

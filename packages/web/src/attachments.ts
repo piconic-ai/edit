@@ -7,11 +7,11 @@ import {
   encryptBlob,
   MAX_WANT_HASHES,
   type RoomStatus,
-} from '@ima/protocol'
+} from '@pedit/protocol'
 import { ImageError, type ImageType, prepareImage, type Shrink, sniff } from './image.ts'
 import { Store } from './store.ts'
 
-/** What the host's ima says about saving images, from its awareness state. */
+/** What the host's pedit says about saving images, from its awareness state. */
 export interface HostAttachments {
   /** The directory, beside the shared file, that links point into. */
   dir: string
@@ -50,7 +50,7 @@ export function whyNoImages(
 ): string | null {
   if (status === 'closed') return 'The session has ended.'
   if (status !== 'connected' || !hostHere) return 'Connecting to the host. Try again in a moment.'
-  if (!host) return "The host's ima is too old to save images."
+  if (!host) return "The host's pedit is too old to save images."
   return null
 }
 
@@ -63,7 +63,7 @@ export class AttachmentError extends Error {
 }
 
 const MESSAGES = {
-  unsupported: "The host's ima is too old to save images.",
+  unsupported: "The host's pedit is too old to save images.",
   type: 'Only PNG, JPEG, GIF and WebP images can be added.',
   too_large: 'The image is too large to add.',
   unreadable: 'The image could not be read.',

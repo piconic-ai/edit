@@ -10,11 +10,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/piconic-ai/ima/internal/suggest"
+	"github.com/piconic-ai/edit/internal/suggest"
 )
 
 // checkFile tells why arg cannot be shared, in words that help fix it, or
-// returns "" when it can. ima never creates the file: a typo would leave a
+// returns "" when it can. pedit never creates the file: a typo would leave a
 // stray one behind.
 func checkFile(arg string) string {
 	dir, name := filepath.Split(arg)
@@ -22,29 +22,29 @@ func checkFile(arg string) string {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		if _, err := os.Stat(filepath.Dir(arg)); errors.Is(err, fs.ErrNotExist) {
-			return "ima: " + dir + " does not exist, so " + arg + " cannot be there."
+			return "pedit: " + dir + " does not exist, so " + arg + " cannot be there."
 		}
 		return missing(arg, dir, suggest.Files(filepath.Dir(arg), name))
 	case errors.Is(err, fs.ErrPermission):
-		return "ima: cannot read " + arg + ": permission denied."
+		return "pedit: cannot read " + arg + ": permission denied."
 	case err != nil:
-		return "ima: cannot open " + arg + ": " + err.Error()
+		return "pedit: cannot open " + arg + ": " + err.Error()
 	case st.IsDir():
 		return directory(arg)
 	case !st.Mode().IsRegular():
-		return "ima: " + arg + " is not a regular file. ima shares text files."
+		return "pedit: " + arg + " is not a regular file. pedit shares text files."
 	case !canRead(arg):
-		return "ima: cannot read " + arg + ": permission denied."
+		return "pedit: cannot read " + arg + ": permission denied."
 	case !canWrite(arg):
-		return "ima: " + arg + " is read-only. ima writes edits back to it, so it needs write permission."
+		return "pedit: " + arg + " is read-only. pedit writes edits back to it, so it needs write permission."
 	case !canWrite(filepath.Dir(arg)):
-		return "ima: cannot save to " + arg + ": ima saves by replacing the file, which needs write permission on " + dirName(arg) + "."
+		return "pedit: cannot save to " + arg + ": pedit saves by replacing the file, which needs write permission on " + dirName(arg) + "."
 	}
 	return ""
 }
 
 func missing(arg, dir string, names []string) string {
-	lines := []string{"ima: " + arg + " does not exist.", ""}
+	lines := []string{"pedit: " + arg + " does not exist.", ""}
 	if len(names) > 0 {
 		if len(names) == 1 {
 			lines = append(lines, "  Did you mean this one?")
@@ -52,19 +52,19 @@ func missing(arg, dir string, names []string) string {
 			lines = append(lines, "  Did you mean one of these?")
 		}
 		for _, n := range names {
-			lines = append(lines, "    ima "+shellQuote(dir+n))
+			lines = append(lines, "    pedit "+shellQuote(dir+n))
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, "ima only shares files that already exist. To start from an empty file, run `ima` with no argument or create the file first.")
+	lines = append(lines, "pedit only shares files that already exist. To start from an empty file, run `pedit` with no argument or create the file first.")
 	return strings.Join(lines, "\n")
 }
 
-// maxListed is how many text files a directory may hold for ima to list them.
+// maxListed is how many text files a directory may hold for pedit to list them.
 const maxListed = 5
 
 func directory(arg string) string {
-	msg := "ima: " + arg + " is a directory. ima shares a single file."
+	msg := "pedit: " + arg + " is a directory. pedit shares a single file."
 	names := textFiles(arg, maxListed)
 	if len(names) == 0 || len(names) > maxListed {
 		return msg
@@ -75,7 +75,7 @@ func directory(arg string) string {
 	}
 	lines := []string{msg, "", "  Pick one of these:"}
 	for _, n := range names {
-		lines = append(lines, "    ima "+shellQuote(prefix+n))
+		lines = append(lines, "    pedit "+shellQuote(prefix+n))
 	}
 	return strings.Join(lines, "\n")
 }

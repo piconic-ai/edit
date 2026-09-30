@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { undo } from '@codemirror/commands'
-import type { CanvasMessage } from '@ima/protocol'
-import { MAX_CANVAS_EDIT_BYTES } from '@ima/protocol'
+import type { CanvasMessage } from '@pedit/protocol'
+import { MAX_CANVAS_EDIT_BYTES } from '@pedit/protocol'
 import { beforeAll, describe, expect, it } from 'vitest'
 import * as Y from 'yjs'
 import { EDGES, NODES, read, TEXT, toJSON } from '../src/canvas.ts'

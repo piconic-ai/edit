@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/protocol"
-	"github.com/piconic-ai/ima/internal/protocol/prototest"
+	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol/prototest"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )
@@ -174,9 +174,9 @@ func TestExplainsWhyRoomCannotBeCreated(t *testing.T) {
 		want   string
 	}{
 		{"server error", http.StatusServiceUnavailable, "nope", "503 Service Unavailable"},
-		{"not JSON", http.StatusOK, "<html>", "did not answer like an ima server (check IMA_SERVER)"},
-		{"no room id", http.StatusCreated, `{"hostToken":"t"}`, "did not answer like an ima server"},
-		{"no host token", http.StatusCreated, `{"id":"AAAAAAAAAAAAAAAAAAAAAA"}`, "did not return a host token; the server is older than this ima"},
+		{"not JSON", http.StatusOK, "<html>", "did not answer like a piconic edit server (check PEDIT_SERVER)"},
+		{"no room id", http.StatusCreated, `{"hostToken":"t"}`, "did not answer like a piconic edit server"},
+		{"no host token", http.StatusCreated, `{"id":"AAAAAAAAAAAAAAAAAAAAAA"}`, "did not return a host token; the server is older than this pedit"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -245,7 +245,7 @@ func TestExplainsCloudflareAccess(t *testing.T) {
 					_, _ = w.Write([]byte("<html>Sign in</html>"))
 					return
 				}
-				http.Redirect(w, r, "/cdn-cgi/access/login/ima-lab.example", http.StatusFound)
+				http.Redirect(w, r, "/cdn-cgi/access/login/edit-lab.example", http.StatusFound)
 			}))
 			defer server.Close()
 			file := filepath.Join(t.TempDir(), "notes.md")

@@ -983,7 +983,7 @@ export function FlowNodeTypeBridge(props: FlowNodeTypeBridgeProps) {
       dispatchNodeType(el, initFn, {
         id,
         data,
-        // ima: NodeComponentProps requires `type`, which upstream leaves out.
+        // pedit: NodeComponentProps requires `type`, which upstream leaves out.
         type,
         // Fine-grained per-node subscription. `nodeSignal(id)` only
         // wakes consumers when this specific node's entry changes;

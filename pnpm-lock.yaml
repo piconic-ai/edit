@@ -65,7 +65,7 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.13
         version: 6.43.13
-      '@ima/protocol':
+      '@pedit/protocol':
         specifier: workspace:^
         version: link:../protocol
       '@lezer/highlight':
@@ -132,7 +132,7 @@ importers:
 
   packages/worker:
     dependencies:
-      '@ima/protocol':
+      '@pedit/protocol':
         specifier: workspace:^
         version: link:../protocol
       hono:

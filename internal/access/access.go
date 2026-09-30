@@ -1,4 +1,4 @@
-// Package access signs in to an ima server behind Cloudflare Access with
+// Package access signs in to a piconic edit server behind Cloudflare Access with
 // cloudflared, so that sharing a file stays a single command.
 package access
 
@@ -22,7 +22,7 @@ const Header = "Cf-Access-Token"
 // ErrNoCloudflared means cloudflared is not installed.
 var ErrNoCloudflared = errors.New("cloudflared is not installed")
 
-// Cloudflared gets the Access token of whoever runs ima, signing in with the
+// Cloudflared gets the Access token of whoever runs pedit, signing in with the
 // browser when there is no valid token yet. cloudflared keeps the token, so
 // the browser opens only once per Access session.
 type Cloudflared struct {
@@ -44,7 +44,7 @@ func runCloudflared(ctx context.Context, stdout, stderr io.Writer, args ...strin
 	return cmd.Run()
 }
 
-// Token returns a token for the Access application at app, e.g. https://ima.example.com
+// Token returns a token for the Access application at app, e.g. https://pedit.example.com
 func (c *Cloudflared) Token(ctx context.Context, app string) (string, error) {
 	run := c.Run
 	if run == nil {
@@ -89,7 +89,7 @@ func (c *Cloudflared) Token(ctx context.Context, app string) (string, error) {
 	}
 	// cloudflared hands back a cached token until it has expired, even one
 	// with seconds left, so take whatever has not expired yet. If it expires
-	// while sharing, ima cannot reconnect; see the README.
+	// while sharing, pedit cannot reconnect; see the README.
 	token, err := cached()
 	if err != nil || !validFor(token, now(), 0) {
 		return "", fmt.Errorf("cloudflared signed in to %s but returned no usable token", app)

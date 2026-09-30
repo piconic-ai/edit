@@ -3,7 +3,7 @@ import { defaultStore, type Store } from './storage.ts'
 import { Store as Value } from './store.ts'
 import './components/SplitterBar.tsx'
 
-export const SPLIT_KEY = 'ima:split'
+export const SPLIT_KEY = 'pedit:split'
 export const MIN_RATIO = 0.2
 export const MAX_RATIO = 0.8
 const DEFAULT_RATIO = 0.5

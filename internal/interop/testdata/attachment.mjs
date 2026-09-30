@@ -41,7 +41,7 @@ async function until(what, cond) {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-const content = new TextEncoder().encode('ima 居間')
+const content = new TextEncoder().encode('pedit 居間')
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...content])
 const keys = await protocol.deriveBlobKeys(key)
 const hash = await protocol.contentHash(png)

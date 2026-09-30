@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/ima/internal/protocol"
-	"github.com/piconic-ai/ima/internal/protocol/prototest"
+	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/edit/internal/protocol/prototest"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )
