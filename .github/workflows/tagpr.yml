@@ -68,6 +68,8 @@ jobs:
         run: bash scripts/build-cli-release.sh "$TAG" "$RUNNER_TEMP/pedit-release"
       - name: Attach binaries to the tagpr release
         run: gh release upload "$TAG" "$RUNNER_TEMP"/pedit-release/* --clobber
+      - name: Publish the completed release
+        run: gh release edit "$TAG" --draft=false
 
   advance-release-branch:
     name: Advance release branch

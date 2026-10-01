@@ -1,6 +1,8 @@
 [tagpr]
 	vPrefix = true
 	releaseBranch = main
+	# Publish only after the CLI archives and checksums have uploaded successfully.
+	release = draft
 	# The CLI version comes from the tag (go install / -ldflags); no file to bump.
 	versionFile = -
 	changelog = true
