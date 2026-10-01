@@ -13,6 +13,10 @@ namespace and its own logs under the Preview's Observability tab (Cloudflare
 dashboard → piconic edit Worker → Previews). Previews are configured by the `previews`
 block in `packages/worker/wrangler.jsonc`.
 
+Maintainer scripts explicitly pass `--config wrangler.jsonc` from `packages/worker`.
+Without it, Wrangler's config discovery can select the root `wrangler.json`
+for self-hosting, which has no Preview configuration.
+
 To try a Preview with the CLI:
 
 ```sh

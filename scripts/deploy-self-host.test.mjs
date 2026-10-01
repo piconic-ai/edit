@@ -1,7 +1,34 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { deploySelfHost } from './deploy-self-host.mjs'
+
+test('maintainer commands select their config despite the root self-host config', () => {
+  const workerPackage = new URL('../packages/worker/package.json', import.meta.url)
+  const pkg = JSON.parse(readFileSync(workerPackage, 'utf8'))
+  const { unstable_readConfig: readConfig } = createRequire(workerPackage)('wrangler')
+  for (const name of ['dev', 'deploy', 'cf-typegen', 'deploy:lab', 'preview']) {
+    const configArg = pkg.scripts[name].match(/--config\s+(\S+)/)?.[1]
+    assert.ok(configArg, `${name} must not rely on Wrangler's config discovery`)
+    const configPath = fileURLToPath(new URL(configArg, workerPackage))
+    const config = readConfig({
+      config: configPath,
+      env: name === 'deploy:lab' ? 'lab' : undefined,
+    })
+    assert.equal(config.configPath, configPath)
+    assert.equal(config.name, name === 'deploy:lab' ? 'edit-lab' : 'edit')
+    assert.equal(
+      config.r2_buckets[0].bucket_name,
+      name === 'deploy:lab' ? 'edit-lab-blobs' : 'edit-blobs',
+    )
+    if (name === 'preview') {
+      assert.equal(config.previews.durable_objects.bindings[0].class_name, 'Room')
+      assert.equal(config.previews.r2_buckets[0].bucket_name, 'edit-blobs-preview')
+    }
+  }
+})
 
 test('cleanup uses the provisioned bucket after deployment, including jurisdiction', () => {
   const calls = []

@@ -4,13 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @pedit/web build && wrangler dev",
-    "deploy": "pnpm --filter @pedit/web build && wrangler deploy",
-    "cf-typegen": "wrangler types",
+    "dev": "pnpm --filter @pedit/web build && wrangler dev --config wrangler.jsonc",
+    "deploy": "pnpm --filter @pedit/web build && wrangler deploy --config wrangler.jsonc",
+    "cf-typegen": "wrangler types --config wrangler.jsonc",
     "typecheck": "tsc -p .",
     "test": "vitest run",
-    "deploy:lab": "pnpm --filter @pedit/web build && wrangler deploy --env lab",
-    "preview": "pnpm --filter @pedit/web build && wrangler preview"
+    "deploy:lab": "pnpm --filter @pedit/web build && wrangler deploy --config wrangler.jsonc --env lab",
+    "preview": "pnpm --filter @pedit/web build && wrangler preview --config wrangler.jsonc"
   },
   "dependencies": {
     "@pedit/protocol": "workspace:^",
