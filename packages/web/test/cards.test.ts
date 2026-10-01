@@ -33,9 +33,10 @@ describe('Landing', () => {
 })
 
 describe('IncompleteLink', () => {
-  it('asks for the whole URL', () => {
+  it('gently invites reopening the full shared URL', () => {
     const el = mount('IncompleteLink')
-    expect(el.querySelector('h1')?.textContent).toBe('This link is incomplete')
+    expect(el.querySelector('h1')?.textContent).toBe('Open your shared link again')
+    expect(el.textContent).toContain('Please open the full URL you received again')
     expect(el.textContent).toContain('including the part after #')
   })
 })
