@@ -26,8 +26,8 @@ export function IncompleteLink() {
       <div className="card">
         <h1>Open your shared link again</h1>
         <p>
-          Part of the link may have been lost during sign-in. Please open the full URL you
-          received again, including the part after #.
+          Part of the link may have been lost during sign-in. Please open the full URL you received
+          again, including the part after #.
         </p>
       </div>
     </div>
