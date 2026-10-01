@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { deploySelfHost } from './deploy-self-host.mjs'
 
 test('maintainer commands select their config despite the root self-host config', () => {
-  const workerPackage = new URL('../packages/worker/package.json', import.meta.url)
+  const workerPackage = new URL('../worker/package.json', import.meta.url)
   const pkg = JSON.parse(readFileSync(workerPackage, 'utf8'))
   const { unstable_readConfig: readConfig } = createRequire(workerPackage)('wrangler')
   for (const name of ['dev', 'deploy', 'cf-typegen', 'deploy:lab', 'preview']) {
@@ -95,7 +95,7 @@ test('missing attachment binding fails rather than reporting a complete deployme
   assert.throws(() => deploySelfHost({ run: () => {}, readConfig: () => ({}) }), /BLOBS/)
 })
 
-test('button configuration publishes the whole app without production domains or previews', () => {
+test('button configuration publishes the isolated server without production domains or previews', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.json', import.meta.url), 'utf8'))
   assert.equal(config.workers_dev, true)
   assert.equal(config.preview_urls, false)
@@ -104,7 +104,7 @@ test('button configuration publishes the whole app without production domains or
   assert.equal(config.previews, undefined)
   assert.ok(config.migrations.some((migration) => migration.new_sqlite_classes.includes('Room')))
   for (const path of [config.main, `${config.assets.directory}/index.html`]) {
-    assert.ok(path.startsWith('packages/'))
+    assert.ok(!path.startsWith('../'))
   }
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.scripts['deploy:production'], 'pnpm --filter @pedit/worker run deploy')

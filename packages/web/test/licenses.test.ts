@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error: plain JS helper without type declarations
-import { thirdPartyLicenses } from '../../../scripts/third-party-licenses.mjs'
+import { thirdPartyLicenses } from '../../scripts/third-party-licenses.mjs'
 
 const moduleIn = (pkg: string) =>
   join(realpathSync(resolve(import.meta.dirname, '../node_modules', pkg)), 'index.js')

@@ -14,7 +14,7 @@ import (
 // blobVectors pins the attachment crypto so the TypeScript side
 // (packages/protocol/test/blob.test.ts) can check it computes the same.
 // Regenerate with PEDIT_UPDATE_VECTORS=1 go test ./internal/protocol/.
-const blobVectorsFile = "testdata/blob-vectors.json"
+const blobVectorsFile = "../../packages/testdata/blob-vectors.json"
 
 type blobVectors struct {
 	Key   string       `json:"key"`

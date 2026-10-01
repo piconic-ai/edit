@@ -14,8 +14,12 @@ dashboard → piconic edit Worker → Previews). Previews are configured by the 
 block in `packages/worker/wrangler.jsonc`.
 
 Maintainer scripts explicitly pass `--config wrangler.jsonc` from `packages/worker`.
-Without it, Wrangler's config discovery can select the root `wrangler.json`
+Without it, Wrangler's config discovery can select the `packages/wrangler.json`
 for self-hosting, which has no Preview configuration.
+
+The server workspace and lockfile live in `packages/`. Root commands forward
+to it, so the Workers Builds root directory and commands below stay the same.
+The Deploy to Cloudflare button copies only this workspace.
 
 To try a Preview with the CLI:
 
@@ -37,7 +41,7 @@ Workers Builds settings (Cloudflare dashboard → piconic edit Worker → Settin
 
 When adopting the root self-hosting configuration, change the production
 Workers Builds deploy command to `pnpm run deploy:production` **before** building
-the release with these changes. `pnpm run deploy` now deploys `wrangler.json`
+the release with these changes. `pnpm run deploy` now deploys `packages/wrangler.json`
 for self-hosting; production, previews and the lab still use
 `packages/worker/wrangler.jsonc`. This dashboard setting is not changed by Git.
 
@@ -50,8 +54,8 @@ deletion leaves behind:
 
 ```sh
 for bucket in edit-blobs edit-blobs-preview edit-lab-blobs; do
-  pnpm --filter @pedit/worker exec wrangler r2 bucket create "$bucket"
-  pnpm --filter @pedit/worker exec wrangler r2 bucket lifecycle add "$bucket" expire-rooms rooms/ --expire-days 1
+  pnpm --dir packages --filter @pedit/worker exec wrangler r2 bucket create "$bucket"
+  pnpm --dir packages --filter @pedit/worker exec wrangler r2 bucket lifecycle add "$bucket" expire-rooms rooms/ --expire-days 1
 done
 ```
 

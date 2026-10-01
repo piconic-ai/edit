@@ -14,6 +14,9 @@ Add regression tests for behavior changes and run the checks below before submit
 Requires Go 1.25+, Node.js 22+ and pnpm 10.7.1 (see `go.mod` and `package.json`).
 
 The CLI is written in Go; the server and the browser editor in TypeScript.
+`packages/` is a standalone pnpm workspace for the relay and browser editor.
+Root scripts forward to it; `pnpm install` installs its locked dependencies.
+For filtered commands, use `pnpm --dir packages --filter <package> ...`.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -28,7 +31,7 @@ go vet ./...
 Run everything locally:
 
 ```sh
-pnpm --filter @pedit/worker dev                  # builds the web editor, serves on http://localhost:8787
+pnpm --dir packages --filter @pedit/worker dev                  # builds the web editor, serves on http://localhost:8787
 printf '# Notes\n' > /tmp/pedit-dev-notes.md
 PEDIT_SERVER=http://localhost:8787 go run ./cmd/pedit /tmp/pedit-dev-notes.md
 ```
@@ -36,6 +39,7 @@ PEDIT_SERVER=http://localhost:8787 go run ./cmd/pedit /tmp/pedit-dev-notes.md
 | Path | What it is |
 | --- | --- |
 | `cmd/pedit`, `internal/` | The `pedit` command (Go). `internal/protocol` mirrors `packages/protocol` on top of [ygo](https://github.com/reearth/ygo) |
+| `packages/` | Standalone server workspace, self-host config and deployment scripts |
 | `packages/protocol` | Encryption, message framing and the Yjs room client used by the web editor |
 | `packages/worker` | Hono Worker + `Room` Durable Object (WebSocket Hibernation API); also serves the web editor |
 | `packages/web` | CodeMirror 6 editor for collaborators; UI components in BarefootJS |
@@ -54,7 +58,7 @@ is shared by both implementations: change them together.
   content nor its hash.
 - Attachment messages carry a lib0 varint kind and fields: `0` announce
   (hash, mime), `1` want (hashes), `2` stored (hash, path), `3` rejected
-  (hash, reason). `internal/protocol/testdata/blob-vectors.json` pins the
+  (hash, reason). `packages/testdata/blob-vectors.json` pins the
   derivations for both implementations.
 
 Before opening a pull request, also run `pnpm build` and check Go formatting with

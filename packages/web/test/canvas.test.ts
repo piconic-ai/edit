@@ -20,10 +20,7 @@ import {
 } from '../src/canvas.ts'
 
 /** The sample Obsidian wrote, which the Go side tests too. */
-const sample = readFileSync(
-  resolve(import.meta.dirname, '../../../internal/canvas/testdata/obsidian.canvas'),
-  'utf8',
-)
+const sample = readFileSync(resolve(import.meta.dirname, '../../testdata/obsidian.canvas'), 'utf8')
 
 /** A document holding a canvas as the host shares it (internal/canvas.Load). */
 function docOf(canvas: { nodes: object[]; edges: object[] }): Y.Doc {
