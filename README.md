@@ -28,11 +28,19 @@ review or commit.
 
 ## Install
 
-| Method | Command / download |
-| --- | --- |
-| Homebrew (macOS / Linux) | `brew install piconic-ai/tap/pedit` |
-| Go 1.25+ | `go install github.com/piconic-ai/edit/cmd/pedit@latest` |
-| Binary (macOS / Linux / Windows) | [GitHub Releases](https://github.com/piconic-ai/edit/releases) · amd64 / arm64 |
+Homebrew (macOS / Linux):
+
+```sh
+brew install piconic-ai/tap/pedit
+```
+
+Go 1.25+:
+
+```sh
+go install github.com/piconic-ai/edit/cmd/pedit@latest
+```
+
+Binaries: [GitHub Releases](https://github.com/piconic-ai/edit/releases) (macOS / Linux / Windows · amd64 / arm64).
 
 ## Privacy and security
 
