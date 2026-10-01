@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.4](https://github.com/piconic-ai/edit/compare/v0.0.3...v0.0.4) - 2026-10-01
+
+- feat: include pedit binaries in GitHub releases by @kfly8 in https://github.com/piconic-ai/edit/pull/56
+
 ## [v0.0.3](https://github.com/piconic-ai/edit/compare/v0.0.2...v0.0.3) - 2026-09-30
 
 - Try ima behind Cloudflare Access on an ima-lab Worker by @kfly8 in https://github.com/piconic-ai/edit/pull/9
