@@ -24,8 +24,11 @@ export function IncompleteLink() {
   return (
     <div className="center">
       <div className="card">
-        <h1>This link is incomplete</h1>
-        <p>Ask the host to copy the whole URL, including the part after #.</p>
+        <h1>Open your shared link again</h1>
+        <p>
+          Part of the link may have been lost during sign-in. Please open the full URL you
+          received again, including the part after #.
+        </p>
       </div>
     </div>
   )
