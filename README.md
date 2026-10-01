@@ -28,16 +28,19 @@ review or commit.
 
 ## Install
 
-Download a binary from [GitHub Releases](https://github.com/piconic-ai/edit/releases),
-extract it and put `pedit` (`pedit.exe` on Windows) on your `PATH`.
-macOS, Linux and Windows · amd64 and arm64 · no runtime dependencies.
-SHA-256 checksums are included in `checksums.txt`.
+Homebrew (macOS / Linux):
 
-Or with Go 1.25+:
+```sh
+brew install piconic-ai/tap/pedit
+```
+
+Go 1.25+:
 
 ```sh
 go install github.com/piconic-ai/edit/cmd/pedit@latest
 ```
+
+Binaries: [GitHub Releases](https://github.com/piconic-ai/edit/releases) (macOS / Linux / Windows · amd64 / arm64).
 
 ## Privacy and security
 

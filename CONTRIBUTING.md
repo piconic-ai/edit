@@ -68,3 +68,5 @@ installed TypeScript dependencies; `PEDIT_INTEROP=1` prevents silently skipping 
 Keep encryption keys in the URL fragment and keep document content on clients.
 See [privacy and security](README.md#privacy-and-security) for the trust model and
 [deployment](docs/contributing/deployment.md) for releases, previews and the lab Worker.
+
+See [Homebrew releases](docs/contributing/homebrew.md) for tap updates and token setup.
