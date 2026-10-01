@@ -1,0 +1,66 @@
+# Contributing to pedit
+
+Bug reports, documentation improvements and pull requests are welcome.
+[Open an issue](https://github.com/piconic-ai/edit/issues) with steps to reproduce,
+your OS, pedit version and expected behavior. Remove room links, keys, Access
+tokens and private document content from reports.
+
+For a substantial change, open an issue to discuss the approach first. Keep pull
+requests focused, describe the resulting behavior and include how you verified it.
+Add regression tests for behavior changes and run the checks below before submitting.
+
+## Development
+
+Requires Go 1.25+, Node.js 22+ and pnpm 10.7.1 (see `go.mod` and `package.json`).
+
+The CLI is written in Go; the server and the browser editor in TypeScript.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm test        # TypeScript packages
+pnpm typecheck
+pnpm lint
+pnpm test:deploy # self-host deployment orchestration
+PEDIT_INTEROP=1 go test -race ./...    # the CLI; its interop test drives the web client's RoomClient with Node.js
+go vet ./...
+```
+
+Run everything locally:
+
+```sh
+pnpm --filter @pedit/worker dev                  # builds the web editor, serves on http://localhost:8787
+printf '# Notes\n' > /tmp/pedit-dev-notes.md
+PEDIT_SERVER=http://localhost:8787 go run ./cmd/pedit /tmp/pedit-dev-notes.md
+```
+
+| Path | What it is |
+| --- | --- |
+| `cmd/pedit`, `internal/` | The `pedit` command (Go). `internal/protocol` mirrors `packages/protocol` on top of [ygo](https://github.com/reearth/ygo) |
+| `packages/protocol` | Encryption, message framing and the Yjs room client used by the web editor |
+| `packages/worker` | Hono Worker + `Room` Durable Object (WebSocket Hibernation API); also serves the web editor |
+| `packages/web` | CodeMirror 6 editor for collaborators; UI components in BarefootJS |
+
+The wire format (AES-GCM frames, message types, y-protocols sync and awareness)
+is shared by both implementations: change them together.
+
+- A frame is `iv || AES-GCM(room key, type || payload)`. Types: `0` sync, `1`
+  awareness, `2` attachment. Clients skip types they do not know, so newer
+  peers can add more.
+- Attachments (images) are named by content: `hash` is the first 128 bits of
+  SHA-256 of the bytes, in hex. Their bytes are encrypted with a key derived
+  from the room key (HKDF-SHA256, info `pedit blob enc v1`) and stored under
+  `blobId`, the first 128 bits of HMAC-SHA256 over `hash` with another derived
+  key (info `pedit blob id v1`), in base64url. The server sees neither the
+  content nor its hash.
+- Attachment messages carry a lib0 varint kind and fields: `0` announce
+  (hash, mime), `1` want (hashes), `2` stored (hash, path), `3` rejected
+  (hash, reason). `internal/protocol/testdata/blob-vectors.json` pins the
+  derivations for both implementations.
+
+Before opening a pull request, also run `pnpm build` and check Go formatting with
+`gofmt -l cmd internal` (it should print nothing). The interop tests require the
+installed TypeScript dependencies; `PEDIT_INTEROP=1` prevents silently skipping them.
+
+Keep encryption keys in the URL fragment and keep document content on clients.
+See [privacy and security](docs/security.md) for the trust model and
+[deployment](docs/deployment.md) for releases, previews and the lab Worker.

@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="490" viewBox="0 0 900 490" role="img" aria-labelledby="title description">
+  <title id="title">Browser edits are encrypted, relayed and saved to your local file.</title>
+  <desc id="description">The invitation URL identifies the room in its path and contains a shared key in its fragment, which is never sent to the server. A browser edits and encrypts text. Cloudflare forwards the encrypted text to pedit CLI, which decrypts it and writes the resulting text to local notes.md. The relay has neither the key nor the plaintext. Arrows label the data; each participant's column labels its operations.</desc>
+  <rect width="900" height="490" fill="#ffffff"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" fill="#1f2937">
+    <text x="450" y="35" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">https://edit.piconic.ai/r/&lt;room-id&gt;#&lt;key&gt;</text>
+    <text x="190" y="71" fill="#b45309" font-size="14">Room ID → relay room</text>
+    <text x="518" y="71" fill="#0f766e" font-size="14">Key → clients only</text>
+    <line x1="40" y1="95" x2="860" y2="95" stroke="#e2e8f0" stroke-width="1"/>
+
+    <g text-anchor="middle">
+      <text x="100" y="137" font-size="17" font-weight="600" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">notes.md</text>
+      <text x="100" y="162" font-size="14" fill="#64748b">Local file</text>
+      <text x="330" y="137" font-size="17" font-weight="600">pedit CLI</text>
+      <text x="330" y="162" font-size="14" fill="#0f766e">+ key</text>
+      <!-- Cloudflare mark from https://workers.cloudflare.com/built-with-cloudflare.svg -->
+      <g transform="translate(486 122) scale(1.5) translate(-12.5 -14)"><path xmlns="http://www.w3.org/2000/svg" d="M28.8868 24.7745L29.0095 24.35C29.1558 23.8449 29.1014 23.378 28.8559 23.0349C28.6302 22.7189 28.2539 22.5328 27.797 22.5112L19.1416 22.4009C19.0833 22.3978 19.0351 22.3715 19.0054 22.3283C18.9753 22.2839 18.9683 22.2268 18.9869 22.172C19.0154 22.0867 19.0999 22.0223 19.1879 22.0184L27.9236 21.9077C28.9597 21.8602 30.0816 21.0194 30.4745 19.994L30.9727 18.6924C30.9864 18.657 30.9926 18.6194 30.9923 18.5817C30.9922 18.5612 30.9907 18.5406 30.9862 18.5203C30.4201 15.9761 28.1497 14.0736 25.4348 14.0736C22.9333 14.0736 20.8092 15.6882 20.0474 17.9322C19.5557 17.5633 18.9267 17.3672 18.2506 17.4348C17.0504 17.554 16.086 18.5203 15.9667 19.7204C15.9354 20.0319 15.9609 20.3325 16.0327 20.615C14.0722 20.6721 12.5 22.2782 12.5 24.2524C12.5 24.4311 12.5135 24.6067 12.5386 24.7784C12.5509 24.8618 12.6212 24.9243 12.7053 24.9243L28.6846 24.9262C28.6862 24.9262 28.6876 24.9255 28.6892 24.9254C28.7806 24.9234 28.861 24.8629 28.8868 24.7745Z" fill="#f38020" />
+<path xmlns="http://www.w3.org/2000/svg" d="M31.7695 18.7879C31.6892 18.7879 31.6093 18.7902 31.5298 18.7941C31.5167 18.7948 31.5042 18.798 31.4923 18.8022C31.4508 18.8167 31.4177 18.8503 31.4051 18.8941L31.0648 20.0695C30.9185 20.5746 30.9729 21.0412 31.2184 21.3842C31.4441 21.7007 31.8204 21.8863 32.2773 21.9079L34.1224 22.0187C34.1768 22.0213 34.2247 22.0476 34.254 22.09C34.2848 22.1348 34.2918 22.1923 34.2733 22.2471C34.2443 22.3324 34.1602 22.3968 34.0726 22.4007L32.1553 22.5114C31.1145 22.5593 29.9927 23.3998 29.5998 24.4251L29.4612 24.7871C29.436 24.8526 29.483 24.9223 29.5522 24.9258C29.554 24.9258 29.5556 24.9264 29.5573 24.9264H36.1542C36.233 24.9264 36.3032 24.8751 36.3244 24.7994C36.439 24.3919 36.5 23.9624 36.5 23.5183C36.5 20.9057 34.3821 18.7879 31.7695 18.7879Z" fill="#faae40" />
+</g>
+      <text x="579" y="137" font-size="17" font-weight="600">Cloudflare</text>
+      <text x="560" y="162" font-size="14" fill="#b45309">Room ID</text>
+      <text x="790" y="137" font-size="17" font-weight="600">Browser</text>
+      <text x="790" y="162" font-size="14" fill="#0f766e">+ key</text>
+    </g>
+
+    <line x1="100" y1="183" x2="100" y2="466" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 5"/>
+    <line x1="330" y1="183" x2="330" y2="466" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 5"/>
+    <line x1="560" y1="183" x2="560" y2="466" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 5"/>
+    <line x1="790" y1="183" x2="790" y2="466" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="5 5"/>
+
+    <g text-anchor="middle" font-size="15">
+      <rect x="742" y="194" width="96" height="25" fill="#ffffff"/>
+      <text x="790" y="212">Edit</text>
+      <rect x="718" y="231" width="144" height="25" fill="#ffffff"/>
+      <text x="790" y="249">Encrypt with key</text>
+
+      <text x="675" y="270" fill="#475569">Encrypted Text</text>
+      <line x1="790" y1="284" x2="565" y2="284" stroke="#475569" stroke-width="2"/>
+      <polygon points="560,284 570,279 570,289" fill="#475569"/>
+      <rect x="512" y="300" width="96" height="25" fill="#ffffff"/>
+      <text x="560" y="318">Relay</text>
+
+      <text x="445" y="340" fill="#475569">Encrypted Text</text>
+      <line x1="560" y1="354" x2="335" y2="354" stroke="#475569" stroke-width="2"/>
+      <polygon points="330,354 340,349 340,359" fill="#475569"/>
+      <rect x="258" y="370" width="144" height="25" fill="#ffffff"/>
+      <text x="330" y="388">Decrypt with key</text>
+
+      <text x="215" y="410" fill="#0f766e" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">Text</text>
+      <line x1="330" y1="424" x2="105" y2="424" stroke="#0f766e" stroke-width="2"/>
+      <polygon points="100,424 110,419 110,429" fill="#0f766e"/>
+      <rect x="45" y="440" width="110" height="26" rx="4" fill="#ecfdf5"/>
+      <text x="100" y="459" fill="#0f766e">Save</text>
+
+      <rect x="457" y="440" width="206" height="26" fill="#ffffff"/>
+      <text x="560" y="459" fill="#64748b" font-size="14">No key · no plaintext</text>
+    </g>
+  </g>
+</svg>

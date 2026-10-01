@@ -42,9 +42,23 @@ const defaultServer = "https://edit.piconic.ai"
 
 const usage = `Usage: pedit [file]
 
-Share a local text file and co-edit it with others in their browser.
-Edits are written back to the file. Press Ctrl+C to finish.
+Share an existing UTF-8 text file. Send the printed link to collaborators;
+open it yourself to edit together in the browser. No install needed for guests.
+Edits are written back to your local file as you work. Press Ctrl+C to save
+the final state and close the room. Changes from your local editor sync too.
 Without a file, pedit starts on a new empty pedit-<time>.md in the current directory.
+
+Examples:
+  pedit notes.md       Share an existing Markdown file
+  pedit                Create and share a new Markdown file
+  pedit data.csv       Share a table (any UTF-8 text file works)
+
+Markdown supports previews and pasted images, saved beside your file in assets/.
+Anyone with the full link can read and edit while the session is open.
+
+Options:
+  -h, --help     Show this help
+  -v, --version  Show the version
 
 Environment:
   PEDIT_SERVER  pedit server URL (default: ` + defaultServer + `)
