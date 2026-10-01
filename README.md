@@ -75,8 +75,9 @@ Self-host when you want to limit who can join editing sessions. Cloudflare
 Access lets you allow specific email addresses or identity provider groups;
 participants need both an allowed identity and the session link.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fedit)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fedit%2Ftree%2Fmain%2Fpackages)
 
+The button copies only the server workspace (`packages/`), without the Go CLI.
 Deploy the relay and browser editor to your Cloudflare account, then:
 
 ```sh

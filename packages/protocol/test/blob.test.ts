@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 // Written by the Go side (internal/protocol/blob_test.go), so both compute the same.
-import vectors from '../../../internal/protocol/testdata/blob-vectors.json'
+import vectors from '../../testdata/blob-vectors.json'
 import {
   BLOB_ID_PATTERN,
   blobIdFor,

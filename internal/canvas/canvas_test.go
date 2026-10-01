@@ -64,7 +64,7 @@ func TestParseReadsNodesAndEdges(t *testing.T) {
 // TestObsidianSample checks a file Obsidian wrote survives the whole trip, and
 // that writing its content afresh gives what Obsidian itself wrote.
 func TestObsidianSample(t *testing.T) {
-	data, err := os.ReadFile("testdata/obsidian.canvas")
+	data, err := os.ReadFile("../../packages/testdata/obsidian.canvas")
 	if err != nil {
 		t.Fatal(err)
 	}

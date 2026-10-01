@@ -2,7 +2,7 @@ import { CSRAdapter } from '@barefootjs/client/csr-adapter'
 import { barefoot } from '@barefootjs/vite'
 import { defineConfig, type Plugin } from 'vite'
 // @ts-expect-error: plain JS helper without type declarations
-import { thirdPartyLicenses } from '../../scripts/third-party-licenses.mjs'
+import { thirdPartyLicenses } from '../scripts/third-party-licenses.mjs'
 
 // The bundle inlines third-party code, so serve their licenses alongside it.
 function licenses(): Plugin {

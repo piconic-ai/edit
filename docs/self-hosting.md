@@ -1,10 +1,12 @@
 # Self-hosting notes
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fedit)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fedit%2Ftree%2Fmain%2Fpackages)
 
 The deployment button requires a Cloudflare
 account with R2 enabled and a GitHub account. It creates your own repository,
-Worker, Durable Object namespace and R2 bucket using the root `wrangler.json`.
+Worker, Durable Object namespace and R2 bucket. Only the `packages/` directory
+is copied; the Go CLI is not included. The new repository uses `wrangler.json`
+at its root.
 The relay is public by default; configure Access to require sign-in.
 
 ## Protect the entire deployment
