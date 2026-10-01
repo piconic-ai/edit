@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.0.5](https://github.com/piconic-ai/edit/compare/v0.0.4...v0.0.5) - 2026-10-01
+
+- Refresh README and add one-click self-host deployment by @kfly8 in https://github.com/piconic-ai/edit/pull/57
+- fix: select the maintainer Wrangler config explicitly by @kfly8 in https://github.com/piconic-ai/edit/pull/59
+- Isolate the Cloudflare deploy button server workspace by @kfly8 in https://github.com/piconic-ai/edit/pull/60
+- Make shared-link recovery guidance gentler by @kfly8 in https://github.com/piconic-ai/edit/pull/61
+- Automate Homebrew formula updates after pedit releases by @kfly8 in https://github.com/piconic-ai/edit/pull/62
+
 ## [v0.0.4](https://github.com/piconic-ai/edit/compare/v0.0.3...v0.0.4) - 2026-10-01
 
 - feat: include pedit binaries in GitHub releases by @kfly8 in https://github.com/piconic-ai/edit/pull/56
