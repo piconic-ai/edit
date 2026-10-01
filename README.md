@@ -51,18 +51,29 @@ Edits in the opposite direction follow the same process.
   on your devices. The relay receives ciphertext; the key stays in the link's
   `#fragment` and is never sent to the server.
 - **Local files, temporary sessions.** The relay does not store document text.
-  Encrypted images are temporarily stored and deleted when the host leaves;
-  a bucket lifecycle rule handles failed deletions.
+  The relay attempts to delete encrypted images when the host leaves; a
+  one-day bucket lifecycle rule handles failed deletions. Removal is not immediate.
 - **The link grants editing access.** Anyone with the full link can read and
-  edit during the session. Share it only with people you trust.
+  edit during the session. Share it only with people you trust. Closing a
+  session does not erase copies participants have made.
 - **Your relay, your access rules.** Use the public relay at `edit.piconic.ai`,
-  or [deploy your own with Cloudflare Access](docs/self-hosting.md) to require sign-in.
+  or [self-host](#self-host) to require sign-in with Cloudflare Access.
 
-Encryption does not hide connection metadata or protect against an untrusted
-browser editor served by the relay operator. See the
-[privacy and security details](docs/security.md) for the trust model and retention.
+You must trust the relay operator to serve the intended browser editor, and
+trust participant devices and browsers. A modified editor could read the key
+and plaintext. Infrastructure can see IP addresses, room IDs, request timing
+and ciphertext sizes; infrastructure and Access logs have separate retention
+settings and are not erased when a room closes.
+
+Markdown previews can request external images, videos and embeds. With Access,
+avatars may load from an identity provider or Gravatar using an email hash.
+Those providers can see the requests.
 
 ## Self-host
+
+Self-host when you want to limit who can join editing sessions. Cloudflare
+Access lets you allow specific email addresses or identity provider groups;
+participants need both an allowed identity and the session link.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fedit)
 
@@ -72,9 +83,7 @@ Deploy the relay and browser editor to your Cloudflare account, then:
 PEDIT_SERVER=https://<worker>.<subdomain>.workers.dev pedit notes.md
 ```
 
-Requires Cloudflare with R2 enabled and a GitHub account. The setup creates
-your own repository, Worker and storage. To require sign-in, follow
-[self-hosting with Cloudflare Access](docs/self-hosting.md).
+See [self-hosting notes](docs/self-hosting.md) for requirements and Access setup.
 
 ## Contributing
 

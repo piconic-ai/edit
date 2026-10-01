@@ -1,7 +1,7 @@
 # Releases and deployments
 
 Maintainer operations for the piconic deployments. For your own server, use
-the [self-hosting guide](self-hosting.md).
+the [self-hosting guide](../self-hosting.md).
 
 Production (`edit.piconic.ai`) deploys when a tagpr release PR is merged
 (see `.github/workflows/tagpr.yml`): the merge tags the release, the workflow
