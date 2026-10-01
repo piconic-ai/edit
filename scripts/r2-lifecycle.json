@@ -1,0 +1,10 @@
+{
+  "rules": [
+    {
+      "id": "pedit-expire-rooms",
+      "enabled": true,
+      "conditions": { "prefix": "rooms/" },
+      "deleteObjectsTransition": { "condition": { "type": "Age", "maxAge": 86400 } }
+    }
+  ]
+}

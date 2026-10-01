@@ -36,6 +36,11 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Self-host deployment checks
+        run: |
+          pnpm run test:deploy
+          pnpm run deploy --dry-run
+
       - name: Go format
         run: test -z "$(gofmt -l cmd internal)" || (gofmt -l cmd internal && exit 1)
 

@@ -30,7 +30,7 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   // Encrypted attachments, kept only while a room's host is connected. Each
   // bucket needs a lifecycle rule expiring `rooms/` after a day, as a backstop
-  // for deletion (see README).
+  // for deletion (see docs/contributing/deployment.md and docs/self-hosting.md).
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "edit-blobs" }],
   // Worker Previews: every push to a branch other than `release` makes (or
   // updates) that branch's Preview via Cloudflare Workers Builds, whose
