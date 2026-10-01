@@ -71,6 +71,16 @@ jobs:
       - name: Publish the completed release
         run: gh release edit "$TAG" --draft=false
 
+  update-homebrew-formula:
+    needs: [tagpr, release-cli]
+    if: needs.tagpr.outputs.tag != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/homebrew-formula.yml
+    secrets: inherit
+    with:
+      tag: ${{ needs.tagpr.outputs.tag }}
+
   advance-release-branch:
     name: Advance release branch
     needs: tagpr

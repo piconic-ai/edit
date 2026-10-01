@@ -28,6 +28,12 @@ review or commit.
 
 ## Install
 
+On macOS or Linux (Intel and ARM64):
+
+```sh
+brew install piconic-ai/tap/pedit
+```
+
 Download a binary from [GitHub Releases](https://github.com/piconic-ai/edit/releases),
 extract it and put `pedit` (`pedit.exe` on Windows) on your `PATH`.
 macOS, Linux and Windows · amd64 and arm64 · no runtime dependencies.
