@@ -33,7 +33,13 @@ notes.md  <->  pedit CLI  <--wss-->  Worker -> Room (Durable Object)  <--wss--> 
 
 ## Install
 
-`pedit` is a single binary with no runtime dependencies. With Go 1.25 or later:
+`pedit` is a single binary with no runtime dependencies. Download an archive for
+your OS and architecture from [GitHub Releases](https://github.com/piconic-ai/edit/releases),
+extract it, and put `pedit` (`pedit.exe` on Windows) on your `PATH`.
+Releases include macOS, Linux, and Windows binaries for amd64 and arm64,
+plus `checksums.txt` with SHA-256 checksums.
+
+Alternatively, with Go 1.25 or later:
 
 ```sh
 go install github.com/piconic-ai/edit/cmd/pedit@latest
