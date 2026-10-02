@@ -36,7 +36,8 @@ Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/
 on the computer running pedit, then:
 
 ```sh
-PEDIT_SERVER=https://pedit.example.com pedit notes.md
+# Set server: https://pedit.example.com in .pedit/config.yaml
+pedit notes.md
 ```
 
 pedit detects Access and uses cloudflared to open browser sign-in when needed.

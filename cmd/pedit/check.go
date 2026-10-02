@@ -14,8 +14,8 @@ import (
 )
 
 // checkFile tells why arg cannot be shared, in words that help fix it, or
-// returns "" when it can. pedit never creates the file: a typo would leave a
-// stray one behind.
+// returns "" when it can. New files are prepared separately when a template
+// is selected, or when no filename is supplied.
 func checkFile(arg string) string {
 	dir, name := filepath.Split(arg)
 	st, err := os.Stat(arg)
@@ -56,7 +56,7 @@ func missing(arg, dir string, names []string) string {
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, "pedit only shares files that already exist. To start from an empty file, run `pedit` with no argument or create the file first.")
+	lines = append(lines, "To create a file, run `pedit` without an argument, use `pedit -t <template> <file>`, or create the file first.")
 	return strings.Join(lines, "\n")
 }
 

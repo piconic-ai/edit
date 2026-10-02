@@ -58,22 +58,22 @@ func TestCheckFileMissing(t *testing.T) {
   Did you mean this one?
     pedit notes.md
 
-pedit only shares files that already exist. To start from an empty file, run ` + "`pedit`" + ` with no argument or create the file first.`},
+To create a file,`},
 		{"docs/todo", `pedit: docs/todo does not exist.
 
   Did you mean one of these?
     pedit docs/todo.md
     pedit docs/todo.txt
 
-pedit only shares files that already exist.`},
+To create a file,`},
 		{"my-notes.md", `
   Did you mean this one?
     pedit 'my notes.md'
 `},
 		// Nothing close: no "Did you mean" block.
-		{"main.go", "pedit: main.go does not exist.\n\npedit only shares files that already exist."},
+		{"main.go", "pedit: main.go does not exist.\n\nTo create a file,"},
 		// Only the given directory is searched.
-		{"todo.md", "pedit: todo.md does not exist.\n\npedit only shares"},
+		{"todo.md", "pedit: todo.md does not exist.\n\nTo create a file,"},
 	}
 	for _, tt := range tests {
 		if got := checkFile(tt.arg); !strings.Contains(got, tt.want) {

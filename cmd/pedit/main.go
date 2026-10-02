@@ -40,28 +40,37 @@ func getVersion() string {
 
 const defaultServer = "https://edit.piconic.ai"
 
-const usage = `Usage: pedit [file]
+const usage = `Usage: pedit [file] [-t template] [-d directory]
 
 Share an existing UTF-8 text file. Send the printed link to collaborators;
 open it yourself to edit together in the browser. No install needed for guests.
 Edits are written back to your local file as you work. Press Ctrl+C to save
 the final state and close the room. Changes from your local editor sync too.
-Without a file, pedit starts on a new empty pedit-<time>.md in the current directory.
+Without a file, pedit creates pedit-<time>.md in the configured output directory.
 
 Examples:
   pedit notes.md       Share an existing Markdown file
   pedit                Create and share a new Markdown file
+  pedit -t minutes.md  Create minutes-<time>.md from a template
+  pedit -t minutes.md -d meetings  Create the file in meetings/
+  pedit --csv          Create a table from default.csv
+  pedit --canvas       Create a board from default.canvas
   pedit data.csv       Share a table (any UTF-8 text file works)
 
 Markdown supports previews and pasted images, saved beside your file in assets/.
 Anyone with the full link can read and edit while the session is open.
 
 Options:
-  -h, --help     Show this help
-  -v, --version  Show the version
+  -t, --template <name>  Use a template filename or type (csv, canvas, md)
+  --<name>              Template shorthand (for example, --canvas)
+  -d, --directory <dir>  Save a new file here (overrides config output)
+  -h, --help             Show this help
+  -v, --version          Show the version
 
-Environment:
-  PEDIT_SERVER  pedit server URL (default: ` + defaultServer + `)
+Configuration:
+  .pedit/config.yaml  Server and output. Templates live in .pedit/templates/.
+  Created automatically on first use at a Git repository root.
+  Default server: ` + defaultServer + `
 
 A server behind Cloudflare Access signs you in with cloudflared.`
 
@@ -78,32 +87,41 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, getVersion())
 		return 0
 	}
-	if len(args) > 1 || (len(args) == 1 && args[0] == "") {
+	opts, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintln(stderr, "pedit:", err)
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
-
-	var arg string
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(stderr, "pedit:", err)
+		return 1
+	}
+	cfg, err := loadConfig(cwd)
+	if err != nil {
+		fmt.Fprintln(stderr, "pedit:", err)
+		return 1
+	}
 	var shared bool
-	scratch := len(args) == 0
-	if scratch {
-		name, err := createScratch(".", func() string { return time.Now().Format("2006-01-02-150405") })
-		if err != nil {
-			dir, _ := os.Getwd()
-			fmt.Fprintf(stderr, "pedit: could not create a scratch file in %s: %v\nRun pedit <file> to share an existing file instead.\n", dir, err)
-			return 1
+	scratch := opts.File == ""
+	arg, created, err := prepareFile(cfg, opts.File, opts.Template, opts.Directory, func() string { return time.Now().Format("2006-01-02-150405") })
+	if err != nil {
+		if scratch {
+			fmt.Fprintf(stderr, "pedit: could not create a scratch file in %s: %v\nRun pedit <file> to share an existing file instead.\n", outputDirectory(cfg, opts.Directory), err)
+		} else {
+			fmt.Fprintln(stderr, "pedit:", err)
 		}
-		arg = name
-		// Say where the text is if pedit ends before sharing it; finish
-		// says so once it is shared.
+		return 1
+	}
+	scratch = created
+	if scratch {
 		defer func() {
 			if !shared {
 				out.scratch(arg)
 			}
 		}()
-	} else {
-		arg = args[0]
 	}
 	file, err := filepath.Abs(arg)
 	if err != nil {
@@ -115,10 +133,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	server := os.Getenv("PEDIT_SERVER")
-	if server == "" {
-		server = defaultServer
-	}
+	server := cfg.Server
+
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
 	ctx, cancel := context.WithCancel(context.Background())

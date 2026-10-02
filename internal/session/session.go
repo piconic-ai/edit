@@ -307,7 +307,7 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 	}
 	var r room
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil || r.ID == "" {
-		return nil, fmt.Errorf("failed to create a room: %s did not answer like a piconic edit server (check PEDIT_SERVER)", server)
+		return nil, fmt.Errorf("failed to create a room: %s did not answer like a piconic edit server (check server in .pedit/config.yaml)", server)
 	}
 	if r.HostToken == "" {
 		// Servers before host tokens cannot close a room when its host leaves.

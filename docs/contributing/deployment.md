@@ -24,7 +24,8 @@ The Deploy to Cloudflare button copies only this workspace.
 To try a Preview with the CLI:
 
 ```sh
-PEDIT_SERVER=https://<branch-name>-edit.<subdomain>.workers.dev go run ./cmd/pedit notes.md
+# Set server: https://<branch-name>-edit.<subdomain>.workers.dev in .pedit/config.yaml
+go run ./cmd/pedit notes.md
 ```
 
 Workers Builds settings (Cloudflare dashboard → piconic edit Worker → Settings → Build):
@@ -71,7 +72,8 @@ its own Durable Object namespace, and is deployed by hand:
 
 ```sh
 pnpm run deploy:lab
-PEDIT_SERVER=https://edit-lab.piconic.ai go run ./cmd/pedit notes.md
+# Set server: https://edit-lab.piconic.ai in .pedit/config.yaml
+go run ./cmd/pedit notes.md
 ```
 
 Deploying it is also a rehearsal of self-hosting pedit on another Cloudflare account.
