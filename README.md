@@ -44,56 +44,35 @@ Binaries: [GitHub Releases](https://github.com/piconic-ai/edit/releases) (macOS 
 
 ## Configuration and templates
 
-At a Git repository root, the first `pedit` invocation creates
-`.pedit/config.yaml` and `.pedit/templates/` (help and version do not create files).
-The configuration only controls the server and output directory:
+Run `pedit` at a Git repository root to create `.pedit/config.yaml` and
+`.pedit/templates/` with editable Markdown, CSV, and Canvas defaults.
 
 ```yaml
 server: https://edit.piconic.ai
 output: notes
 ```
 
-Templates use filenames rather than configuration entries. A bare type selects
-`default.<type>`; a filename selects that file in `.pedit/templates/`.
-Templates are stored flat: subdirectories and template paths are not accepted.
-`--template` and `-t` are equivalent, and `--<name>` is a shorthand.
+Add your own template files directly to `.pedit/templates/`:
 
 ```sh
-pedit                        # default.md → notes/pedit-<time>.md
-pedit --csv                  # default.csv → notes/pedit-<time>.csv
-pedit -t csv                 # Same as --csv
-pedit -t foo.csv             # foo.csv → notes/foo-<time>.csv
-pedit --canvas               # default.canvas → notes/pedit-<time>.canvas
-pedit -t canvas              # Same as --canvas
-pedit -t bar.canvas          # bar.canvas → notes/bar-<time>.canvas
-pedit --template minutes.md  # minutes.md → notes/minutes-<time>.md
-pedit -t minutes.md -d meetings # Create meetings/minutes-<time>.md
-pedit -t minutes.md review.md # Create review.md from minutes.md
+pedit                          # notes/pedit-<time>.md
+pedit --csv                    # notes/pedit-<time>.csv
+pedit --canvas                 # notes/pedit-<time>.canvas
+pedit -t minutes.md             # notes/minutes-<time>.md
+pedit -t minutes.md -d meetings # meetings/minutes-<time>.md
 ```
 
-The first invocation at a repository root also creates `default.md` (empty),
-`default.csv` (two columns and an empty row), and `default.canvas` (an empty
-JSON Canvas) in `.pedit/templates/`. Edit these files to customize each type's
-default. Existing template files are preserved. These three defaults are also
-built into the CLI, so they work without project setup. Project template files
-take precedence, and templates are copied verbatim.
+`.canvas` files use [JSON Canvas](https://jsoncanvas.org/), an open format for
+whiteboard-style diagrams.
 
-Existing files are opened without applying templates; template options refuse to
-overwrite them. An explicit filename is relative to the current directory and
-must have the same extension as its template. Without a filename, files go into
-`output` and use the template's filename stem as their prefix (for example,
-`minutes-<time>.md`). A `default.*` template uses the prefix `pedit`.
-A collision counter is added when needed; existing files are preserved.
-`-d <directory>` (or `--directory`) overrides `output` for that invocation and
-creates the directory if necessary. Relative `-d` paths are resolved from the
-current directory. Use either an explicit file path or `-d`, rather than both.
-A missing named file without a template option reports an error.
+`-t` / `--template` selects a template; `-t csv` and `-t canvas` select
+`default.csv` and `default.canvas`. `-d` / `--directory` overrides `output`.
+New files get a timestamp and a counter if needed. Existing files are preserved.
 
-pedit looks for the nearest `.pedit/config.yaml` from the current directory upward,
-stopping at the Git repository root. Relative `output` paths are resolved
-from the directory containing `.pedit/`. Outside a repository, configuration can
-be created manually; without it, pedit uses the public server and current directory.
-`PEDIT_SERVER` is no longer read; set `server` in the configuration instead.
+Configuration is found from the current directory up to the Git root.
+`output` is relative to the project; `-d` is relative to the current directory.
+Without configuration, the public server and built-in defaults work immediately.
+Set `server` in the config instead of `PEDIT_SERVER`.
 
 ## Privacy and security
 
