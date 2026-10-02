@@ -33,7 +33,8 @@ Run everything locally:
 ```sh
 pnpm --dir packages --filter @pedit/worker dev                  # builds the web editor, serves on http://localhost:8787
 printf '# Notes\n' > /tmp/pedit-dev-notes.md
-PEDIT_SERVER=http://localhost:8787 go run ./cmd/pedit /tmp/pedit-dev-notes.md
+# Set server: http://localhost:8787 in .pedit/config.yaml
+go run ./cmd/pedit /tmp/pedit-dev-notes.md
 ```
 
 | Path | What it is |

@@ -16,6 +16,7 @@ import (
 )
 
 func TestRunArgs(t *testing.T) {
+	t.Chdir(t.TempDir())
 	tests := []struct {
 		args   []string
 		code   int
@@ -23,7 +24,7 @@ func TestRunArgs(t *testing.T) {
 		stderr string
 	}{
 		{args: []string{"--help"}, code: 0, stdout: "Usage: pedit [file]"},
-		{args: []string{"-h"}, code: 0, stdout: "PEDIT_SERVER"},
+		{args: []string{"-h"}, code: 0, stdout: ".pedit/config.yaml"},
 		{args: []string{"--version"}, code: 0, stdout: "dev"},
 		{args: []string{"a.md", "b.md"}, code: 2, stderr: "Usage: pedit [file]"},
 		{args: []string{""}, code: 2, stderr: "Usage: pedit [file]"},

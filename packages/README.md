@@ -20,7 +20,8 @@ Install the CLI separately from
 [GitHub Releases](https://github.com/piconic-ai/edit/releases), then use:
 
 ```sh
-PEDIT_SERVER=https://<worker>.<subdomain>.workers.dev pedit notes.md
+# Set server: https://<worker>.<subdomain>.workers.dev in .pedit/config.yaml
+pedit notes.md
 ```
 
 The relay is public by default. See the
