@@ -62,6 +62,9 @@ pedit -t minutes.md             # notes/minutes-<time>.md
 pedit -t minutes.md -d meetings # meetings/minutes-<time>.md
 ```
 
+`.canvas` files use [JSON Canvas](https://jsoncanvas.org/), an open format for
+whiteboard-style diagrams.
+
 `-t` / `--template` selects a template; `-t csv` and `-t canvas` select
 `default.csv` and `default.canvas`. `-d` / `--directory` overrides `output`.
 New files get a timestamp and a counter if needed. Existing files are preserved.
