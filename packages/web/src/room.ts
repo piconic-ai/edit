@@ -83,7 +83,8 @@ export function participants(states: Map<number, State>, selfId: number): Partic
  * white. test/themes.test.ts also checks them against every editor theme.
  */
 export const COLORS = [
-  '#1f7a64',
+  // piconic green (#00b769), darkened to carry white text.
+  '#00804a',
   '#b85a0e',
   '#4254b5',
   '#b5427a',

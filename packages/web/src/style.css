@@ -1121,10 +1121,10 @@ main.editor .cm-vim-panel {
 }
 /*
  * A peer's caret as the editor draws it: a line in their colour with a dot on
- * top. It takes no width, so the text does not shift around it or after it fades.
+ * top, one in piconic green and one in a peer orange (room.ts). It takes no width, so the text does not shift around it or after it fades.
  */
 .landing h1 {
-  --c: light-dark(#4254b5, #7b8af0);
+  --c: #00b769; /* piconic green */
 }
 .landing p {
   --c: light-dark(#b85a0e, #e08a3e);
