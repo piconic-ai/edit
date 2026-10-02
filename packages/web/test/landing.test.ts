@@ -8,7 +8,12 @@ describe('typingScript', () => {
 
   it('starts blank and with the wrong word, and ends with both done', () => {
     expect(frames[0]).toEqual({ at: 0, title: '', word: WORD_BEFORE, selected: false, done: false })
-    expect(frames.at(-1)).toMatchObject({ title: TITLE, word: WORD_AFTER, selected: false, done: true })
+    expect(frames.at(-1)).toMatchObject({
+      title: TITLE,
+      word: WORD_AFTER,
+      selected: false,
+      done: true,
+    })
   })
 
   it('is over, carets faded, within five seconds and in time order', () => {
@@ -36,7 +41,9 @@ describe('typingScript', () => {
 
   it('fades the carets only after both have finished', () => {
     const done = frames.findIndex((f) => f.done)
-    expect(frames.slice(0, done).every((f) => f.title !== TITLE || f.word !== WORD_AFTER || !f.done)).toBe(true)
+    expect(
+      frames.slice(0, done).every((f) => f.title !== TITLE || f.word !== WORD_AFTER || !f.done),
+    ).toBe(true)
     expect(frames[done]).toMatchObject({ title: TITLE, word: WORD_AFTER })
   })
 })

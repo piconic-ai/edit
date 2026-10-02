@@ -7,7 +7,10 @@ function favicon(): Document {
   const href = page.querySelector('link[rel="icon"]')?.getAttribute('href') ?? ''
   const prefix = 'data:image/svg+xml,'
   expect(href.startsWith(prefix)).toBe(true)
-  return new DOMParser().parseFromString(decodeURIComponent(href.slice(prefix.length)), 'image/svg+xml')
+  return new DOMParser().parseFromString(
+    decodeURIComponent(href.slice(prefix.length)),
+    'image/svg+xml',
+  )
 }
 
 describe('favicon', () => {

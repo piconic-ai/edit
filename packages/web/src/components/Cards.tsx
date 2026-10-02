@@ -1,13 +1,7 @@
 'use client'
 
 import { createSignal, onCleanup, onMount } from '@barefootjs/client'
-import {
-  prefersStill,
-  TITLE,
-  type TypingFrame,
-  typingScript,
-  WORD_AFTER,
-} from '../landing.ts'
+import { prefersStill, TITLE, type TypingFrame, typingScript, WORD_AFTER } from '../landing.ts'
 
 /** The page at `/`, for someone who opened piconic edit without a room link. */
 export function Landing() {
