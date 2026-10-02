@@ -19,16 +19,46 @@ function mount(name: string, props: Record<string, unknown> = {}) {
 }
 
 describe('Landing', () => {
-  it('says what piconic edit is and links to the install guide', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+  })
+
+  const shown = (el: Element | null) => el?.querySelector('[aria-hidden="true"]')?.textContent
+
+  it('introduces pedit and links to the repository', () => {
     const el = mount('Landing')
-    expect(el.querySelector('h1')?.textContent).toBe('piconic edit')
-    expect(el.querySelector('code')?.textContent).toBe('pedit notes.md')
-    expect(el.querySelector('p')?.textContent).toBe(
-      'Co-edit a local text file, right now. Run pedit notes.md and share the link it prints. How to install',
-    )
-    expect(el.querySelector('a')?.getAttribute('href')).toBe(
-      'https://github.com/piconic-ai/edit#install',
-    )
+    expect(el.querySelector('h1 .visually-hidden')?.textContent).toBe('pedit')
+    expect(el.querySelector('p .visually-hidden')?.textContent).toBe('Pair edit your local files.')
+    const link = el.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('https://github.com/piconic-ai/edit')
+    expect(link?.getAttribute('aria-label')).toBe('GitHub')
+    expect(link?.querySelector('svg')).not.toBeNull()
+  })
+
+  it('types the name and corrects the tagline, one caret each', () => {
+    vi.useFakeTimers()
+    const el = mount('Landing')
+    const h1 = el.querySelector('h1')
+    const p = el.querySelector('p')
+    expect(el.querySelectorAll('.peer-caret')).toHaveLength(2)
+    expect(el.querySelector('h1 .untyped')?.textContent).toBe('pedit')
+    expect(shown(p)).toBe('Pair edit your remote files.')
+    vi.advanceTimersByTime(1000)
+    expect(el.querySelector('p .word')?.hasAttribute('data-selected')).toBe(true)
+    vi.advanceTimersByTime(4000)
+    expect(el.querySelector('p .word')?.hasAttribute('data-selected')).toBe(false)
+    expect(el.querySelector('.landing')?.hasAttribute('data-done')).toBe(true)
+    expect(el.querySelector('h1 .untyped')?.textContent).toBe('')
+    expect(shown(h1)).toBe('pedit')
+    expect(shown(p)).toBe('Pair edit your local files.')
+  })
+
+  it('shows the finished page at once under reduced motion', () => {
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: q.includes('reduce') }))
+    const el = mount('Landing')
+    expect(shown(el.querySelector('h1'))).toBe('pedit')
+    expect(shown(el.querySelector('p'))).toBe('Pair edit your local files.')
   })
 })
 
