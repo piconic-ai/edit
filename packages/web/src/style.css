@@ -88,6 +88,8 @@ header {
 .brand {
   font-weight: 700;
   letter-spacing: 0.02em;
+  color: inherit;
+  text-decoration: none;
 }
 .file {
   font-family: var(--mono);

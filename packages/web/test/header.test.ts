@@ -58,6 +58,13 @@ describe('Header', () => {
     expect(q('.file')?.textContent).toBe('notes.md')
   })
 
+  it('shows pedit as a link to the landing page', () => {
+    const { q } = mount()
+    const brand = q<HTMLAnchorElement>('a.brand') as HTMLAnchorElement
+    expect(brand.textContent?.trim()).toBe('pedit')
+    expect(brand.getAttribute('href')).toBe('/')
+  })
+
   it('shows the file name once the host tells it', () => {
     const { file, q } = mount()
     expect(q('.file')?.textContent).toBe('')

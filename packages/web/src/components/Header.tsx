@@ -60,7 +60,9 @@ export function Header(props: HeaderProps) {
 
   return (
     <header>
-      <span className="brand">piconic edit</span>
+      <a className="brand" href="/">
+        pedit
+      </a>
       <span className="file">{file() ?? ''}</span>
       <span className="status" data-status={status()}>
         <span className="dot" />
