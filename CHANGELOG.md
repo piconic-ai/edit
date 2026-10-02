@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.7](https://github.com/piconic-ai/edit/compare/v0.0.6...v0.0.7) - 2026-10-02
+
+- Show pair editing on the landing page by @kfly8 in https://github.com/piconic-ai/edit/pull/66
+
 ## [v0.0.6](https://github.com/piconic-ai/edit/compare/v0.0.5...v0.0.6) - 2026-10-02
 
 - Add project configuration and reusable file templates by @kfly8 in https://github.com/piconic-ai/edit/pull/63
