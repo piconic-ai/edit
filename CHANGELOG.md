@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.6](https://github.com/piconic-ai/edit/compare/v0.0.5...v0.0.6) - 2026-10-02
+
+- Add project configuration and reusable file templates by @kfly8 in https://github.com/piconic-ai/edit/pull/63
+- Simplify configuration and template documentation by @kfly8 in https://github.com/piconic-ai/edit/pull/65
+
 ## [v0.0.5](https://github.com/piconic-ai/edit/compare/v0.0.4...v0.0.5) - 2026-10-01
 
 - Refresh README and add one-click self-host deployment by @kfly8 in https://github.com/piconic-ai/edit/pull/57
