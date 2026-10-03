@@ -1,11 +1,62 @@
 import DOMPurify from 'dompurify'
 import MarkdownIt from 'markdown-it'
+import { parseDocument } from 'yaml'
 import type { ImageResolver } from './attachments.ts'
 import { type Embed, embedFor, httpUrl, isAllowedFrame, isVideoFile } from './embed.ts'
 
 // Raw HTML in the document is shown as text, never parsed.
 const md = new MarkdownIt({ html: false, linkify: true })
 const escape = md.utils.escapeHtml
+
+// Consume the header as a block so all subsequent source maps stay intact.
+md.block.ruler.before('hr', 'frontmatter', (state, start, end, silent) => {
+  if (start !== 0 || state.parentType !== 'root') return false
+  const line = (n: number) => state.src.slice(state.bMarks[n], state.eMarks[n])
+  if (!/^\uFEFF?---[\t ]*$/.test(line(start))) return false
+  let close = start + 1
+  while (close < end && !/^(---|\.\.\.)[\t ]*$/.test(line(close))) close++
+  if (close === end) return false
+  if (silent) return true
+  const token = state.push('frontmatter', 'section', 0)
+  token.content = state.src.slice(state.bMarks[start + 1], state.bMarks[close])
+  token.map = [start, close + 1]
+  state.line = close + 1
+  return true
+})
+
+function metadataValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `<div class="frontmatter-items">${value.map((item) => `<span class="frontmatter-item">${metadataValue(item)}</span>`).join('')}</div>`
+  }
+  if (value !== null && typeof value === 'object') {
+    return `<dl>${Object.entries(value)
+      .map(
+        ([key, item]) =>
+          `<div class="frontmatter-row"><dt>${escape(key)}</dt><dd>${metadataValue(item)}</dd></div>`,
+      )
+      .join('')}</dl>`
+  }
+  return escape(value === null ? 'null' : String(value))
+}
+
+md.renderer.rules.frontmatter = (tokens, idx) => {
+  const token = tokens[idx]
+  if (!token) return ''
+  let content: string
+  try {
+    const document = parseDocument(token.content, { schema: 'core' })
+    if (document.errors.length) throw new Error('Invalid frontmatter')
+    const value: unknown = document.toJS({ maxAliasCount: 50 })
+    content =
+      value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? metadataValue(value)
+        : `<pre>${escape(token.content)}</pre>`
+  } catch {
+    // Keep incomplete or invalid YAML readable while the author edits it.
+    content = `<pre>${escape(token.content)}</pre>`
+  }
+  return `<section class="frontmatter" aria-label="Frontmatter"${lineAttr(token.map?.[0])}><div class="frontmatter-label">Frontmatter</div>${content}</section>\n`
+}
 
 function lineAttr(line: unknown): string {
   return typeof line === 'number' ? ` data-line="${line}"` : ''
