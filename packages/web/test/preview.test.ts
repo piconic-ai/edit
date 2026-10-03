@@ -52,6 +52,51 @@ describe('sanitize', () => {
 })
 
 describe('render', () => {
+  it('renders frontmatter fields and tags separately from the body, preserving source lines', () => {
+    const out = dom(
+      '---\ncreated: 2026-10-03\ntitle: pedit\ndescription: "ローカルのファイルを共同編集"\ntags: [pedit, e2ee, yjs]\n---\n# pedit',
+    )
+    expect([...out.querySelectorAll('dt')].map((el) => el.textContent)).toEqual([
+      'created',
+      'title',
+      'description',
+      'tags',
+    ])
+    expect(out.querySelector('dd')?.textContent).toBe('2026-10-03')
+    expect([...out.querySelectorAll('.frontmatter-item')].map((el) => el.textContent)).toEqual([
+      'pedit',
+      'e2ee',
+      'yjs',
+    ])
+    expect(out.querySelector('h1')?.getAttribute('data-line')).toBe('6')
+    expect(out.querySelector('.frontmatter')?.getAttribute('data-line')).toBe('0')
+    expect(out.querySelector('hr, h2')).toBeNull()
+  })
+
+  it('supports CRLF, nested fields, multiline values and YAML end markers', () => {
+    const out = dom(
+      '\uFEFF---\r\nauthor:\r\n  name: Alice\r\ndescription: |\r\n  first\r\n  second\r\ntags:\r\n  - one\r\n  - two\r\n...\r\n\r\nBody',
+    )
+    expect(out.querySelector('dl dl dd')?.textContent).toBe('Alice')
+    expect(out.textContent).toContain('first\nsecond\n')
+    expect(out.querySelectorAll('.frontmatter-item')).toHaveLength(2)
+    expect(out.querySelector('p')?.getAttribute('data-line')).toBe('11')
+  })
+
+  it('keeps invalid YAML readable and escapes metadata HTML', () => {
+    const invalid = dom('---\ntags: [unfinished\n---\n# Body')
+    expect(invalid.querySelector('.frontmatter pre')?.textContent).toContain('tags: [unfinished')
+    expect(invalid.querySelector('h1')?.textContent).toBe('Body')
+    const out = dom('---\n"<img src=x onerror=alert(1)>": "<script>alert(1)</script>"\n---')
+    expect(out.querySelector('img, script')).toBeNull()
+    expect(out.querySelector('dd')?.textContent).toBe('<script>alert(1)</script>')
+  })
+
+  it('only treats a closed header at the document start as frontmatter', () => {
+    expect(dom('---\ntitle: unfinished').querySelector('.frontmatter')).toBeNull()
+    expect(dom('# Title\n\n---\ntitle: body\n---').querySelector('.frontmatter')).toBeNull()
+  })
+
   it('shows raw HTML in the document as text', () => {
     const out = dom('<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>')
     expect(out.querySelector('script, img')).toBeNull()

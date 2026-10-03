@@ -717,6 +717,57 @@ main.editor[data-resizing] iframe {
 .preview > :last-child {
   margin-bottom: 0 !important;
 }
+.preview .frontmatter {
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.875em;
+}
+.frontmatter-label {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 0.85em;
+  font-weight: 600;
+}
+.frontmatter dl {
+  margin: 0;
+}
+.frontmatter-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 120px) minmax(0, 1fr);
+  gap: 8px 16px;
+  padding: 6px 0;
+}
+.frontmatter dt {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.frontmatter dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.frontmatter-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.frontmatter-item {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.preview .frontmatter pre {
+  margin: 0;
+  white-space: pre-wrap;
+}
+@media (max-width: 480px) {
+  .frontmatter-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
 .preview p,
 .preview blockquote,
 .preview ul,
