@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.8](https://github.com/piconic-ai/edit/compare/v0.0.7...v0.0.8) - 2026-10-03
+
+- Link the editor brand to the landing page as pedit by @kfly8 in https://github.com/piconic-ai/edit/pull/68
+- Render Markdown frontmatter as structured metadata by @kfly8 in https://github.com/piconic-ai/edit/pull/70
+
 ## [v0.0.7](https://github.com/piconic-ai/edit/compare/v0.0.6...v0.0.7) - 2026-10-02
 
 - Show pair editing on the landing page by @kfly8 in https://github.com/piconic-ai/edit/pull/66
