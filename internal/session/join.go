@@ -1,0 +1,354 @@
+package session
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/piconic-ai/edit/internal/filewriter"
+	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/reearth/ygo/awareness"
+	"github.com/reearth/ygo/crdt"
+)
+
+// JoinOptions joins a room someone else hosts, as a browser would, and keeps a
+// local copy of the shared file so any editor can work on it.
+type JoinOptions struct {
+	// URL is the share link, with the key in its fragment.
+	URL string
+	// Directory is where the copy is written, under the name the host shares,
+	// and where it stays after the session. Empty: a temporary directory that
+	// is removed when the session stops, leaving nothing behind, like a
+	// browser tab.
+	Directory  string
+	Name       string
+	WriteDelay time.Duration
+	// Watch streams edits made to the copy outside pedit into the room.
+	Watch bool
+	// Timeout bounds how long Join waits for the room's state; 15s by default.
+	Timeout  time.Duration
+	Header   http.Header
+	Dial     protocol.Dialer
+	OnStatus func(protocol.Status)
+	OnPeople func([]string)
+	OnError  func(error)
+
+	// beforePublishWriter is a test seam; see Session.beforePublishWriter.
+	beforePublishWriter func()
+}
+
+// ErrRoomClosed means the room could not be joined because nobody hosts it:
+// the host left, or the link is wrong.
+var ErrRoomClosed = errors.New("the room is closed: the host left, or the link is wrong")
+
+// ErrFileExists means the copy was not written because a file of that name is
+// already in Directory.
+type ErrFileExists struct{ Path string }
+
+func (e *ErrFileExists) Error() string {
+	return fmt.Sprintf("%s already exists; move it away, or join from another directory", e.Path)
+}
+
+// Join enters the room at opts.URL, waits for its content and writes it to a
+// file named as the host's. The returned Session mirrors the copy and the room
+// both ways until Stop; Session.URL is the link joined.
+func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
+	onError := opts.OnError
+	if onError == nil {
+		onError = func(error) {}
+	}
+	if opts.Timeout == 0 {
+		opts.Timeout = 15 * time.Second
+	}
+	wsURL, roomID, rawKey, err := parseShareURL(opts.URL)
+	if err != nil {
+		return nil, err
+	}
+	dir, temp := opts.Directory, ""
+	if dir == "" {
+		if temp, err = os.MkdirTemp("", "pedit-"+roomID+"-"); err != nil {
+			return nil, fmt.Errorf("cannot create a temporary directory for the copy: %w", err)
+		}
+		dir = temp
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		_ = removeTemp(temp)
+		return nil, err
+	}
+
+	doc := crdt.New()
+	shared := newTextContent(doc, "")
+	aw := awareness.New(uint64(doc.ClientID()))
+	name := opts.Name
+	if name == "" {
+		name = "guest"
+	}
+	aw.SetLocalState(map[string]any{
+		"role": "guest",
+		"name": name,
+		"user": map[string]any{"name": name},
+	})
+
+	s := &Session{
+		URL:       opts.URL,
+		Doc:       doc,
+		Text:      shared.text,
+		content:   shared,
+		awareness: aw,
+		onError:   onError,
+		temp:      temp,
+
+		beforePublishWriter: opts.beforePublishWriter,
+	}
+	synced := make(chan struct{})
+	closed := make(chan struct{})
+	s.Client, err = protocol.NewClient(protocol.ClientOptions{
+		URL:       wsURL,
+		Key:       rawKey,
+		Doc:       doc,
+		Awareness: aw,
+		Header:    opts.Header,
+		Dial:      opts.Dial,
+		OnStatus: func(st protocol.Status) {
+			if st == protocol.StatusClosed {
+				select {
+				case <-closed:
+				default:
+					close(closed)
+				}
+			}
+			if opts.OnStatus != nil {
+				opts.OnStatus(st)
+			}
+		},
+		OnSynced: func() { close(synced) },
+		OnError:  onError,
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Until the file is known, remote edits only land in the doc; the first
+	// write below carries them all.
+	doc.OnUpdate(func(_ []byte, origin any) {
+		if origin != s.Client {
+			return
+		}
+		s.mu.Lock()
+		w := s.Writer
+		s.mu.Unlock()
+		if w != nil {
+			w.Schedule(s.content.render())
+		}
+	})
+	hostSeen := make(chan struct{}, 1)
+	aw.OnChange(func(awareness.ChangeEvent) {
+		if _, ok := hostState(aw); ok {
+			select {
+			case hostSeen <- struct{}{}:
+			default:
+			}
+		}
+		s.reportPeople(opts.OnPeople)
+	})
+	s.stopAlive = keepAlive(aw)
+	s.Client.Connect()
+
+	fail := func(err error) (*Session, error) {
+		s.Client.Destroy()
+		s.stopAlive()
+		aw.Destroy()
+		_ = removeTemp(temp)
+		return nil, err
+	}
+	deadline := time.NewTimer(opts.Timeout)
+	defer deadline.Stop()
+	var host map[string]any
+	for host == nil {
+		select {
+		case <-hostSeen:
+			host, _ = hostState(aw)
+		case <-closed:
+			return fail(ErrRoomClosed)
+		case <-deadline.C:
+			return fail(fmt.Errorf("no host answered within %s", opts.Timeout))
+		case <-ctx.Done():
+			return fail(ctx.Err())
+		}
+	}
+	select {
+	case <-synced:
+	case <-closed:
+		return fail(ErrRoomClosed)
+	case <-deadline.C:
+		return fail(fmt.Errorf("the room did not send its content within %s", opts.Timeout))
+	case <-ctx.Done():
+		return fail(ctx.Err())
+	}
+	if format, _ := host["format"].(string); format == formatCanvas {
+		return fail(errors.New("this room shares a canvas as nodes and edges, which pedit cannot join from the command line yet; open the link in a browser"))
+	}
+	base, ok := sharedFileName(host)
+	if !ok {
+		return fail(errors.New("the host did not share a usable file name"))
+	}
+	s.file = filepath.Join(dir, base)
+	if _, err := os.Lstat(s.file); err == nil {
+		return fail(&ErrFileExists{Path: s.file})
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fail(err)
+	}
+
+	w := filewriter.New(s.file, "", filewriter.Options{
+		Delay:            opts.WriteDelay,
+		OnError:          onError,
+		OnExternalChange: s.scheduleSyncFromDisk,
+	})
+	// Under the client's lock, no remote update can land between taking the
+	// first snapshot and publishing the writer that OnUpdate schedules on,
+	// so every edit after the snapshot is scheduled. The writer skips content
+	// equal to what it last wrote (nothing yet), so an empty document is
+	// created by hand, before any later edit can be written.
+	var created error
+	s.Client.Do(func() {
+		if s.beforePublishWriter != nil {
+			s.beforePublishWriter()
+		}
+		s.mu.Lock()
+		s.Writer = w
+		s.mu.Unlock()
+		if content := s.content.render(); content != "" {
+			w.Schedule(content)
+		} else {
+			created = filewriter.WriteAtomic(s.file, "")
+		}
+	})
+	if created != nil {
+		return fail(fmt.Errorf("cannot write %s: %w", s.file, created))
+	}
+	if err := w.Flush(); err != nil {
+		return fail(fmt.Errorf("cannot write %s: %w", s.file, err))
+	}
+	if opts.Watch {
+		if err := s.watch(); err != nil {
+			return fail(err)
+		}
+	}
+	return s, nil
+}
+
+// File is the path of the shared file, or of the copy when the session joined
+// a room.
+func (s *Session) File() string { return s.file }
+
+// Temporary reports whether the copy is removed when the session stops.
+func (s *Session) Temporary() bool { return s.temp != "" }
+
+// removeTemp removes the temporary directory of a copy, if there is one.
+func removeTemp(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	return os.RemoveAll(dir)
+}
+
+func (s *Session) reportPeople(onPeople func([]string)) {
+	if onPeople == nil {
+		return
+	}
+	var names []string
+	for id, st := range s.awareness.GetStates() {
+		if id != s.awareness.ClientID() {
+			names = append(names, displayName(st.State))
+		}
+	}
+	sort.Strings(names)
+	onPeople(names)
+}
+
+// hostState returns the awareness state of the host, if one is in the room.
+func hostState(aw *awareness.Awareness) (map[string]any, bool) {
+	for id, st := range aw.GetStates() {
+		if id == aw.ClientID() {
+			continue
+		}
+		if role, _ := st.State["role"].(string); role == "host" {
+			return st.State, true
+		}
+	}
+	return nil, false
+}
+
+// sharedFileName takes the file name the host shares, which comes from the
+// room: only a plain name is accepted, never a path.
+func sharedFileName(host map[string]any) (string, bool) {
+	name, _ := host["file"].(string)
+	if name == "" || name == "." || name == ".." || len(name) > 255 {
+		return "", false
+	}
+	if strings.ContainsAny(name, `/\`+"\x00") {
+		return "", false
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return "", false
+		}
+	}
+	return name, true
+}
+
+// parseShareURL returns the room's WebSocket URL, its ID and the key from a
+// share link. The key is in the fragment and never leaves this process. The
+// ID is used in a directory name, so only the characters of a generated room
+// ID are accepted.
+func parseShareURL(link string) (wsURL, roomID string, key []byte, err error) {
+	u, err := url.Parse(link)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", "", nil, fmt.Errorf("%s is not a share link", redactFragment(link))
+	}
+	id, ok := strings.CutPrefix(u.Path, "/r/")
+	if !ok || !isRoomID(id) {
+		return "", "", nil, fmt.Errorf("%s is not a share link (expected /r/<room>#<key>)", redactFragment(link))
+	}
+	if u.Fragment == "" {
+		return "", "", nil, errors.New("the link has no key after #; copy the whole link, including the part after #")
+	}
+	key, err = protocol.DecodeKey(u.Fragment)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("the link's key after # is not valid: %w", err)
+	}
+	wsURL = "ws" + strings.TrimPrefix(u.Scheme, "http") + "://" + u.Host + "/api/rooms/" + id + "/ws"
+	return wsURL, id, key, nil
+}
+
+// isRoomID accepts the base64url alphabet room IDs are made of, at a sane length.
+func isRoomID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// redactFragment keeps the key out of error messages.
+func redactFragment(link string) string {
+	before, _, found := strings.Cut(link, "#")
+	if found {
+		return before + "#…"
+	}
+	return link
+}

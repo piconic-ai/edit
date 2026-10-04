@@ -41,6 +41,10 @@ type ClientOptions struct {
 	MaxBackoff time.Duration
 	OnStatus   func(Status)
 	OnError    func(error)
+	// OnSynced is called once, on the connection's read loop, when the first
+	// SyncStep2 from a peer has been applied: the doc now holds what the room
+	// had. Return quickly.
+	OnSynced func()
 	// OnAttachment is called with each attachment message from the room, on
 	// the connection's read loop: return quickly.
 	OnAttachment func(Attachment)
@@ -71,6 +75,7 @@ type Client struct {
 	out       *outbox
 	started   bool
 	destroyed bool
+	synced    bool
 	unsubs    []func()
 
 	ctx    context.Context
@@ -292,6 +297,9 @@ func (c *Client) receive(data []byte) error {
 		if len(reply) > 0 {
 			c.send(MessageSync, reply)
 		}
+		if kind, _, err := ysync.ReadSyncMessage(payload); err == nil && kind == ysync.MsgSyncStep2 {
+			c.markSynced()
+		}
 		return nil
 	}
 	update, err := encoding.NewDecoder(payload).ReadVarBytes()
@@ -299,6 +307,17 @@ func (c *Client) receive(data []byte) error {
 		return err
 	}
 	return c.aw.ApplyUpdate(update, c)
+}
+
+// markSynced reports the first full state received from a peer, once.
+func (c *Client) markSynced() {
+	c.mu.Lock()
+	first := !c.synced
+	c.synced = true
+	c.mu.Unlock()
+	if first && c.opts.OnSynced != nil {
+		c.opts.OnSynced()
+	}
 }
 
 func (c *Client) handleDocUpdate(update []byte, origin any) {

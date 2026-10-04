@@ -15,11 +15,13 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/piconic-ai/edit/internal/access"
 	"github.com/piconic-ai/edit/internal/clipboard"
+	"github.com/piconic-ai/edit/internal/protocol"
 	"github.com/piconic-ai/edit/internal/session"
 	"golang.org/x/term"
 )
@@ -41,12 +43,18 @@ func getVersion() string {
 const defaultServer = "https://edit.piconic.ai"
 
 const usage = `Usage: pedit [file] [-t template] [-d directory]
+       pedit <share link> [-d directory]
 
 Share an existing UTF-8 text file. Send the printed link to collaborators;
 open it yourself to edit together in the browser. No install needed for guests.
 Edits are written back to your local file as you work. Press Ctrl+C to save
 the final state and close the room. Changes from your local editor sync too.
 Without a file, pedit creates pedit-<time>.md in the configured output directory.
+
+Given a share link instead of a file, pedit joins that room from the command
+line: it writes a copy of the shared file to a temporary directory and keeps it
+in sync, so you can edit it with any editor. The copy is removed when you leave
+or the host closes the room, like closing a browser tab. To keep it, pass -d.
 
 Examples:
   pedit notes.md       Share an existing Markdown file
@@ -56,6 +64,8 @@ Examples:
   pedit --csv          Create a table from default.csv
   pedit --canvas       Create a board from default.canvas
   pedit data.csv       Share a table (any UTF-8 text file works)
+  pedit https://edit.piconic.ai/r/<room>#<key>
+                       Join a room and edit its copy in your own editor
 
 Markdown supports previews and pasted images, saved beside your file in assets/.
 Anyone with the full link can read and edit while the session is open.
@@ -94,6 +104,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
+	if opts.Room != "" {
+		return runJoin(opts, out, stderr)
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintln(stderr, "pedit:", err)
@@ -191,6 +204,95 @@ func run(args []string, stdout, stderr io.Writer) int {
 		os.Exit(130)
 	}()
 	return finish(out, stderr, arg, scratch, s.Stop)
+}
+
+// runJoin joins the room at opts.Room and mirrors its file to a local copy
+// until Ctrl+C or the host closes the room.
+func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-signals
+		cancel()
+	}()
+
+	var closed atomic.Bool
+	s, err := session.Join(ctx, session.JoinOptions{
+		URL:       opts.Room,
+		Directory: opts.Directory,
+		Name:      username(),
+		Watch:     true,
+		OnStatus: func(st protocol.Status) {
+			out.setStatus(st)
+			if st == protocol.StatusClosed {
+				closed.Store(true)
+				cancel()
+			}
+		},
+		OnPeople: out.setPeople,
+		OnError: func(err error) {
+			if os.Getenv("PEDIT_DEBUG") != "" {
+				fmt.Fprintln(stderr, "\npedit:", err)
+			}
+		},
+	})
+	switch {
+	case errors.Is(err, context.Canceled):
+		return 130
+	case err != nil:
+		fmt.Fprintln(stderr, "pedit:", err)
+		return 1
+	}
+	file := displayPath(s.File())
+	out.joined(file, s.Temporary(), clipboard.Copy(s.File()))
+
+	<-ctx.Done()
+	// A second signal gives up on saving.
+	go func() {
+		<-signals
+		os.Exit(130)
+	}()
+	return finishJoin(out, stderr, file, s.Temporary(), closed.Load(), s.Stop)
+}
+
+// finishJoin leaves the room, saving the copy or removing a temporary one,
+// and says why when the host ended the session.
+func finishJoin(out *ui, stderr io.Writer, file string, temporary, hostLeft bool, stop func() error) int {
+	out.stopLive()
+	if hostLeft {
+		out.hostLeft()
+	}
+	if temporary {
+		if err := stop(); err != nil {
+			fmt.Fprintf(stderr, "pedit: could not remove the temporary copy %s: %v\n", file, err)
+			return 1
+		}
+		out.leftTemporary()
+		return 0
+	}
+	out.saving(file)
+	if err := stop(); err != nil {
+		fmt.Fprintf(stderr, "pedit: could not save %s: %v\n", file, err)
+		return 1
+	}
+	out.left(file)
+	return 0
+}
+
+// displayPath shows a path relative to the current directory when it is
+// under it, as the user would type it.
+func displayPath(path string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return path
+	}
+	rel, err := filepath.Rel(cwd, path)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return path
+	}
+	return rel
 }
 
 // finish saves the file and closes the room. It points to a scratch file
