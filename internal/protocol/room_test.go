@@ -35,6 +35,7 @@ type joinOpts struct {
 	header       http.Header
 	onError      func(error)
 	onAttachment func(protocol.Attachment)
+	onSynced     func()
 }
 
 func join(t *testing.T, relay *prototest.Relay, key string, o joinOpts) *peer {
@@ -63,6 +64,7 @@ func join(t *testing.T, relay *prototest.Relay, key string, o joinOpts) *peer {
 		MinBackoff:   20 * time.Millisecond,
 		OnError:      o.onError,
 		OnAttachment: o.onAttachment,
+		OnSynced:     o.onSynced,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,6 +83,33 @@ func TestLateJoinerGetsFullDocument(t *testing.T) {
 	prototest.WaitFor(t, wait, func() bool { return host.Status() == protocol.StatusConnected }, "host connected")
 	guest := join(t, relay, key, joinOpts{})
 	prototest.WaitFor(t, wait, func() bool { return guest.String() == "# notes\n" }, "guest to get the doc")
+}
+
+func TestReportsSyncedOnceWithTheDocument(t *testing.T) {
+	relay := prototest.NewRelay(true)
+	key := protocol.GenerateKey()
+	host := join(t, relay, key, joinOpts{init: "# notes\n", header: hostHeader()})
+	prototest.WaitFor(t, wait, func() bool { return host.Status() == protocol.StatusConnected }, "host connected")
+	var mu sync.Mutex
+	var seen []string
+	var guest *peer
+	guest = join(t, relay, key, joinOpts{onSynced: func() {
+		mu.Lock()
+		defer mu.Unlock()
+		// The doc already holds the room's state when synced is reported.
+		seen = append(seen, guest.String())
+	}})
+	prototest.WaitFor(t, wait, func() bool { mu.Lock(); defer mu.Unlock(); return len(seen) > 0 }, "synced")
+	// Another peer's SyncStep2, and a reconnect, do not report it again.
+	join(t, relay, key, joinOpts{})
+	relay.DropAll()
+	prototest.WaitFor(t, wait, func() bool { return guest.Status() == protocol.StatusConnected }, "reconnected")
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(seen, []string{"# notes\n"}) {
+		t.Fatalf("synced reports = %q", seen)
+	}
 }
 
 func TestConcurrentEditsBothWays(t *testing.T) {

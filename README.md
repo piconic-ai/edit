@@ -14,6 +14,23 @@ browsers. Edits are saved back to your file:
 
 No install or account needed for collaborators on the public server.
 
+Collaborators who would rather stay in their own editor join from the command
+line instead. Given the link, `pedit` writes a copy of the shared file next to
+them and keeps it in sync both ways until the host closes the room:
+
+```text
+❯ pedit 'https://edit.piconic.ai/r/<room-id>#<key>'
+
+  Joined. notes.md is a copy of the shared file.
+
+  Edit it with any editor; changes sync both ways while you are in the room.
+  Press Ctrl+C to leave. Your copy stays in notes.md.
+```
+
+Quote the link in the shell: `#` starts a comment otherwise. `-d <dir>` puts
+the copy elsewhere; `pedit` refuses to overwrite a file already there. Canvas
+rooms can only be joined in a browser for now.
+
 ## Why pedit?
 
 Local files work naturally with coding agents and your own editor. Keeping

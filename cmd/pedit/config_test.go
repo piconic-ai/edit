@@ -261,15 +261,35 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"--", "-notes.md"}, "-notes.md", "", ""},
 	} {
 		opts, err := parseArgs(tc.args)
-		if err != nil || opts.File != tc.file || opts.Template != tc.template || opts.Directory != tc.directory {
+		if err != nil || opts.File != tc.file || opts.Template != tc.template || opts.Directory != tc.directory || opts.Room != "" {
 			t.Fatalf("%q: %+v %v", tc.args, opts, err)
 		}
+	}
+	const link = "https://edit.piconic.ai/r/ROOM#key"
+	for _, tc := range []struct {
+		args      []string
+		directory string
+	}{
+		{[]string{link}, ""},
+		{[]string{"-d", "shared", link}, "shared"},
+		{[]string{link, "--directory=shared"}, "shared"},
+	} {
+		opts, err := parseArgs(tc.args)
+		if err != nil || opts.Room != link || opts.File != "" || opts.Template != "" || opts.Directory != tc.directory {
+			t.Fatalf("%q: %+v %v", tc.args, opts, err)
+		}
+	}
+	if opts, err := parseArgs([]string{"http://localhost:8787/r/ROOM#key"}); err != nil || opts.Room == "" {
+		t.Fatalf("http link: %+v %v", opts, err)
 	}
 	for _, args := range [][]string{
 		{"--template"}, {"--template="}, {"--template=a", "-t", "b"}, {"-t", ""}, {"-unknown"},
 		{"--csv", "--canvas"}, {"--canvas", "-t", "csv"}, {"-t", "--csv"}, {"a", "b"},
 		{"-d"}, {"-d", ""}, {"--directory="}, {"-d", "--csv"}, {"-d", "a", "-d", "b"},
 		{"notes.md", "-d", "reports"}, {"-d", "reports", "--", "notes.md"},
+		{"https://edit.piconic.ai/r/ROOM#key", "notes.md"}, {"notes.md", "https://edit.piconic.ai/r/ROOM#key"},
+		{"https://edit.piconic.ai/r/ROOM#key", "-t", "minutes.md"}, {"--csv", "https://edit.piconic.ai/r/ROOM#key"},
+		{"https://edit.piconic.ai/r/ROOM#key", "https://edit.piconic.ai/r/ROOM#key"},
 	} {
 		if _, err := parseArgs(args); err == nil {
 			t.Fatalf("accepted %q", args)

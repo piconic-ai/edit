@@ -140,6 +140,32 @@ func (u *ui) sharing(file, url string, copied, scratch bool) {
 	u.render()
 }
 
+// joined says that the room's file is now a local copy, and how to leave.
+func (u *ui) joined(file string) {
+	u.print(
+		"",
+		u.bold("Joined. "+file+" is a copy of the shared file."),
+		"",
+		"Edit it with any editor; changes sync both ways while you are in the room.",
+		u.dim("Press Ctrl+C to leave. Your copy stays in "+file+"."),
+		"",
+	)
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.live = true
+	u.render()
+}
+
+// hostLeft explains why the session ends on its own.
+func (u *ui) hostLeft() {
+	u.print("", u.yellow("The host closed the room."))
+}
+
+// left confirms the copy is saved after leaving a room.
+func (u *ui) left(file string) {
+	u.print(u.green("✓")+" Saved "+file+". It no longer syncs with the room.", "")
+}
+
 func (u *ui) setStatus(s protocol.Status) {
 	u.mu.Lock()
 	defer u.mu.Unlock()

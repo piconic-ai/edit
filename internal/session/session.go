@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -215,19 +214,7 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 			s.Writer.Schedule(s.content.render())
 		}
 	})
-	aw.OnChange(func(awareness.ChangeEvent) {
-		if opts.OnPeople == nil {
-			return
-		}
-		var names []string
-		for id, st := range aw.GetStates() {
-			if id != aw.ClientID() {
-				names = append(names, displayName(st.State))
-			}
-		}
-		sort.Strings(names)
-		opts.OnPeople(names)
-	})
+	aw.OnChange(func(awareness.ChangeEvent) { s.reportPeople(opts.OnPeople) })
 	s.stopAlive = keepAlive(aw)
 	s.Client.Connect()
 
@@ -505,7 +492,10 @@ func (s *Session) Stop() error {
 		if s.beforeDestroy != nil {
 			s.beforeDestroy()
 		}
-		s.attachments.Close()
+		// A joined session saves no attachments.
+		if s.attachments != nil {
+			s.attachments.Close()
+		}
 		s.Client.Destroy()
 
 		// Save again: edits may have arrived while leaving, and none can arrive now.

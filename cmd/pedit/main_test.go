@@ -30,6 +30,9 @@ func TestRunArgs(t *testing.T) {
 		{args: []string{""}, code: 2, stderr: "Usage: pedit [file]"},
 		{args: []string{"does-not-exist.md"}, code: 1, stderr: "does-not-exist.md does not exist."},
 		{args: []string{"."}, code: 1, stderr: ". is a directory."},
+		{args: []string{"https://edit.piconic.ai/r/ROOM#key", "-t", "minutes.md"}, code: 2, stderr: "a share link cannot be combined with a template"},
+		{args: []string{"https://edit.piconic.ai/ROOM#key"}, code: 1, stderr: "https://edit.piconic.ai/ROOM#… is not a share link"},
+		{args: []string{"https://edit.piconic.ai/r/ROOM"}, code: 1, stderr: "has no key after #"},
 	}
 	for _, tt := range tests {
 		var stdout, stderr strings.Builder
@@ -123,6 +126,59 @@ func TestFinish(t *testing.T) {
 				t.Errorf("stderr = %q", stderr.String())
 			}
 		})
+	}
+}
+
+func TestFinishJoin(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostLeft bool
+		stopErr  error
+		code     int
+		stdout   []string
+		not      []string
+	}{
+		{name: "left", code: 0, stdout: []string{"✓ Saved notes.md. It no longer syncs"}, not: []string{"host closed"}},
+		{name: "host left", hostLeft: true, code: 0, stdout: []string{"The host closed the room.", "✓ Saved notes.md"}},
+		{name: "not saved", stopErr: errors.New("disk full"), code: 1, not: []string{"Saved"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr strings.Builder
+			code := finishJoin(newUI(&stdout, false, false), &stderr, "notes.md", tt.hostLeft, func() error { return tt.stopErr })
+			if code != tt.code {
+				t.Errorf("code = %d", code)
+			}
+			for _, want := range tt.stdout {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("missing %q in %q", want, stdout.String())
+				}
+			}
+			for _, unwanted := range tt.not {
+				if strings.Contains(stdout.String(), unwanted) {
+					t.Errorf("unexpected %q in %q", unwanted, stdout.String())
+				}
+			}
+			if tt.stopErr != nil && !strings.Contains(stderr.String(), "could not save notes.md: disk full") {
+				t.Errorf("stderr = %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestDisplayPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cwd, _ := os.Getwd() // resolves symlinks as the OS does
+	if got := displayPath(filepath.Join(cwd, "notes.md")); got != "notes.md" {
+		t.Errorf("= %q", got)
+	}
+	if got := displayPath(filepath.Join(cwd, "shared", "notes.md")); got != filepath.Join("shared", "notes.md") {
+		t.Errorf("= %q", got)
+	}
+	outside := filepath.Join(filepath.Dir(cwd), "elsewhere.md")
+	if got := displayPath(outside); got != outside {
+		t.Errorf("= %q", got)
 	}
 }
 

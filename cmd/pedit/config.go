@@ -202,9 +202,17 @@ func templateName(name string) string {
 }
 
 type commandArgs struct {
-	File      string
+	File string
+	// Room is a share link to join instead of a file to share.
+	Room      string
 	Template  string
 	Directory string
+}
+
+// isShareLink tells a share link apart from a file name: files that start
+// with a URL scheme are not supported.
+func isShareLink(arg string) bool {
+	return strings.HasPrefix(arg, "https://") || strings.HasPrefix(arg, "http://")
 }
 
 func parseArgs(args []string) (commandArgs, error) {
@@ -251,15 +259,22 @@ func parseArgs(args []string) (commandArgs, error) {
 				}
 				opts.Template = strings.TrimPrefix(arg, "--")
 			} else {
-				if arg == "" || strings.HasPrefix(arg, "-") || opts.File != "" {
-					return fail("expected one file")
+				if arg == "" || strings.HasPrefix(arg, "-") || opts.File != "" || opts.Room != "" {
+					return fail("expected one file or share link")
 				}
-				opts.File = arg
+				if isShareLink(arg) {
+					opts.Room = arg
+				} else {
+					opts.File = arg
+				}
 			}
 		}
 	}
 	if opts.File != "" && opts.Directory != "" {
 		return fail("use either a file path or -d, not both")
+	}
+	if opts.Room != "" && opts.Template != "" {
+		return fail("a share link cannot be combined with a template")
 	}
 	return opts, nil
 }
