@@ -84,6 +84,9 @@ type Session struct {
 	// Test seams, called during Stop.
 	beforeDestroy    func()
 	beforeFinalWrite func(attempt int)
+	// Test seam, called by Join under the client's lock, just before the
+	// writer is published: a remote edit sent from here is applied after.
+	beforePublishWriter func()
 }
 
 // fileOrigin tags changes merged in from the file.

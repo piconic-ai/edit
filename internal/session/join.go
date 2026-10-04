@@ -40,6 +40,9 @@ type JoinOptions struct {
 	OnStatus func(protocol.Status)
 	OnPeople func([]string)
 	OnError  func(error)
+
+	// beforePublishWriter is a test seam; see Session.beforePublishWriter.
+	beforePublishWriter func()
 }
 
 // ErrRoomClosed means the room could not be joined because nobody hosts it:
@@ -103,6 +106,8 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		awareness: aw,
 		onError:   onError,
 		temp:      temp,
+
+		beforePublishWriter: opts.beforePublishWriter,
 	}
 	synced := make(chan struct{})
 	closed := make(chan struct{})
@@ -207,20 +212,30 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		OnError:          onError,
 		OnExternalChange: s.scheduleSyncFromDisk,
 	})
-	// The first write creates the copy; an edit that arrives meanwhile is
-	// scheduled by OnUpdate. The writer skips content equal to what it last
-	// wrote (nothing yet), so an empty document is written by hand.
-	w.Schedule(s.render())
-	s.mu.Lock()
-	s.Writer = w
-	s.mu.Unlock()
+	// Under the client's lock, no remote update can land between taking the
+	// first snapshot and publishing the writer that OnUpdate schedules on,
+	// so every edit after the snapshot is scheduled. The writer skips content
+	// equal to what it last wrote (nothing yet), so an empty document is
+	// created by hand, before any later edit can be written.
+	var created error
+	s.Client.Do(func() {
+		if s.beforePublishWriter != nil {
+			s.beforePublishWriter()
+		}
+		s.mu.Lock()
+		s.Writer = w
+		s.mu.Unlock()
+		if content := s.content.render(); content != "" {
+			w.Schedule(content)
+		} else {
+			created = filewriter.WriteAtomic(s.file, "")
+		}
+	})
+	if created != nil {
+		return fail(fmt.Errorf("cannot write %s: %w", s.file, created))
+	}
 	if err := w.Flush(); err != nil {
 		return fail(fmt.Errorf("cannot write %s: %w", s.file, err))
-	}
-	if w.LastWritten() == "" {
-		if err := filewriter.WriteAtomic(s.file, ""); err != nil {
-			return fail(fmt.Errorf("cannot write %s: %w", s.file, err))
-		}
 	}
 	if opts.Watch {
 		if err := s.watch(); err != nil {

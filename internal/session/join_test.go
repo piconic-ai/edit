@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,12 +20,17 @@ type joinCLIOpts struct {
 	JoinOptions
 	// temporary leaves Directory empty, so the copy goes to a temporary directory.
 	temporary bool
+	// beforePublishWriter is Session.beforePublishWriter for the joined session.
+	beforePublishWriter func()
 }
 
 func joinFromCLI(t *testing.T, f *fixture, o joinCLIOpts) (*Session, error) {
 	t.Helper()
 	if o.URL == "" {
 		o.URL = f.session.URL
+	}
+	if o.beforePublishWriter != nil {
+		o.JoinOptions.beforePublishWriter = o.beforePublishWriter
 	}
 	if o.Directory == "" && !o.temporary {
 		o.Directory = t.TempDir()
@@ -65,6 +71,28 @@ func TestJoinWritesAnEmptyCopyForAnEmptyFile(t *testing.T) {
 	}
 	if got := readFile(t, g.File()); got != "" {
 		t.Fatalf("copy = %q", got)
+	}
+}
+
+func TestJoinWritesAnEditThatArrivesWhileTheCopyIsSetUp(t *testing.T) {
+	for _, initial := range []string{"# notes\n", ""} {
+		t.Run(fmt.Sprintf("initial %q", initial), func(t *testing.T) {
+			f := setup(t, initial, setupOpts{})
+			browser := joinAsGuest(t, f.relay, f.session.URL)
+			prototest.WaitFor(t, wait, func() bool { return browser.String() == initial }, "browser to sync")
+			// The browser edits while the joiner is between its first snapshot
+			// and the writer that later edits are scheduled on. The edit
+			// reaches the joiner's client, which must wait for the lock.
+			g, err := joinFromCLI(t, f, joinCLIOpts{beforePublishWriter: func() {
+				browser.insert(len(initial), "- late\n")
+				time.Sleep(100 * time.Millisecond)
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := initial + "- late\n"
+			prototest.WaitFor(t, wait, func() bool { return readFile(t, g.File()) == want }, "copy with the late edit")
+		})
 	}
 }
 
