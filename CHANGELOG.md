@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.9](https://github.com/piconic-ai/edit/compare/v0.0.8...v0.0.9) - 2026-10-04
+
+- Join a room from the command line to edit its copy in any editor by @kfly8 in https://github.com/piconic-ai/edit/pull/71
+
 ## [v0.0.8](https://github.com/piconic-ai/edit/compare/v0.0.7...v0.0.8) - 2026-10-03
 
 - Link the editor brand to the landing page as pedit by @kfly8 in https://github.com/piconic-ai/edit/pull/68
