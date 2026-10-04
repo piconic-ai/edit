@@ -20,11 +20,14 @@ import (
 )
 
 // JoinOptions joins a room someone else hosts, as a browser would, and keeps a
-// local copy of the shared file in Directory so any editor can work on it.
+// local copy of the shared file so any editor can work on it.
 type JoinOptions struct {
 	// URL is the share link, with the key in its fragment.
 	URL string
-	// Directory is where the copy is written, under the name the host shares.
+	// Directory is where the copy is written, under the name the host shares,
+	// and where it stays after the session. Empty: a temporary directory that
+	// is removed when the session stops, leaving nothing behind, like a
+	// browser tab.
 	Directory  string
 	Name       string
 	WriteDelay time.Duration
@@ -62,16 +65,20 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	if opts.Timeout == 0 {
 		opts.Timeout = 15 * time.Second
 	}
-	wsURL, rawKey, err := parseShareURL(opts.URL)
+	wsURL, roomID, rawKey, err := parseShareURL(opts.URL)
 	if err != nil {
 		return nil, err
 	}
-	dir := opts.Directory
+	dir, temp := opts.Directory, ""
 	if dir == "" {
-		dir = "."
+		if temp, err = os.MkdirTemp("", "pedit-"+roomID+"-"); err != nil {
+			return nil, fmt.Errorf("cannot create a temporary directory for the copy: %w", err)
+		}
+		dir = temp
 	}
 	dir, err = filepath.Abs(dir)
 	if err != nil {
+		_ = removeTemp(temp)
 		return nil, err
 	}
 
@@ -95,6 +102,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		content:   shared,
 		awareness: aw,
 		onError:   onError,
+		temp:      temp,
 	}
 	synced := make(chan struct{})
 	closed := make(chan struct{})
@@ -153,6 +161,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		s.Client.Destroy()
 		s.stopAlive()
 		aw.Destroy()
+		_ = removeTemp(temp)
 		return nil, err
 	}
 	deadline := time.NewTimer(opts.Timeout)
@@ -225,6 +234,17 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 // a room.
 func (s *Session) File() string { return s.file }
 
+// Temporary reports whether the copy is removed when the session stops.
+func (s *Session) Temporary() bool { return s.temp != "" }
+
+// removeTemp removes the temporary directory of a copy, if there is one.
+func removeTemp(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	return os.RemoveAll(dir)
+}
+
 func (s *Session) reportPeople(onPeople func([]string)) {
 	if onPeople == nil {
 		return
@@ -270,26 +290,43 @@ func sharedFileName(host map[string]any) (string, bool) {
 	return name, true
 }
 
-// parseShareURL returns the room's WebSocket URL and key from a share link.
-// The key is in the fragment and never leaves this process.
-func parseShareURL(link string) (wsURL string, key []byte, err error) {
+// parseShareURL returns the room's WebSocket URL, its ID and the key from a
+// share link. The key is in the fragment and never leaves this process. The
+// ID is used in a directory name, so only the characters of a generated room
+// ID are accepted.
+func parseShareURL(link string) (wsURL, roomID string, key []byte, err error) {
 	u, err := url.Parse(link)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return "", nil, fmt.Errorf("%s is not a share link", redactFragment(link))
+		return "", "", nil, fmt.Errorf("%s is not a share link", redactFragment(link))
 	}
 	id, ok := strings.CutPrefix(u.Path, "/r/")
-	if !ok || id == "" || strings.Contains(id, "/") {
-		return "", nil, fmt.Errorf("%s is not a share link (expected /r/<room>#<key>)", redactFragment(link))
+	if !ok || !isRoomID(id) {
+		return "", "", nil, fmt.Errorf("%s is not a share link (expected /r/<room>#<key>)", redactFragment(link))
 	}
 	if u.Fragment == "" {
-		return "", nil, errors.New("the link has no key after #; copy the whole link, including the part after #")
+		return "", "", nil, errors.New("the link has no key after #; copy the whole link, including the part after #")
 	}
 	key, err = protocol.DecodeKey(u.Fragment)
 	if err != nil {
-		return "", nil, fmt.Errorf("the link's key after # is not valid: %w", err)
+		return "", "", nil, fmt.Errorf("the link's key after # is not valid: %w", err)
 	}
 	wsURL = "ws" + strings.TrimPrefix(u.Scheme, "http") + "://" + u.Host + "/api/rooms/" + id + "/ws"
-	return wsURL, key, nil
+	return wsURL, id, key, nil
+}
+
+// isRoomID accepts the base64url alphabet room IDs are made of, at a sane length.
+func isRoomID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // redactFragment keeps the key out of error messages.

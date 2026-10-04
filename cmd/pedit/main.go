@@ -52,9 +52,9 @@ the final state and close the room. Changes from your local editor sync too.
 Without a file, pedit creates pedit-<time>.md in the configured output directory.
 
 Given a share link instead of a file, pedit joins that room from the command
-line: it writes a copy of the shared file to the current directory (or -d) and
-keeps it in sync, so you can edit it with any editor. Your copy stays when the
-host closes the room.
+line: it writes a copy of the shared file to a temporary directory and keeps it
+in sync, so you can edit it with any editor. The copy is removed when you leave
+or the host closes the room, like closing a browser tab. To keep it, pass -d.
 
 Examples:
   pedit notes.md       Share an existing Markdown file
@@ -246,7 +246,7 @@ func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
 		return 1
 	}
 	file := displayPath(s.File())
-	out.joined(file)
+	out.joined(file, s.Temporary(), clipboard.Copy(s.File()))
 
 	<-ctx.Done()
 	// A second signal gives up on saving.
@@ -254,15 +254,23 @@ func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
 		<-signals
 		os.Exit(130)
 	}()
-	return finishJoin(out, stderr, file, closed.Load(), s.Stop)
+	return finishJoin(out, stderr, file, s.Temporary(), closed.Load(), s.Stop)
 }
 
-// finishJoin saves the copy and leaves the room, saying why when the host
-// ended the session.
-func finishJoin(out *ui, stderr io.Writer, file string, hostLeft bool, stop func() error) int {
+// finishJoin leaves the room, saving the copy or removing a temporary one,
+// and says why when the host ended the session.
+func finishJoin(out *ui, stderr io.Writer, file string, temporary, hostLeft bool, stop func() error) int {
 	out.stopLive()
 	if hostLeft {
 		out.hostLeft()
+	}
+	if temporary {
+		if err := stop(); err != nil {
+			fmt.Fprintf(stderr, "pedit: could not remove the temporary copy %s: %v\n", file, err)
+			return 1
+		}
+		out.leftTemporary()
+		return 0
 	}
 	out.saving(file)
 	if err := stop(); err != nil {

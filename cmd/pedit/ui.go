@@ -140,16 +140,25 @@ func (u *ui) sharing(file, url string, copied, scratch bool) {
 	u.render()
 }
 
-// joined says that the room's file is now a local copy, and how to leave.
-func (u *ui) joined(file string) {
-	u.print(
+// joined says where the room's file is mirrored, and what happens to the copy
+// on leaving: a temporary one is removed, one placed with -d stays.
+func (u *ui) joined(file string, temporary, copied bool) {
+	lines := []string{
 		"",
-		u.bold("Joined. "+file+" is a copy of the shared file."),
-		"",
-		"Edit it with any editor; changes sync both ways while you are in the room.",
-		u.dim("Press Ctrl+C to leave. Your copy stays in "+file+"."),
-		"",
-	)
+		u.bold("Joined. Your copy of the shared file:"),
+		"  " + u.link(file),
+	}
+	if copied {
+		lines = append(lines, "  "+u.dim("Copied to your clipboard."))
+	}
+	lines = append(lines, "", "Edit it with any editor; changes sync both ways while you are in the room.")
+	if temporary {
+		lines = append(lines, u.dim("Press Ctrl+C to leave. The copy is temporary and removed then; -d <dir> keeps one."))
+	} else {
+		lines = append(lines, u.dim("Press Ctrl+C to leave. Your copy stays in "+file+"."))
+	}
+	lines = append(lines, "")
+	u.print(lines...)
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.live = true
@@ -164,6 +173,11 @@ func (u *ui) hostLeft() {
 // left confirms the copy is saved after leaving a room.
 func (u *ui) left(file string) {
 	u.print(u.green("✓")+" Saved "+file+". It no longer syncs with the room.", "")
+}
+
+// leftTemporary confirms nothing is left behind after leaving a room.
+func (u *ui) leftTemporary() {
+	u.print("", u.green("✓")+" Left the room. The temporary copy was removed.", "")
 }
 
 func (u *ui) setStatus(s protocol.Status) {

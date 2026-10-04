@@ -66,6 +66,8 @@ type Session struct {
 	watchDone   chan struct{}
 	stopAlive   func()
 	onError     func(error)
+	// temp is the directory holding a joined copy that is removed on Stop.
+	temp string
 
 	mu        sync.Mutex
 	readTimer *time.Timer
@@ -513,6 +515,10 @@ func (s *Session) Stop() error {
 		}
 		s.stopAlive()
 		s.awareness.Destroy()
+		if s.temp != "" {
+			// A temporary copy is for the session only: nothing to save.
+			s.stopErr = removeTemp(s.temp)
+		}
 	})
 	return s.stopErr
 }

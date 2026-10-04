@@ -15,19 +15,25 @@ import (
 
 // joinFromCLI joins the room of f as a second pedit would, keeping its copy in
 // a fresh directory.
-func joinFromCLI(t *testing.T, f *fixture, o JoinOptions) (*Session, error) {
+type joinCLIOpts struct {
+	JoinOptions
+	// temporary leaves Directory empty, so the copy goes to a temporary directory.
+	temporary bool
+}
+
+func joinFromCLI(t *testing.T, f *fixture, o joinCLIOpts) (*Session, error) {
 	t.Helper()
 	if o.URL == "" {
 		o.URL = f.session.URL
 	}
-	if o.Directory == "" {
+	if o.Directory == "" && !o.temporary {
 		o.Directory = t.TempDir()
 	}
 	if o.WriteDelay == 0 {
 		o.WriteDelay = 20 * time.Millisecond
 	}
 	o.Dial = f.relay.Dial
-	s, err := Join(context.Background(), o)
+	s, err := Join(context.Background(), o.JoinOptions)
 	if err == nil {
 		t.Cleanup(func() { _ = s.Stop() })
 	}
@@ -36,7 +42,7 @@ func joinFromCLI(t *testing.T, f *fixture, o JoinOptions) (*Session, error) {
 
 func TestJoinWritesACopyNamedAsTheHostsFile(t *testing.T) {
 	f := setup(t, "# notes\n", setupOpts{})
-	g, err := joinFromCLI(t, f, JoinOptions{})
+	g, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +59,7 @@ func TestJoinWritesACopyNamedAsTheHostsFile(t *testing.T) {
 
 func TestJoinWritesAnEmptyCopyForAnEmptyFile(t *testing.T) {
 	f := setup(t, "", setupOpts{})
-	g, err := joinFromCLI(t, f, JoinOptions{})
+	g, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +70,7 @@ func TestJoinWritesAnEmptyCopyForAnEmptyFile(t *testing.T) {
 
 func TestJoinedCopySyncsBothWays(t *testing.T) {
 	f := setup(t, "one\n", setupOpts{watch: true})
-	g, err := joinFromCLI(t, f, JoinOptions{Watch: true})
+	g, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{Watch: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +100,7 @@ func TestJoinedCopySyncsBothWays(t *testing.T) {
 func TestJoinedSessionAppearsAsAGuest(t *testing.T) {
 	f := setup(t, "x", setupOpts{})
 	browser := joinAsGuest(t, f.relay, f.session.URL)
-	_, err := joinFromCLI(t, f, JoinOptions{Name: "ken"})
+	_, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{Name: "ken"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +121,12 @@ func TestJoinedCopyStaysWhenTheHostLeaves(t *testing.T) {
 	f := setup(t, "keep me\n", setupOpts{})
 	var statuses []protocol.Status
 	done := make(chan struct{}, 1)
-	g, err := joinFromCLI(t, f, JoinOptions{OnStatus: func(s protocol.Status) {
+	g, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{OnStatus: func(s protocol.Status) {
 		statuses = append(statuses, s)
 		if s == protocol.StatusClosed {
 			done <- struct{}{}
 		}
-	}})
+	}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,13 +146,78 @@ func TestJoinedCopyStaysWhenTheHostLeaves(t *testing.T) {
 	}
 }
 
+func TestJoinWithoutDirectoryUsesATemporaryCopyAndRemovesIt(t *testing.T) {
+	f := setup(t, "# notes\n", setupOpts{})
+	g, err := joinFromCLI(t, f, joinCLIOpts{temporary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !g.Temporary() {
+		t.Fatal("copy should be temporary")
+	}
+	dir := filepath.Dir(g.File())
+	if filepath.Base(g.File()) != "notes.md" || !strings.HasPrefix(filepath.Base(dir), "pedit-AAAAAAAAAAAAAAAAAAAAAA-") {
+		t.Fatalf("copy = %q", g.File())
+	}
+	if rel, err := filepath.Rel(os.TempDir(), dir); err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("copy outside the temporary directory: %q", dir)
+	}
+	if got := readFile(t, g.File()); got != "# notes\n" {
+		t.Fatalf("copy = %q", got)
+	}
+	if err := g.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary directory after Stop: %v", err)
+	}
+}
+
+func TestJoinWithDirectoryKeepsTheCopy(t *testing.T) {
+	f := setup(t, "keep\n", setupOpts{})
+	g, err := joinFromCLI(t, f, joinCLIOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Temporary() {
+		t.Fatal("copy should stay")
+	}
+	if err := g.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, g.File()); got != "keep\n" {
+		t.Fatalf("copy = %q", got)
+	}
+}
+
+func TestJoinRemovesTheTemporaryDirectoryWhenJoiningFails(t *testing.T) {
+	f := setup(t, `{"nodes":[],"edges":[]}`, setupOpts{name: "board.canvas"})
+	before := tempDirs(t)
+	if _, err := joinFromCLI(t, f, joinCLIOpts{temporary: true}); err == nil {
+		t.Fatal("joined a canvas room")
+	}
+	if after := tempDirs(t); len(after) != len(before) {
+		t.Fatalf("temporary directories left behind: %v", after)
+	}
+}
+
+// tempDirs lists pedit's temporary copy directories for this test's room.
+func tempDirs(t *testing.T) []string {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(os.TempDir(), "pedit-AAAAAAAAAAAAAAAAAAAAAA-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return matches
+}
+
 func TestJoinRefusesToClobberAFile(t *testing.T) {
 	f := setup(t, "x", setupOpts{})
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "notes.md"), []byte("mine"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := joinFromCLI(t, f, JoinOptions{Directory: dir})
+	_, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{Directory: dir}})
 	var exists *ErrFileExists
 	if !errors.As(err, &exists) || exists.Path != filepath.Join(dir, "notes.md") {
 		t.Fatalf("err = %v", err)
@@ -159,7 +230,7 @@ func TestJoinRefusesToClobberAFile(t *testing.T) {
 func TestJoinRefusesACanvasRoom(t *testing.T) {
 	f := setup(t, `{"nodes":[],"edges":[]}`, setupOpts{name: "board.canvas"})
 	dir := t.TempDir()
-	_, err := joinFromCLI(t, f, JoinOptions{Directory: dir})
+	_, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{Directory: dir}})
 	if err == nil || !strings.Contains(err.Error(), "canvas") {
 		t.Fatalf("err = %v", err)
 	}
@@ -196,21 +267,23 @@ func TestJoinGivesUpWhenTheHostStaysSilent(t *testing.T) {
 
 func TestParseShareURL(t *testing.T) {
 	key := protocol.GenerateKey()
-	ws, raw, err := parseShareURL("https://edit.piconic.ai/r/AAAAAAAAAAAAAAAAAAAAAA#" + key)
-	if err != nil || ws != "wss://edit.piconic.ai/api/rooms/AAAAAAAAAAAAAAAAAAAAAA/ws" || len(raw) != protocol.KeyBytes {
-		t.Fatalf("= %q, %d bytes, %v", ws, len(raw), err)
+	ws, id, raw, err := parseShareURL("https://edit.piconic.ai/r/AAAAAAAAAAAAAAAAAAAAAA#" + key)
+	if err != nil || ws != "wss://edit.piconic.ai/api/rooms/AAAAAAAAAAAAAAAAAAAAAA/ws" || id != "AAAAAAAAAAAAAAAAAAAAAA" || len(raw) != protocol.KeyBytes {
+		t.Fatalf("= %q, %q, %d bytes, %v", ws, id, len(raw), err)
 	}
-	if ws, _, err = parseShareURL("http://localhost:8787/r/ROOM#" + key); err != nil || ws != "ws://localhost:8787/api/rooms/ROOM/ws" {
+	if ws, _, _, err = parseShareURL("http://localhost:8787/r/ROOM_-1#" + key); err != nil || ws != "ws://localhost:8787/api/rooms/ROOM_-1/ws" {
 		t.Fatalf("= %q, %v", ws, err)
 	}
 	for _, link := range []string{
 		"notes.md",
 		"https://edit.piconic.ai/ROOM#" + key,
 		"https://edit.piconic.ai/r/ROOM/x#" + key,
+		"https://edit.piconic.ai/r/..#" + key,
+		"https://edit.piconic.ai/r/ROOM%2F..#" + key,
 		"https://edit.piconic.ai/r/ROOM",
 		"https://edit.piconic.ai/r/ROOM#not-a-key!",
 	} {
-		_, _, err := parseShareURL(link)
+		_, _, _, err := parseShareURL(link)
 		if err == nil {
 			t.Errorf("%s: accepted", link)
 		} else if strings.Contains(err.Error(), key) {

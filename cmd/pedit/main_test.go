@@ -131,21 +131,26 @@ func TestFinish(t *testing.T) {
 
 func TestFinishJoin(t *testing.T) {
 	tests := []struct {
-		name     string
-		hostLeft bool
-		stopErr  error
-		code     int
-		stdout   []string
-		not      []string
+		name      string
+		temporary bool
+		hostLeft  bool
+		stopErr   error
+		code      int
+		stdout    []string
+		not       []string
+		stderr    string
 	}{
 		{name: "left", code: 0, stdout: []string{"✓ Saved notes.md. It no longer syncs"}, not: []string{"host closed"}},
 		{name: "host left", hostLeft: true, code: 0, stdout: []string{"The host closed the room.", "✓ Saved notes.md"}},
-		{name: "not saved", stopErr: errors.New("disk full"), code: 1, not: []string{"Saved"}},
+		{name: "not saved", stopErr: errors.New("disk full"), code: 1, not: []string{"Saved"}, stderr: "could not save notes.md: disk full"},
+		{name: "temporary", temporary: true, code: 0, stdout: []string{"✓ Left the room. The temporary copy was removed."}, not: []string{"Saving", "Saved"}},
+		{name: "temporary, host left", temporary: true, hostLeft: true, code: 0, stdout: []string{"The host closed the room.", "The temporary copy was removed."}},
+		{name: "temporary not removed", temporary: true, stopErr: errors.New("busy"), code: 1, not: []string{"removed"}, stderr: "could not remove the temporary copy notes.md: busy"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr strings.Builder
-			code := finishJoin(newUI(&stdout, false, false), &stderr, "notes.md", tt.hostLeft, func() error { return tt.stopErr })
+			code := finishJoin(newUI(&stdout, false, false), &stderr, "notes.md", tt.temporary, tt.hostLeft, func() error { return tt.stopErr })
 			if code != tt.code {
 				t.Errorf("code = %d", code)
 			}
@@ -159,7 +164,7 @@ func TestFinishJoin(t *testing.T) {
 					t.Errorf("unexpected %q in %q", unwanted, stdout.String())
 				}
 			}
-			if tt.stopErr != nil && !strings.Contains(stderr.String(), "could not save notes.md: disk full") {
+			if !strings.Contains(stderr.String(), tt.stderr) {
 				t.Errorf("stderr = %q", stderr.String())
 			}
 		})
