@@ -159,6 +159,36 @@ type guest struct {
 	aw   *awareness.Awareness
 }
 
+func TestDeletingNeighborDoesNotAuthorizePeerImageReference(t *testing.T) {
+	f := setup(t, "public\n", setupOpts{})
+	image := []byte("\x89PNG\r\n\x1a\n private sibling")
+	hash := protocol.ContentHash(image)
+	dir := filepath.Join(filepath.Dir(f.file), attach.Dir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, hash+".png"), image, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool { return g.String() == "public\n" }, "initial document")
+	retained := "assets/" + hash + ".png\n"
+	neighbor := "assets/" + protocol.ContentHash([]byte("dummy")) + ".png "
+	g.insert(0, neighbor+retained)
+	prototest.WaitFor(t, wait, func() bool { return readFile(t, f.file) == neighbor+retained+"public\n" }, "adjacent peer references saved")
+	if err := os.WriteFile(f.file, []byte(retained+"public\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.session.syncing.Lock()
+	f.session.syncFromDisk()
+	f.session.syncing.Unlock()
+	f.session.attachments.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	time.Sleep(200 * time.Millisecond)
+	if f.puts.Load() != 0 {
+		t.Fatal("uploaded unchanged peer image after deleting its neighbor")
+	}
+}
+
 func (g *guest) String() string { return g.text.ToString() }
 
 func (g *guest) insert(index int, s string) {
