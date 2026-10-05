@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.11](https://github.com/piconic-ai/edit/compare/v0.0.10...v0.0.11) - 2026-10-05
+
+- Preserve adjacent image references in authorization baselines by @kfly8 in https://github.com/piconic-ai/edit/pull/83
+
 ## [v0.0.10](https://github.com/piconic-ai/edit/compare/v0.0.9...v0.0.10) - 2026-10-05
 
 - Prevent symlink redirection of atomic document saves by @kfly8 in https://github.com/piconic-ai/edit/pull/73
