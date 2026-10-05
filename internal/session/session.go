@@ -299,13 +299,18 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 	for k, v := range header {
 		req.Header[k] = v
 	}
-	res, err := client.Do(req)
+	// A room creation request can carry a Cloudflare Access credential. Keep
+	// the caller's client unchanged, and never forward that credential to a
+	// redirect destination.
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	res, err := noRedirect.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a room: %w", err)
 	}
 	defer res.Body.Close()
 	// Cloudflare Access answers requests it does not let through with its login page.
-	if strings.HasPrefix(res.Request.URL.Path, "/cdn-cgi/access/") {
+	if location, err := res.Location(); err == nil && strings.HasPrefix(location.Path, "/cdn-cgi/access/") {
 		return nil, fmt.Errorf("failed to create a room on %s: %w", server, ErrBehindAccess)
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {

@@ -325,6 +325,39 @@ func TestExplainsCloudflareAccess(t *testing.T) {
 	}
 }
 
+func TestCreateRoomDoesNotForwardAccessTokenOnRedirect(t *testing.T) {
+	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			var hits atomic.Int32
+			destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				if r.Header.Get("Cf-Access-Token") != "" {
+					t.Error("destination received Access token")
+				}
+			}))
+			defer destination.Close()
+			target := strings.Replace(destination.URL, "127.0.0.1", "localhost", 1)
+			origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Cf-Access-Token") != "synthetic-token" {
+					t.Error("origin missing Access token")
+				}
+				http.Redirect(w, r, target+"/capture", status)
+			}))
+			defer origin.Close()
+			client := origin.Client()
+			if _, err := createRoom(context.Background(), client, origin.URL, http.Header{"Cf-Access-Token": {"synthetic-token"}}); err == nil {
+				t.Fatal("accepted redirect as a room")
+			}
+			if hits.Load() != 0 {
+				t.Fatal("followed redirect")
+			}
+			if client.CheckRedirect != nil {
+				t.Fatal("changed the shared HTTP client")
+			}
+		})
+	}
+}
+
 func TestServesFileAndWritesBackGuestEdits(t *testing.T) {
 	f := setup(t, "# notes\n", setupOpts{})
 	g := joinAsGuest(t, f.relay, f.session.URL)
