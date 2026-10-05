@@ -208,7 +208,7 @@ func TestSavesAnnouncedImages(t *testing.T) {
 	if err != nil || !bytes.Equal(got, png) {
 		t.Fatalf("file = %q, %v", got, err)
 	}
-	if info, _ := os.Stat(filepath.Join(filepath.Dir(h.file), "assets", hash+".png")); info.Mode().Perm() != 0o644 {
+	if info, _ := os.Stat(filepath.Join(filepath.Dir(h.file), "assets", hash+".png")); info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode = %v", info.Mode())
 	}
 

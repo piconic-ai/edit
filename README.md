@@ -108,6 +108,9 @@ Edits in the opposite direction follow the same process.
 - **Local files, temporary sessions.** The relay does not store document text.
   The relay attempts to delete encrypted images when the host leaves; a
   one-day bucket lifecycle rule handles failed deletions. Removal is not immediate.
+- **Private local copies.** On Unix, new CLI join copies and saved attachments
+  use owner-only permissions, further restricted by your umask. Updates retain
+  an existing document's permissions; existing files are not retroactively made private.
 - **The link grants editing access.** Anyone with the full link can read and
   edit during the session. Share it only with people you trust. Closing a
   session does not erase copies participants have made.

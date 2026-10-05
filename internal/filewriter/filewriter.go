@@ -3,7 +3,6 @@ package filewriter
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,12 +11,10 @@ import (
 )
 
 // WriteAtomic writes the file atomically: a temp file in the same directory,
-// then rename over. The file's mode is kept.
+// then rename over. Existing permissions are kept; new files are private
+// (0600, restricted further by the process umask).
 func WriteAtomic(path, content string) error {
-	mode := fs.FileMode(0o644)
-	if st, err := os.Stat(path); err == nil {
-		mode = st.Mode().Perm()
-	}
+	existing, _ := os.Stat(path)
 	// Create exclusively under a fresh name. Opening a predictable path could
 	// follow a link planted by someone who can write in this directory.
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".pedit-*.tmp")
@@ -26,9 +23,9 @@ func WriteAtomic(path, content string) error {
 	}
 	defer os.Remove(tmp.Name())
 	_, err = tmp.WriteString(content)
-	if err == nil {
+	if err == nil && existing != nil {
 		// Set permissions through the open descriptor, not a second path lookup.
-		err = tmp.Chmod(mode)
+		err = tmp.Chmod(existing.Mode().Perm())
 	}
 	if err = errors.Join(err, tmp.Close()); err != nil {
 		return err
