@@ -433,7 +433,7 @@ func (s *Session) syncFromDisk() {
 		s.invalidOnDisk = ""
 		changed = true
 		if s.attachments != nil {
-			s.attachments.AllowLocalDocument(onDisk)
+			s.attachments.AllowLocalChanges(lastWritten, onDisk)
 		}
 		return onDisk
 	})

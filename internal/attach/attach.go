@@ -159,6 +159,20 @@ func (a *Attachments) AllowLocalDocument(document string) {
 	}
 }
 
+// AllowLocalChanges authorizes only references introduced by the local edit.
+// References already persisted from peer edits do not gain permission merely
+// because the host edits another part of the file.
+func (a *Attachments) AllowLocalChanges(base, next string) {
+	previous := documentHashes(base)
+	a.allowedMu.Lock()
+	defer a.allowedMu.Unlock()
+	for hash := range documentHashes(next) {
+		if _, existed := previous[hash]; !existed {
+			a.allowed[hash] = struct{}{}
+		}
+	}
+}
+
 func (a *Attachments) allowedHash(hash string) bool {
 	a.allowedMu.RLock()
 	defer a.allowedMu.RUnlock()

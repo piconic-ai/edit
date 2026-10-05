@@ -482,6 +482,20 @@ func TestDoesNotUploadUnreferencedSiblingImage(t *testing.T) {
 	}
 }
 
+func TestLocalChangesAuthorizeOnlyNewReferences(t *testing.T) {
+	h := newHarness(t)
+	peer := protocol.ContentHash(png)
+	local := protocol.ContentHash(jpeg)
+	base := "![](assets/" + peer + ".png)\n"
+	h.a.AllowLocalChanges(base, base+"![](assets/"+local+".jpg)\n")
+	if h.a.allowedHash(peer) {
+		t.Fatal("authorized retained peer reference")
+	}
+	if !h.a.allowedHash(local) {
+		t.Fatal("did not authorize new local reference")
+	}
+}
+
 func TestResendsImageSavedInThisSession(t *testing.T) {
 	h := newHarness(t)
 	hash := h.announce(png, "image/png")

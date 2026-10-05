@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/piconic-ai/edit/internal/attach"
 	"github.com/piconic-ai/edit/internal/protocol"
 	"github.com/piconic-ai/edit/internal/protocol/prototest"
 	"github.com/reearth/ygo/awareness"
@@ -55,6 +56,7 @@ func TestWatchedReplacementLinkNeverReachesGuest(t *testing.T) {
 }
 
 type fixture struct {
+	puts     atomic.Int32
 	file     string
 	relay    *prototest.Relay
 	server   *httptest.Server
@@ -84,6 +86,9 @@ func setup(t *testing.T, content string, o setupOpts) *fixture {
 	}
 	var mu sync.Mutex
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			f.puts.Add(1)
+		}
 		mu.Lock()
 		f.requests = append(f.requests, r.Method+" "+r.URL.String())
 		mu.Unlock()
@@ -116,6 +121,35 @@ func setup(t *testing.T, content string, o setupOpts) *fixture {
 	// Guests are turned away until the host is in the room.
 	prototest.WaitFor(t, wait, func() bool { return s.Client.Status() == protocol.StatusConnected }, "host connected")
 	return f
+}
+
+func TestUnrelatedLocalEditDoesNotAuthorizePeerImageReference(t *testing.T) {
+	f := setup(t, "public\n", setupOpts{})
+	image := []byte("\x89PNG\r\n\x1a\n private sibling")
+	hash := protocol.ContentHash(image)
+	dir := filepath.Join(filepath.Dir(f.file), attach.Dir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, hash+".png"), image, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool { return g.String() == "public\n" }, "initial document")
+	link := "![](assets/" + hash + ".png)\n"
+	g.insert(0, link)
+	prototest.WaitFor(t, wait, func() bool { return readFile(t, f.file) == link+"public\n" }, "peer reference saved")
+	if err := os.WriteFile(f.file, []byte(link+"public\nlocal edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.session.syncing.Lock()
+	f.session.syncFromDisk()
+	f.session.syncing.Unlock()
+	f.session.attachments.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	time.Sleep(200 * time.Millisecond)
+	if f.puts.Load() != 0 {
+		t.Fatal("uploaded an unauthorized peer reference after a local edit")
+	}
 }
 
 type guest struct {
