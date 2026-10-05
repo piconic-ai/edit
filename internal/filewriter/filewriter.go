@@ -3,7 +3,6 @@ package filewriter
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,25 +14,26 @@ import (
 // WriteAtomic writes the file atomically: a temp file in the same directory,
 // then rename over. The file's mode is kept.
 func WriteAtomic(path, content string) error {
-	tmp := filepath.Join(filepath.Dir(path), fmt.Sprintf(".%s.pedit-%d.tmp", filepath.Base(path), os.Getpid()))
 	mode := fs.FileMode(0o644)
 	if st, err := os.Stat(path); err == nil {
 		mode = st.Mode().Perm()
 	}
-	if err := os.WriteFile(tmp, []byte(content), mode); err != nil {
-		_ = os.Remove(tmp)
+	// Create exclusively under a fresh name. Opening a predictable path could
+	// follow a link planted by someone who can write in this directory.
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".pedit-*.tmp")
+	if err != nil {
 		return err
 	}
-	// WriteFile's mode is subject to the umask; set it explicitly.
-	if err := os.Chmod(tmp, mode); err != nil {
-		_ = os.Remove(tmp)
+	defer os.Remove(tmp.Name())
+	_, err = tmp.WriteString(content)
+	if err == nil {
+		// Set permissions through the open descriptor, not a second path lookup.
+		err = tmp.Chmod(mode)
+	}
+	if err = errors.Join(err, tmp.Close()); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return os.Rename(tmp.Name(), path)
 }
 
 // ReadFile reads path as text, replacing invalid UTF-8 like a text editor would.
