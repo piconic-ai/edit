@@ -245,6 +245,7 @@ func TestGivesUpOnStalledRequests(t *testing.T) {
 	h := newHarness(t)
 	h.a.timeout = 100 * time.Millisecond
 	stalled := protocol.ContentHash(jpeg)
+	h.a.AllowLocalDocument("![](assets/" + stalled + ".jpg)")
 	h.mu.Lock()
 	h.stall[h.blobPath(stalled)] = true
 	h.mu.Unlock()
@@ -389,6 +390,7 @@ func TestNeverWritesOutsideTheFilesDirectory(t *testing.T) {
 func TestUploadsWantedImagesFromDisk(t *testing.T) {
 	h := newHarness(t)
 	hash := protocol.ContentHash(png)
+	h.a.AllowLocalDocument("![](assets/" + hash + ".png)")
 	dir := filepath.Join(filepath.Dir(h.file), "assets")
 	_ = os.Mkdir(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, hash+".png"), png, 0o644)
@@ -412,6 +414,7 @@ func TestUploadsWantedImagesFromDisk(t *testing.T) {
 func TestResendsWantedImagesAfterAWhile(t *testing.T) {
 	h := newHarness(t)
 	hash := protocol.ContentHash(png)
+	h.a.AllowLocalDocument("![](assets/" + hash + ".png)")
 	dir := filepath.Join(filepath.Dir(h.file), "assets")
 	_ = os.Mkdir(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, hash+".png"), png, 0o644)
@@ -447,6 +450,7 @@ func TestServesOnlyIntactImagesFromAssets(t *testing.T) {
 	_ = os.WriteFile(h.file, png, 0o644)
 
 	hashes := []string{missing, tampered, strings.Repeat("0", 32)}
+	h.a.AllowLocalDocument("![](assets/" + tampered + ".png)")
 	if symlinked {
 		hashes = append(hashes, linked)
 	}
@@ -456,6 +460,54 @@ func TestServesOnlyIntactImagesFromAssets(t *testing.T) {
 	defer h.mu.Unlock()
 	if len(h.blobs) != 0 {
 		t.Fatalf("uploaded %d blobs", len(h.blobs))
+	}
+}
+
+func TestDoesNotUploadUnreferencedSiblingImage(t *testing.T) {
+	h := newHarness(t)
+	hash := protocol.ContentHash(png)
+	dir := filepath.Join(filepath.Dir(h.file), Dir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, hash+".png"), png, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	h.nothingSent()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.blobs) != 0 {
+		t.Fatal("uploaded an unreferenced image")
+	}
+}
+
+func TestLocalChangesAuthorizeOnlyNewReferences(t *testing.T) {
+	h := newHarness(t)
+	peer := protocol.ContentHash(png)
+	local := protocol.ContentHash(jpeg)
+	base := "![](assets/" + peer + ".png)\n"
+	h.a.AllowLocalChanges(base, base+"![](assets/"+local+".jpg)\n")
+	if h.a.allowedHash(peer) {
+		t.Fatal("authorized retained peer reference")
+	}
+	if !h.a.allowedHash(local) {
+		t.Fatal("did not authorize new local reference")
+	}
+}
+
+func TestResendsImageSavedInThisSession(t *testing.T) {
+	h := newHarness(t)
+	hash := h.announce(png, "image/png")
+	if m := h.next(); m.Kind != protocol.AttachmentStored {
+		t.Fatalf("got %+v", m)
+	}
+	h.mu.Lock()
+	delete(h.blobs, h.blobPath(hash))
+	h.mu.Unlock()
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	if m := h.next(); m.Kind != protocol.AttachmentAnnounce || m.Hash != hash {
+		t.Fatalf("got %+v", m)
 	}
 }
 

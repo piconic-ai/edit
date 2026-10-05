@@ -1,0 +1,47 @@
+package attach
+
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/piconic-ai/edit/internal/protocol"
+)
+
+// This asserts the audit finding, not the intended fixed behavior.
+func TestSecurityReauditUploadsUnreferencedSiblingAsset(t *testing.T) {
+	h := newHarness(t)
+	const document = "# Only this text is shared\n"
+	if err := os.WriteFile(h.file, []byte(document), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	private := []byte("\x89PNG\r\n\x1a\n synthetic private image from another document")
+	hash := protocol.ContentHash(private)
+	dir := filepath.Join(filepath.Dir(h.file), Dir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, hash+".png"), private, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The peer knows only the attachment's filename/hash; the shared document
+	// does not link to it and it was never saved by this session.
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	message := h.next()
+	if message.Kind != protocol.AttachmentAnnounce || message.Hash != hash {
+		t.Fatalf("unexpected response: %+v", message)
+	}
+	h.mu.Lock()
+	ciphertext := append([]byte(nil), h.blobs[h.blobPath(hash)]...)
+	h.mu.Unlock()
+	got, err := h.keys.Decrypt(ciphertext, hash)
+	if err != nil || !bytes.Equal(got, private) {
+		t.Fatalf("unreferenced image was not uploaded: %v", err)
+	}
+	current, err := os.ReadFile(h.file)
+	if err != nil || string(current) != document {
+		t.Fatal("shared document changed")
+	}
+	t.Log("unreferenced pre-existing sibling image was uploaded and decrypted with the current room's keys")
+}

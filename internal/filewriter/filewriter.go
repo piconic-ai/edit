@@ -49,6 +49,7 @@ func ReadFile(path string) (content string, ok bool) {
 // OnExternalChange instead, so the change can be merged first.
 type Writer struct {
 	path             string
+	bound            *BoundFile
 	delay            time.Duration
 	onError          func(error)
 	onExternalChange func()
@@ -62,6 +63,7 @@ type Writer struct {
 }
 
 type Options struct {
+	Bound            *BoundFile
 	Delay            time.Duration
 	OnError          func(error)
 	OnExternalChange func()
@@ -70,6 +72,7 @@ type Options struct {
 func New(path, initial string, opts Options) *Writer {
 	w := &Writer{
 		path:             path,
+		bound:            opts.Bound,
 		delay:            opts.Delay,
 		onError:          opts.OnError,
 		onExternalChange: opts.OnExternalChange,
@@ -119,14 +122,25 @@ func (w *Writer) Flush() error {
 	w.mu.Unlock()
 
 	if pending == nil || *pending == w.lastWritten {
+		if w.bound != nil {
+			return w.bound.Validate()
+		}
 		return nil
 	}
-	onDisk, ok := ReadFile(w.path)
+	read := func() (string, bool) { return ReadFile(w.path) }
+	if w.bound != nil {
+		read = w.bound.Read
+	}
+	onDisk, ok := read()
 	if ok && onDisk != w.lastWritten {
 		w.onExternalChange()
 		return ErrExternalChange
 	}
-	if err := WriteAtomic(w.path, *pending); err != nil {
+	write := func(content string) error { return WriteAtomic(w.path, content) }
+	if w.bound != nil {
+		write = w.bound.Write
+	}
+	if err := write(*pending); err != nil {
 		w.onError(err)
 		return err
 	}

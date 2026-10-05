@@ -163,6 +163,9 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	s.Client.Connect()
 
 	fail := func(err error) (*Session, error) {
+		if s.bound != nil {
+			_ = s.bound.Close()
+		}
 		s.Client.Destroy()
 		s.stopAlive()
 		aw.Destroy()
@@ -206,8 +209,13 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fail(err)
 	}
+	s.bound, err = filewriter.OpenBound(s.file)
+	if err != nil {
+		return fail(err)
+	}
 
 	w := filewriter.New(s.file, "", filewriter.Options{
+		Bound:            s.bound,
 		Delay:            opts.WriteDelay,
 		OnError:          onError,
 		OnExternalChange: s.scheduleSyncFromDisk,
@@ -228,7 +236,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		if content := s.content.render(); content != "" {
 			w.Schedule(content)
 		} else {
-			created = filewriter.WriteAtomic(s.file, "")
+			created = s.bound.Write("")
 		}
 	})
 	if created != nil {

@@ -17,7 +17,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/piconic-ai/edit/internal/protocol"
@@ -73,6 +75,8 @@ var (
 type Options struct {
 	// File is the shared file; attachments go to Dir beside it.
 	File string
+	// InitialDocument is the host's local file before peers can edit the room.
+	InitialDocument string
 	// Server is the base URL of the piconic edit server, and Room the room id.
 	Server string
 	Room   string
@@ -93,11 +97,13 @@ type Options struct {
 // in the background, so the room's read loop never waits on the network or
 // the disk.
 type Attachments struct {
-	opts   Options
-	queue  chan protocol.Attachment
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan struct{}
+	opts      Options
+	queue     chan protocol.Attachment
+	ctx       context.Context
+	cancel    context.CancelFunc
+	done      chan struct{}
+	allowedMu sync.RWMutex
+	allowed   map[string]struct{} // locally authorized image hashes
 
 	// Touched only by the worker goroutine.
 	total   int64
@@ -122,13 +128,56 @@ func New(opts Options) *Attachments {
 		ctx:     ctx,
 		cancel:  cancel,
 		done:    make(chan struct{}),
+		allowed: map[string]struct{}{},
 		stored:  map[string]string{},
 		served:  map[string]time.Time{},
 		now:     time.Now,
 		timeout: requestTimeout,
 	}
+	a.AllowLocalDocument(opts.InitialDocument)
 	go a.run()
 	return a
+}
+
+var assetReference = regexp.MustCompile(`(?:^|[^[:alnum:]_])assets/([0-9a-f]{32})\.(?:png|jpg|gif|webp)(?:$|[^[:alnum:]_.])`)
+
+func documentHashes(document string) map[string]struct{} {
+	hashes := map[string]struct{}{}
+	for _, match := range assetReference.FindAllStringSubmatch(document, -1) {
+		hashes[match[1]] = struct{}{}
+	}
+	return hashes
+}
+
+// AllowLocalDocument authorizes references in a file read from the host's
+// disk. Callers must not pass the peer-editable live document here.
+func (a *Attachments) AllowLocalDocument(document string) {
+	a.allowedMu.Lock()
+	defer a.allowedMu.Unlock()
+	for hash := range documentHashes(document) {
+		a.allowed[hash] = struct{}{}
+	}
+}
+
+// AllowLocalChanges authorizes only references introduced by the local edit.
+// References already persisted from peer edits do not gain permission merely
+// because the host edits another part of the file.
+func (a *Attachments) AllowLocalChanges(base, next string) {
+	previous := documentHashes(base)
+	a.allowedMu.Lock()
+	defer a.allowedMu.Unlock()
+	for hash := range documentHashes(next) {
+		if _, existed := previous[hash]; !existed {
+			a.allowed[hash] = struct{}{}
+		}
+	}
+}
+
+func (a *Attachments) allowedHash(hash string) bool {
+	a.allowedMu.RLock()
+	defer a.allowedMu.RUnlock()
+	_, ok := a.allowed[hash]
+	return ok
 }
 
 // Handle queues an attachment message from the room. It never blocks.
@@ -210,6 +259,9 @@ func (a *Attachments) announced(hash, mime string) {
 		return
 	}
 	a.stored[hash] = path
+	a.allowedMu.Lock()
+	a.allowed[hash] = struct{}{}
+	a.allowedMu.Unlock()
 	if written {
 		a.count++
 		a.total += int64(len(content))
@@ -225,6 +277,9 @@ func (a *Attachments) wanted(hashes []string) {
 	for _, hash := range hashes {
 		if a.ctx.Err() != nil {
 			return
+		}
+		if !a.allowedHash(hash) {
+			continue
 		}
 		if last, ok := a.served[hash]; ok && a.now().Sub(last) < resendInterval {
 			continue

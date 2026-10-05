@@ -1,0 +1,74 @@
+package filewriter
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestSecurityAuditPredictableTempSymlink(t *testing.T) {
+	dir := t.TempDir()
+	shared := filepath.Join(dir, "notes.md")
+	victim := filepath.Join(dir, "private.txt")
+	if err := os.WriteFile(shared, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(shared, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(victim, []byte("private original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(dir, fmt.Sprintf(".notes.md.pedit-%d.tmp", os.Getpid()))
+	if err := os.Symlink(victim, tmp); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteAtomic(shared, "peer controlled update"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(victim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := os.Lstat(shared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "peer controlled update" || st.Mode().Perm() != 0o644 || link.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("unexpected result: content=%q mode=%o symlink=%v", got, st.Mode().Perm(), link.Mode()&os.ModeSymlink != 0)
+	}
+	t.Logf("CONFIRMED: unrelated file overwritten, mode=%o, shared file became symlink", st.Mode().Perm())
+}
+
+// Run this test with `umask 077` in the invoking shell.
+func TestSecurityAuditNewFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	control := filepath.Join(dir, "control.txt")
+	if err := os.WriteFile(control, []byte("control"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(control)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Skip("requires umask 077")
+	}
+	path := filepath.Join(dir, "joined.txt")
+	if err := WriteAtomic(path, "private room text"); err != nil {
+		t.Fatal(err)
+	}
+	st, err = os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o644 {
+		t.Fatalf("unexpected permissions: %o", st.Mode().Perm())
+	}
+	t.Logf("CONFIRMED: new shared file mode=%o despite umask 077", st.Mode().Perm())
+}

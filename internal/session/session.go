@@ -57,6 +57,7 @@ type Session struct {
 	Text   *crdt.YText
 	Client *protocol.Client
 	Writer *filewriter.Writer
+	bound  *filewriter.BoundFile
 
 	file        string
 	content     content
@@ -107,7 +108,16 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	if onError == nil {
 		onError = func(error) {}
 	}
-	initial, ok := filewriter.ReadFile(opts.File)
+	bound, err := filewriter.OpenBound(opts.File)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %s: %w", opts.File, err)
+	}
+	defer func() {
+		if bound != nil {
+			_ = bound.Close()
+		}
+	}()
+	initial, ok := bound.Read()
 	if !ok {
 		return nil, fmt.Errorf("cannot read %s", opts.File)
 	}
@@ -169,11 +179,13 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		Doc:       doc,
 		Text:      text,
 		file:      opts.File,
+		bound:     bound,
 		content:   shared,
 		awareness: aw,
 		onError:   onError,
 	}
 	s.Writer = filewriter.New(opts.File, initial, filewriter.Options{
+		Bound:            bound,
 		Delay:            opts.WriteDelay,
 		OnError:          onError,
 		OnExternalChange: s.scheduleSyncFromDisk,
@@ -201,9 +213,10 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		return nil, err
 	}
 	s.attachments = attach.New(attach.Options{
-		File:   opts.File,
-		Server: server,
-		Room:   room.ID,
+		File:            opts.File,
+		InitialDocument: initial,
+		Server:          server,
+		Room:            room.ID,
 		// Without the host token: blobs are for everyone in the room.
 		Header:     opts.Header,
 		HTTPClient: opts.HTTPClient,
@@ -229,6 +242,7 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 			return nil, err
 		}
 	}
+	bound = nil // Session owns the directory handle from here.
 	return s, nil
 }
 
@@ -285,13 +299,18 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 	for k, v := range header {
 		req.Header[k] = v
 	}
-	res, err := client.Do(req)
+	// A room creation request can carry a Cloudflare Access credential. Keep
+	// the caller's client unchanged, and never forward that credential to a
+	// redirect destination.
+	noRedirect := *client
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	res, err := noRedirect.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a room: %w", err)
 	}
 	defer res.Body.Close()
 	// Cloudflare Access answers requests it does not let through with its login page.
-	if strings.HasPrefix(res.Request.URL.Path, "/cdn-cgi/access/") {
+	if location, err := res.Location(); err == nil && strings.HasPrefix(location.Path, "/cdn-cgi/access/") {
 		return nil, fmt.Errorf("failed to create a room on %s: %w", server, ErrBehindAccess)
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
@@ -394,7 +413,7 @@ func (s *Session) syncFromDisk() {
 	changed := false
 	// Rebase drops any pending write, which predates the merge.
 	s.Writer.Rebase(func(lastWritten string) string {
-		onDisk, ok := readSettled(s.file)
+		onDisk, ok := settle(s.bound.Read, 30*time.Millisecond, 10)
 		if !ok {
 			return lastWritten
 		}
@@ -418,6 +437,9 @@ func (s *Session) syncFromDisk() {
 		}
 		s.invalidOnDisk = ""
 		changed = true
+		if s.attachments != nil {
+			s.attachments.AllowLocalChanges(lastWritten, onDisk)
+		}
 		return onDisk
 	})
 	if changed {
@@ -518,9 +540,12 @@ func (s *Session) Stop() error {
 		}
 		s.stopAlive()
 		s.awareness.Destroy()
+		if s.bound != nil {
+			s.stopErr = errors.Join(s.stopErr, s.bound.Close())
+		}
 		if s.temp != "" {
 			// A temporary copy is for the session only: nothing to save.
-			s.stopErr = removeTemp(s.temp)
+			s.stopErr = errors.Join(s.stopErr, removeTemp(s.temp))
 		}
 	})
 	return s.stopErr

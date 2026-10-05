@@ -10,12 +10,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/piconic-ai/edit/internal/attach"
 	"github.com/piconic-ai/edit/internal/protocol"
 	"github.com/piconic-ai/edit/internal/protocol/prototest"
 	"github.com/reearth/ygo/awareness"
@@ -24,7 +26,37 @@ import (
 
 const wait = 3 * time.Second
 
+func TestWatchedReplacementLinkNeverReachesGuest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privileges on Windows")
+	}
+	const original = "public\n"
+	const secret = "private outside the shared directory\n"
+	f := setup(t, original, setupOpts{watch: true})
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool { return g.String() == original }, "initial document")
+	victim := filepath.Join(t.TempDir(), "private.md")
+	if err := os.WriteFile(victim, []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(f.file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, f.file); err != nil {
+		t.Fatal(err)
+	}
+	f.session.scheduleSyncFromDisk()
+	time.Sleep(400 * time.Millisecond)
+	if got := g.String(); got != original {
+		t.Fatalf("guest received %q", got)
+	}
+	if err := f.session.Stop(); err == nil {
+		t.Fatal("final save accepted replacement link")
+	}
+}
+
 type fixture struct {
+	puts     atomic.Int32
 	file     string
 	relay    *prototest.Relay
 	server   *httptest.Server
@@ -54,6 +86,9 @@ func setup(t *testing.T, content string, o setupOpts) *fixture {
 	}
 	var mu sync.Mutex
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			f.puts.Add(1)
+		}
 		mu.Lock()
 		f.requests = append(f.requests, r.Method+" "+r.URL.String())
 		mu.Unlock()
@@ -86,6 +121,35 @@ func setup(t *testing.T, content string, o setupOpts) *fixture {
 	// Guests are turned away until the host is in the room.
 	prototest.WaitFor(t, wait, func() bool { return s.Client.Status() == protocol.StatusConnected }, "host connected")
 	return f
+}
+
+func TestUnrelatedLocalEditDoesNotAuthorizePeerImageReference(t *testing.T) {
+	f := setup(t, "public\n", setupOpts{})
+	image := []byte("\x89PNG\r\n\x1a\n private sibling")
+	hash := protocol.ContentHash(image)
+	dir := filepath.Join(filepath.Dir(f.file), attach.Dir)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, hash+".png"), image, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool { return g.String() == "public\n" }, "initial document")
+	link := "![](assets/" + hash + ".png)\n"
+	g.insert(0, link)
+	prototest.WaitFor(t, wait, func() bool { return readFile(t, f.file) == link+"public\n" }, "peer reference saved")
+	if err := os.WriteFile(f.file, []byte(link+"public\nlocal edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.session.syncing.Lock()
+	f.session.syncFromDisk()
+	f.session.syncing.Unlock()
+	f.session.attachments.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	time.Sleep(200 * time.Millisecond)
+	if f.puts.Load() != 0 {
+		t.Fatal("uploaded an unauthorized peer reference after a local edit")
+	}
 }
 
 type guest struct {
@@ -256,6 +320,39 @@ func TestExplainsCloudflareAccess(t *testing.T) {
 			}
 			if !errors.Is(err, ErrBehindAccess) {
 				t.Fatalf("err = %v, want ErrBehindAccess", err)
+			}
+		})
+	}
+}
+
+func TestCreateRoomDoesNotForwardAccessTokenOnRedirect(t *testing.T) {
+	for _, status := range []int{http.StatusFound, http.StatusTemporaryRedirect, http.StatusPermanentRedirect} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			var hits atomic.Int32
+			destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits.Add(1)
+				if r.Header.Get("Cf-Access-Token") != "" {
+					t.Error("destination received Access token")
+				}
+			}))
+			defer destination.Close()
+			target := strings.Replace(destination.URL, "127.0.0.1", "localhost", 1)
+			origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Cf-Access-Token") != "synthetic-token" {
+					t.Error("origin missing Access token")
+				}
+				http.Redirect(w, r, target+"/capture", status)
+			}))
+			defer origin.Close()
+			client := origin.Client()
+			if _, err := createRoom(context.Background(), client, origin.URL, http.Header{"Cf-Access-Token": {"synthetic-token"}}); err == nil {
+				t.Fatal("accepted redirect as a room")
+			}
+			if hits.Load() != 0 {
+				t.Fatal("followed redirect")
+			}
+			if client.CheckRedirect != nil {
+				t.Fatal("changed the shared HTTP client")
 			}
 		})
 	}
