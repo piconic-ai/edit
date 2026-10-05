@@ -2,8 +2,10 @@ package filewriter
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -44,6 +46,75 @@ func TestWriteAtomic(t *testing.T) {
 	entries, _ := os.ReadDir(filepath.Dir(path))
 	if len(entries) != 1 {
 		t.Fatalf("left files behind: %v", entries)
+	}
+}
+
+func TestWriteAtomicIgnoresPlantedTempFile(t *testing.T) {
+	for _, symlink := range []bool{false, true} {
+		t.Run(fmt.Sprintf("symlink=%v", symlink), func(t *testing.T) {
+			path := setup(t, "old")
+			victim := filepath.Join(filepath.Dir(path), "private.txt")
+			if err := os.WriteFile(victim, []byte("private"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			planted := filepath.Join(filepath.Dir(path), fmt.Sprintf(".a.md.pedit-%d.tmp", os.Getpid()))
+			if symlink {
+				if err := os.Symlink(victim, planted); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skip(err)
+					}
+					t.Fatal(err)
+				}
+			} else if err := os.WriteFile(planted, []byte("planted"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteAtomic(path, "new"); err != nil {
+				t.Fatal(err)
+			}
+			if got := read(t, victim); got != "private" {
+				t.Fatalf("victim changed: %q", got)
+			}
+			st, err := os.Stat(victim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
+				t.Fatalf("victim mode = %v", st.Mode())
+			}
+			st, err = os.Lstat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !st.Mode().IsRegular() || read(t, path) != "new" {
+				t.Fatal("shared file was not replaced with a regular file")
+			}
+			want := "planted"
+			if symlink {
+				want = "private"
+			}
+			if got := read(t, planted); got != want {
+				t.Fatalf("planted file changed: %q", got)
+			}
+			entries, err := os.ReadDir(filepath.Dir(path))
+			if err != nil || len(entries) != 3 {
+				t.Fatalf("temporary files leaked: %v, %v", entries, err)
+			}
+		})
+	}
+}
+
+func TestWriteAtomicCleansUpAfterRenameFailure(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "directory")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteAtomic(path, "new"); err == nil {
+		t.Fatal("expected rename failure")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("temporary files leaked: %v, %v", entries, err)
 	}
 }
 
