@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.10](https://github.com/piconic-ai/edit/compare/v0.0.9...v0.0.10) - 2026-10-05
+
+- Prevent symlink redirection of atomic document saves by @kfly8 in https://github.com/piconic-ai/edit/pull/73
+- Require room admission before allocating relay resources by @kfly8 in https://github.com/piconic-ai/edit/pull/74
+- Keep new document copies and attachments private by @kfly8 in https://github.com/piconic-ai/edit/pull/75
+- Bind shared file I/O to its original directory by @kfly8 in https://github.com/piconic-ai/edit/pull/78
+- Restrict attachment resends to host-authorized images by @kfly8 in https://github.com/piconic-ai/edit/pull/79
+- Reject room creation redirects carrying Access credentials by @kfly8 in https://github.com/piconic-ai/edit/pull/80
+- Update audited dependencies and record remediation by @kfly8 in https://github.com/piconic-ai/edit/pull/81
+
 ## [v0.0.9](https://github.com/piconic-ai/edit/compare/v0.0.8...v0.0.9) - 2026-10-04
 
 - Join a room from the command line to edit its copy in any editor by @kfly8 in https://github.com/piconic-ai/edit/pull/71
