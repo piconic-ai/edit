@@ -278,7 +278,11 @@ func (a *Attachments) request(ctx context.Context, method, hash string, body []b
 	for k, v := range a.opts.Header {
 		req.Header[k] = v
 	}
-	return a.opts.HTTPClient.Do(req)
+	req.Header.Set(protocol.AdmissionHeader, a.opts.Keys.Admission)
+	// Never forward the room capability to a redirect destination.
+	client := *a.opts.HTTPClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return client.Do(req)
 }
 
 // fetch downloads and decrypts an attachment, checking it against its hash.

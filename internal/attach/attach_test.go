@@ -2,6 +2,7 @@ package attach
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,6 +24,30 @@ var (
 	png  = []byte("\x89PNG\r\n\x1a\n a png")
 	jpeg = []byte("\xff\xd8\xff\xe0 a jpeg")
 )
+
+func TestDoesNotForwardAdmissionToRedirect(t *testing.T) {
+	var hits atomic.Int32
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1) }))
+	defer destination.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	defer origin.Close()
+	raw, _ := protocol.DecodeKey(protocol.GenerateKey())
+	keys, err := protocol.DeriveBlobKeys(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &Attachments{opts: Options{Server: origin.URL, Room: room, Keys: keys, HTTPClient: http.DefaultClient}}
+	res, err := a.request(context.Background(), http.MethodGet, protocol.ContentHash(png), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusTemporaryRedirect || hits.Load() != 0 {
+		t.Fatal("followed a credential-bearing redirect")
+	}
+}
 
 type harness struct {
 	t    *testing.T
@@ -55,7 +81,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	// Stands in for the Worker's blob store.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Cf-Access-Token") != "token" {
+		if r.Header.Get("Cf-Access-Token") != "token" || r.Header.Get(protocol.AdmissionHeader) != keys.Admission {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}

@@ -88,6 +88,15 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	token, err := AdmissionToken(opts.Key)
+	if err != nil {
+		return nil, err
+	}
+	opts.Header = opts.Header.Clone()
+	if opts.Header == nil {
+		opts.Header = http.Header{}
+	}
+	opts.Header.Set("Sec-WebSocket-Protocol", SocketProtocol+", "+AdmissionProtocolPrefix+token)
 	if opts.Dial == nil {
 		opts.Dial = DialWebSocket
 	}

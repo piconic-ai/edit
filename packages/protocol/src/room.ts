@@ -3,6 +3,7 @@ import * as encoding from 'lib0/encoding'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as syncProtocol from 'y-protocols/sync'
 import type * as Y from 'yjs'
+import { admissionProtocols } from './admission.ts'
 import {
   type Attachment,
   decodeAttachment,
@@ -39,11 +40,12 @@ export interface RoomClientOptions {
   /** WebSocket URL of the room. Must never contain the key. */
   url: string
   key: CryptoKey
+  admissionToken: string
   doc: Y.Doc
   awareness: awarenessProtocol.Awareness
   /** Extra handshake headers (Node.js only; browsers cannot set them). */
   headers?: Record<string, string>
-  createSocket?: (url: string, headers?: Record<string, string>) => SocketLike
+  createSocket?: (url: string, headers?: Record<string, string>, protocols?: string[]) => SocketLike
   minBackoffMs?: number
   maxBackoffMs?: number
   onStatus?: (status: RoomStatus) => void
@@ -88,7 +90,11 @@ export class RoomClient {
     if (this.destroyed || this.socket) return
     this.setStatus('connecting')
     const createSocket = this.opts.createSocket ?? defaultCreateSocket
-    const socket = createSocket(this.opts.url, this.opts.headers)
+    const socket = createSocket(
+      this.opts.url,
+      this.opts.headers,
+      admissionProtocols(this.opts.admissionToken),
+    )
     socket.binaryType = 'arraybuffer'
     this.socket = socket
 
@@ -280,9 +286,13 @@ interface AwarenessChanges {
 
 // Node.js (undici) accepts `{ headers }` as the second argument; browsers take
 // subprotocols there, so only pass it when headers are given.
-function defaultCreateSocket(url: string, headers?: Record<string, string>): SocketLike {
+function defaultCreateSocket(
+  url: string,
+  headers?: Record<string, string>,
+  protocols?: string[],
+): SocketLike {
   const WS = WebSocket as unknown as new (url: string, init?: unknown) => SocketLike
-  return headers ? new WS(url, { headers }) : new WS(url)
+  return headers ? new WS(url, { headers, protocols }) : new WS(url, protocols)
 }
 
 function toBytes(data: unknown): Uint8Array | null {

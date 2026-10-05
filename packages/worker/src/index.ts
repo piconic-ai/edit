@@ -53,8 +53,8 @@ app.get('/api/rooms/:id/ws', async (c) => {
   return room.fetch(new Request(c.req.raw, { headers }))
 })
 
-// Encrypted attachments, stored while the room's host is connected. Anyone in
-// the room may read and write them, as they may join the WebSocket.
+// Encrypted attachments, stored while the room's host is connected. The Room
+// verifies the admission capability before allowing reads or writes.
 app.all('/api/rooms/:id/blobs/:blobId', async (c) => {
   const id = c.req.param('id')
   if (!ROOM_ID.test(id) || !BLOB_ID.test(c.req.param('blobId'))) {

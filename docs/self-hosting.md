@@ -47,6 +47,30 @@ The CLI reads its token once at startup and does not refresh it during a
 session. If it expires, finish with Ctrl+C, restart pedit and share the new
 session link.
 
+## Updating to room admission
+
+The relay now requires a room admission token on WebSocket and attachment
+requests. Update the relay, bundled browser editor, and CLI together. End
+existing sessions before deploying, upgrade the CLI on hosts and CLI guests,
+and reload browser tabs before starting new sessions. Older clients without
+the token are rejected; there is no unauthenticated compatibility fallback.
+
+The share link remains `/r/<room>#<key>`. Clients derive an independent token
+with HKDF; the encryption key still never reaches the server. The host
+registers the token's hash through its authenticated WebSocket handshake.
+The hash survives Durable Object hibernation and is deleted when the last
+host leaves. This admission check supplements Cloudflare Access; it does not
+replace your identity policy.
+
+Treat `X-Pedit-Admission` and the credential-bearing `Sec-WebSocket-Protocol`
+request header as secrets in custom proxy, tracing, and logging configuration.
+Do not put the token in URLs or query parameters. HTTP attachment requests
+and CLI WebSocket handshakes reject redirects to avoid forwarding credentials.
+Configure the CLI with the final service URL.
+
+See [room admission protocol](contributing/room-admission.md) for the wire
+format and compatibility requirements.
+
 ## Attachment cleanup
 
 `pnpm run deploy` applies the rules in `scripts/r2-lifecycle.json` to the bucket

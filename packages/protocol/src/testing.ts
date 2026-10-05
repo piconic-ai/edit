@@ -16,12 +16,14 @@ export class Relay {
   frames: Uint8Array[] = []
   urls: string[] = []
   headers: (Record<string, string> | undefined)[] = []
+  protocols: (string[] | undefined)[] = []
 
   constructor(readonly opts: RelayOptions = {}) {}
 
-  create = (url: string, headers?: Record<string, string>): SocketLike => {
+  create = (url: string, headers?: Record<string, string>, protocols?: string[]): SocketLike => {
     this.urls.push(url)
     this.headers.push(headers)
+    this.protocols.push(protocols)
     const socket = new FakeSocket(this, Boolean(headers?.Authorization))
     this.sockets.add(socket)
     queueMicrotask(() => {

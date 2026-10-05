@@ -111,6 +111,9 @@ Edits in the opposite direction follow the same process.
 - **The link grants editing access.** Anyone with the full link can read and
   edit during the session. Share it only with people you trust. Closing a
   session does not erase copies participants have made.
+- **Room IDs alone do not grant access.** Clients derive a separate admission
+  token from the fragment key. The relay checks this token before accepting
+  connections or attachment requests; the token cannot decrypt content.
 - **Your relay, your access rules.** Use the public relay at `edit.piconic.ai`,
   or [self-host](#self-host) to require sign-in with Cloudflare Access.
 

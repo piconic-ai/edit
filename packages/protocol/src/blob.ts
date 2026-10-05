@@ -1,3 +1,4 @@
+import { deriveAdmissionToken } from './admission.ts'
 import { decrypt, encrypt } from './cipher.ts'
 import { decodeKey, toBase64Url } from './key.ts'
 
@@ -6,6 +7,8 @@ import { decodeKey, toBase64Url } from './key.ts'
  * separate from the frame key, so a blob can never be replayed as a frame.
  */
 export interface BlobKeys {
+  /** Relay capability; cannot decrypt attachments or frames. */
+  admission: string
   /** AES-GCM key for blob bodies. */
   enc: CryptoKey
   /** HMAC-SHA256 key for blob ids. */
@@ -43,7 +46,7 @@ export async function deriveBlobKeys(roomKey: string): Promise<BlobKeys> {
       'sign',
     ]),
   ])
-  return { enc, id }
+  return { enc, id, admission: await deriveAdmissionToken(roomKey) }
 }
 
 /** Names an attachment by its content; the host uses it as the file name. */

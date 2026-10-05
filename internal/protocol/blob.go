@@ -35,6 +35,8 @@ func ValidBlobID(s string) bool { return blobIDPattern.MatchString(s) }
 type BlobKeys struct {
 	cipher *Cipher
 	id     []byte
+	// Admission is safe to send to the relay; it cannot decrypt blobs or frames.
+	Admission string
 }
 
 // DeriveBlobKeys derives the attachment keys from a raw room key.
@@ -54,7 +56,11 @@ func DeriveBlobKeys(key []byte) (*BlobKeys, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &BlobKeys{cipher: c, id: id}, nil
+	admission, err := AdmissionToken(key)
+	if err != nil {
+		return nil, err
+	}
+	return &BlobKeys{cipher: c, id: id, Admission: admission}, nil
 }
 
 // ContentHash names an attachment by its content; the host uses it as the file name.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/coder/websocket"
 )
@@ -42,7 +43,14 @@ const maxFrameBytes = 64 << 20
 
 // DialWebSocket is the default Dialer.
 func DialWebSocket(ctx context.Context, url string, header http.Header) (Conn, error) {
-	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: header})
+	var protocols []string
+	for _, p := range strings.Split(header.Get("Sec-WebSocket-Protocol"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			protocols = append(protocols, p)
+		}
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	c, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: header, Subprotocols: protocols, HTTPClient: client})
 	if err != nil {
 		return nil, err
 	}

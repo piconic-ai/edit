@@ -36,8 +36,18 @@ func newServer(t *testing.T) *httptest.Server {
 	var mu sync.Mutex
 	conns := map[*websocket.Conn]bool{}
 	blobs := map[string][]byte{}
+	admission := ""
+	checkAdmission := func(r *http.Request) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return admission != "" && r.Header.Get(protocol.AdmissionHeader) == admission
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("PUT /api/rooms/{id}/blobs/{blob}", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAdmission(r) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -52,6 +62,10 @@ func newServer(t *testing.T) *httptest.Server {
 		w.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("GET /api/rooms/{id}/blobs/{blob}", func(w http.ResponseWriter, r *http.Request) {
+		if !checkAdmission(r) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		mu.Lock()
 		body, ok := blobs[r.URL.Path]
 		mu.Unlock()
@@ -66,7 +80,23 @@ func newServer(t *testing.T) *httptest.Server {
 		_ = json.NewEncoder(w).Encode(map[string]string{"id": roomID, "hostToken": "host-token"})
 	})
 	mux.HandleFunc("GET /api/rooms/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, nil)
+		token := ""
+		for _, p := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+			if v, ok := strings.CutPrefix(strings.TrimSpace(p), protocol.AdmissionProtocolPrefix); ok {
+				token = v
+			}
+		}
+		mu.Lock()
+		if admission == "" && r.Header.Get("Authorization") == "Bearer host-token" && len(token) == 43 {
+			admission = token
+		}
+		allowed := admission != "" && admission == token
+		mu.Unlock()
+		if !allowed {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{protocol.SocketProtocol}})
 		if err != nil {
 			return
 		}
@@ -178,6 +208,7 @@ func TestAttachmentsWithJavaScriptGuest(t *testing.T) {
 	attachments := make(chan protocol.Attachment, 1)
 	host, err := protocol.NewClient(protocol.ClientOptions{
 		URL:          wsURL(server),
+		Header:       http.Header{"Authorization": {"Bearer host-token"}},
 		Key:          raw,
 		Doc:          doc,
 		Awareness:    awareness.New(uint64(doc.ClientID())),

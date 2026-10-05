@@ -23,6 +23,7 @@ const protocol = await import(pathToFileURL(join(protocolDir, 'src/index.ts')).h
 const doc = new Y.Doc()
 let stored = null
 const client = new protocol.RoomClient({
+  admissionToken: await protocol.deriveAdmissionToken(key),
   url,
   key: await protocol.importKey(key),
   doc,
