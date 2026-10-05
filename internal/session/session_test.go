@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +24,35 @@ import (
 )
 
 const wait = 3 * time.Second
+
+func TestWatchedReplacementLinkNeverReachesGuest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privileges on Windows")
+	}
+	const original = "public\n"
+	const secret = "private outside the shared directory\n"
+	f := setup(t, original, setupOpts{watch: true})
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool { return g.String() == original }, "initial document")
+	victim := filepath.Join(t.TempDir(), "private.md")
+	if err := os.WriteFile(victim, []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(f.file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, f.file); err != nil {
+		t.Fatal(err)
+	}
+	f.session.scheduleSyncFromDisk()
+	time.Sleep(400 * time.Millisecond)
+	if got := g.String(); got != original {
+		t.Fatalf("guest received %q", got)
+	}
+	if err := f.session.Stop(); err == nil {
+		t.Fatal("final save accepted replacement link")
+	}
+}
 
 type fixture struct {
 	file     string

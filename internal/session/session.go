@@ -57,6 +57,7 @@ type Session struct {
 	Text   *crdt.YText
 	Client *protocol.Client
 	Writer *filewriter.Writer
+	bound  *filewriter.BoundFile
 
 	file        string
 	content     content
@@ -107,7 +108,16 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	if onError == nil {
 		onError = func(error) {}
 	}
-	initial, ok := filewriter.ReadFile(opts.File)
+	bound, err := filewriter.OpenBound(opts.File)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open %s: %w", opts.File, err)
+	}
+	defer func() {
+		if bound != nil {
+			_ = bound.Close()
+		}
+	}()
+	initial, ok := bound.Read()
 	if !ok {
 		return nil, fmt.Errorf("cannot read %s", opts.File)
 	}
@@ -169,11 +179,13 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		Doc:       doc,
 		Text:      text,
 		file:      opts.File,
+		bound:     bound,
 		content:   shared,
 		awareness: aw,
 		onError:   onError,
 	}
 	s.Writer = filewriter.New(opts.File, initial, filewriter.Options{
+		Bound:            bound,
 		Delay:            opts.WriteDelay,
 		OnError:          onError,
 		OnExternalChange: s.scheduleSyncFromDisk,
@@ -229,6 +241,7 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 			return nil, err
 		}
 	}
+	bound = nil // Session owns the directory handle from here.
 	return s, nil
 }
 
@@ -394,7 +407,7 @@ func (s *Session) syncFromDisk() {
 	changed := false
 	// Rebase drops any pending write, which predates the merge.
 	s.Writer.Rebase(func(lastWritten string) string {
-		onDisk, ok := readSettled(s.file)
+		onDisk, ok := settle(s.bound.Read, 30*time.Millisecond, 10)
 		if !ok {
 			return lastWritten
 		}
@@ -521,6 +534,9 @@ func (s *Session) Stop() error {
 		if s.temp != "" {
 			// A temporary copy is for the session only: nothing to save.
 			s.stopErr = removeTemp(s.temp)
+		}
+		if s.bound != nil {
+			s.stopErr = errors.Join(s.stopErr, s.bound.Close())
 		}
 	})
 	return s.stopErr
