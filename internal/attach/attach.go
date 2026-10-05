@@ -360,7 +360,8 @@ func (a *Attachments) save(hash, ext string, content []byte) (string, bool, erro
 		return "", false, err
 	}
 	_, err = tmp.Write(content)
-	err = errors.Join(err, tmp.Close(), os.Chmod(tmp.Name(), 0o644))
+	// Keep CreateTemp's private permissions, including the caller's umask.
+	err = errors.Join(err, tmp.Close())
 	if err == nil {
 		err = os.Rename(tmp.Name(), path)
 	}

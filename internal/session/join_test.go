@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +72,32 @@ func TestJoinWritesAnEmptyCopyForAnEmptyFile(t *testing.T) {
 	}
 	if got := readFile(t, g.File()); got != "" {
 		t.Fatalf("copy = %q", got)
+	}
+}
+
+func TestJoinedCopiesArePrivateInExistingDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions")
+	}
+	for _, initial := range []string{"", "private text"} {
+		t.Run(fmt.Sprintf("initial=%q", initial), func(t *testing.T) {
+			f := setup(t, initial, setupOpts{})
+			dir := t.TempDir()
+			if err := os.Chmod(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			g, err := joinFromCLI(t, f, joinCLIOpts{JoinOptions: JoinOptions{Directory: dir}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(g.File())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0o600 {
+				t.Fatalf("joined copy mode = %v", info.Mode())
+			}
+		})
 	}
 }
 
