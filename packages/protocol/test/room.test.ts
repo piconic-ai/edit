@@ -29,6 +29,7 @@ async function join(
   const awareness = new Awareness(doc)
   if (state) awareness.setLocalState(state)
   const client = new RoomClient({
+    admissionToken: 'A'.repeat(43),
     url: 'ws://test',
     key,
     doc,
@@ -106,6 +107,7 @@ describe('RoomClient', () => {
     const a = await join(relay, await importKey(generateKey()), 'mine')
     const doc = new Y.Doc()
     const b = new RoomClient({
+      admissionToken: 'A'.repeat(43),
       url: 'ws://test',
       key: await importKey(generateKey()),
       doc,
@@ -127,6 +129,7 @@ describe('RoomClient', () => {
     const a = await join(relay, key)
     const doc = new Y.Doc()
     const b = new RoomClient({
+      admissionToken: 'A'.repeat(43),
       url: 'ws://test',
       key,
       doc,
@@ -157,6 +160,7 @@ describe('RoomClient', () => {
     const a = await join(relay, key)
     const doc = new Y.Doc()
     const b = new RoomClient({
+      admissionToken: 'A'.repeat(43),
       url: 'ws://test',
       key,
       doc,
@@ -182,6 +186,7 @@ describe('RoomClient', () => {
     const errors: unknown[] = []
     const doc = new Y.Doc()
     const b = new RoomClient({
+      admissionToken: 'A'.repeat(43),
       url: 'ws://test',
       key,
       doc,
@@ -217,6 +222,8 @@ describe('RoomClient', () => {
     const relay = new Relay()
     await join(relay, await importKey(generateKey()), '', undefined, { Authorization: 'Bearer t' })
     expect(relay.headers).toEqual([{ Authorization: 'Bearer t' }])
+    expect(relay.protocols).toEqual([['pedit-v1', `pedit-admission.${'A'.repeat(43)}`]])
+    expect(relay.urls).toEqual(['ws://test'])
   })
 
   it('stops for good when the host leaves', async () => {

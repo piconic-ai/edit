@@ -24,6 +24,7 @@ const doc = new Y.Doc()
 const awareness = new Awareness(doc)
 const replies = new Map()
 const client = new protocol.RoomClient({
+  admissionToken: await protocol.deriveAdmissionToken(key),
   url,
   key: await protocol.importKey(key),
   doc,

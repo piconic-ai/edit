@@ -1,4 +1,5 @@
 import {
+  ADMISSION_HEADER,
   type Attachment,
   blobIdFor,
   contentHash,
@@ -44,6 +45,8 @@ async function setup(statuses: number[] = [201], opts: Partial<AttachmentsOption
   const sent: Attachment[] = []
   const requests: { url: string; body: Uint8Array }[] = []
   const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    expect(new Headers(init?.headers).get(ADMISSION_HEADER)).toBe(keys.admission)
+    expect(init?.redirect).toBe('error')
     requests.push({ url: String(url), body: init?.body as Uint8Array })
     return new Response(null, { status: statuses.shift() ?? 201 })
   })
@@ -233,6 +236,8 @@ describe('Attachments as the preview sees them', () => {
     const blobs = new Map<string, Uint8Array>()
     const gets: string[] = []
     const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get(ADMISSION_HEADER)).toBe(keys.admission)
+      expect(init?.redirect).toBe('error')
       if (offline) throw new TypeError('Failed to fetch')
       if (init?.method === 'PUT') {
         blobs.set(String(url), init.body as Uint8Array)
@@ -288,7 +293,11 @@ describe('Attachments as the preview sees them', () => {
     attachments.lookup(`assets/${hash}.png`)
     attachments.lookup(`assets/${other}.jpg`)
     // Both go in one message.
-    await vi.waitFor(() => expect(sent).toEqual([{ kind: 'want', hashes: [hash, other] }]))
+    // Hashing/fetching either image may finish first; the batch is unordered.
+    await vi.waitFor(() => {
+      expect(sent).toEqual([{ kind: 'want', hashes: expect.arrayContaining([hash, other]) }])
+      expect(sent[0]).toHaveProperty('hashes.length', 2)
+    })
     expect(attachments.lookup(`assets/${hash}.png`)).toBe('loading')
 
     await put(STRIPPED)

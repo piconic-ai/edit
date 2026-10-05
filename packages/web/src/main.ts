@@ -230,9 +230,10 @@ async function joinRoom(
   })
   // Filled in once the client exists; nothing is sent before it connects.
   let client: RoomClient | undefined
+  const blobKeys = await deriveBlobKeys(key)
   const attachments = new Attachments({
     roomId: id,
-    keys: await deriveBlobKeys(key),
+    keys: blobKeys,
     send: (a) => client?.sendAttachment(a),
   })
   const notices = new NoticeBoard()
@@ -410,6 +411,7 @@ async function joinRoom(
   client = new RoomClient({
     url: roomSocketUrl(location, id),
     key: await importKey(key),
+    admissionToken: blobKeys.admission,
     doc,
     awareness,
     onStatus: (s) => {

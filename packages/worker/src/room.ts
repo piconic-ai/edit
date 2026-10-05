@@ -1,5 +1,19 @@
 import { DurableObject } from 'cloudflare:workers'
+import {
+  ADMISSION_HEADER,
+  ADMISSION_PATTERN,
+  readAdmissionProtocol,
+  SOCKET_PROTOCOL,
+} from '@pedit/protocol/admission'
 import { ROOM_CLOSED } from '@pedit/protocol/close'
+
+// Shared browser code brings DOM's SubtleCrypto into this program. Augment it
+// with the documented Workers extension also present in our generated types.
+declare global {
+  interface SubtleCrypto {
+    timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean
+  }
+}
 
 export const MAX_PEERS = 32
 export const MAX_MESSAGE_BYTES = 1024 * 1024
@@ -15,6 +29,7 @@ export const ROOM_BLOB_COUNT = 500
 const HOST_TAG = 'host'
 const BLOB_PATH = /\/blobs\/([A-Za-z0-9_-]{22})$/
 const USAGE_KEY = 'blobUsage'
+const ADMISSION_KEY = 'admissionHash'
 
 interface Usage {
   bytes: number
@@ -52,20 +67,46 @@ export class Room extends DurableObject<Env> {
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
       return new Response('expected a WebSocket upgrade', { status: 426 })
     }
-    if (this.ctx.getWebSockets().length >= MAX_PEERS) {
-      return new Response('room is full', { status: 429 })
-    }
+    const token = readAdmissionProtocol(request.headers.get('Sec-WebSocket-Protocol'))
+    if (!token) return new Response('room admission required; update your client', { status: 403 })
     const isHost = request.headers.get(HOST_HEADER) === '1'
-    const { 0: client, 1: server } = new WebSocketPair()
     if (!isHost && this.hosts().length === 0) {
       // Accept only to tell the client why: browsers cannot read HTTP errors of
       // a failed upgrade, but they do see close codes.
+      const { 0: client, 1: server } = new WebSocketPair()
       server.accept()
       server.close(ROOM_CLOSED, 'room is closed')
-      return new Response(null, { status: 101, webSocket: client })
+      return new Response(null, {
+        status: 101,
+        webSocket: client,
+        headers: { 'Sec-WebSocket-Protocol': SOCKET_PROTOCOL },
+      })
     }
+    // Authenticate before taking a peer slot. Only the authenticated host may
+    // register the verifier; a guest cannot claim an unopened room's token.
+    if (!(await this.authorize(token, isHost)))
+      return new Response('invalid room admission', { status: 403 })
+    if (this.ctx.getWebSockets().length >= MAX_PEERS) {
+      return new Response('room is full', { status: 429 })
+    }
+    const { 0: client, 1: server } = new WebSocketPair()
     this.ctx.acceptWebSocket(server, isHost ? [HOST_TAG] : [])
-    return new Response(null, { status: 101, webSocket: client })
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+      headers: { 'Sec-WebSocket-Protocol': SOCKET_PROTOCOL },
+    })
+  }
+
+  private async authorize(token: string, register = false): Promise<boolean> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
+    // Persist the verifier across hibernation. Read after hashing so concurrent
+    // host handshakes cannot each install a different token.
+    const expected = this.ctx.storage.kv.get<ArrayBuffer>(ADMISSION_KEY)
+    if (expected) return crypto.subtle.timingSafeEqual(expected, digest)
+    if (!register) return false
+    this.ctx.storage.kv.put(ADMISSION_KEY, digest)
+    return true
   }
 
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
@@ -109,11 +150,15 @@ export class Room extends DurableObject<Env> {
     // End the session at once: its quota and uploads no longer count.
     this.generation++
     this.ctx.storage.kv.delete(USAGE_KEY)
+    this.ctx.storage.kv.delete(ADMISSION_KEY)
     this.cleaning = this.cleaning.then(() => this.deleteBlobs())
     await this.cleaning
   }
 
   private async blob(request: Request, id: string): Promise<Response> {
+    const token = request.headers.get(ADMISSION_HEADER)
+    if (!token || !ADMISSION_PATTERN.test(token))
+      return new Response('room admission required', { status: 403 })
     // Another session may end while we wait, chaining a newer cleanup.
     let cleaning: Promise<void>
     do {
@@ -121,6 +166,8 @@ export class Room extends DurableObject<Env> {
       await cleaning
     } while (cleaning !== this.cleaning)
     if (this.hosts().length === 0) return new Response('room is closed', { status: 410 })
+    if (!(await this.authorize(token)))
+      return new Response('invalid room admission', { status: 403 })
     const key = this.blobPrefix() + id
     if (request.method === 'GET') {
       const object = await this.env.BLOBS.get(key)

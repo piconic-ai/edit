@@ -1,4 +1,5 @@
 import {
+  ADMISSION_HEADER,
   type Attachment,
   type BlobKeys,
   blobIdFor,
@@ -306,10 +307,14 @@ export class Attachments implements ImageResolver {
     let data: Uint8Array
     try {
       const url = `/api/rooms/${this.#opts.roomId}/blobs/${await blobIdFor(this.#opts.keys, hash)}`
-      let res = await this.#fetch(url)
+      const init: RequestInit = {
+        headers: { [ADMISSION_HEADER]: this.#opts.keys.admission },
+        redirect: 'error',
+      }
+      let res = await this.#fetch(url, init)
       // Uploaded while we were asking: ask once more before wanting it.
       if (res.status === 404 && this.#announcedWhileLoading.has(hash)) {
-        res = await this.#fetch(url)
+        res = await this.#fetch(url, init)
       }
       if (res.status === 404) {
         this.#want(hash)
@@ -379,7 +384,12 @@ export class Attachments implements ImageResolver {
     for (let attempt = 0; ; attempt++) {
       let res: Response
       try {
-        res = await this.#fetch(url, { method: 'PUT', body: body as Uint8Array<ArrayBuffer> })
+        res = await this.#fetch(url, {
+          method: 'PUT',
+          body: body as Uint8Array<ArrayBuffer>,
+          headers: { [ADMISSION_HEADER]: this.#opts.keys.admission },
+          redirect: 'error',
+        })
       } catch {
         throw new AttachmentError(MESSAGES.failed)
       }

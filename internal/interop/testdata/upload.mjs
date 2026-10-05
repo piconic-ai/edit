@@ -25,6 +25,7 @@ const doc = new Y.Doc()
 const awareness = new Awareness(doc)
 const received = []
 const client = new protocol.RoomClient({
+  admissionToken: await protocol.deriveAdmissionToken(key),
   url: `${server.replace(/^http/, 'ws')}/api/rooms/${room}/ws`,
   key: await protocol.importKey(key),
   doc,
@@ -43,6 +44,7 @@ async function until(what, cond) {
 }
 
 const keys = await protocol.deriveBlobKeys(key)
+const headers = { [protocol.ADMISSION_HEADER]: keys.admission }
 const blobUrl = async (hash) =>
   `${server}/api/rooms/${room}/blobs/${await protocol.blobIdFor(keys, hash)}`
 
@@ -65,6 +67,7 @@ const png = new Uint8Array([
 const hash = await protocol.contentHash(png)
 const put = await fetch(await blobUrl(hash), {
   method: 'PUT',
+  headers,
   body: await protocol.encryptBlob(keys, png),
 })
 if (!put.ok) throw new Error(`upload failed: ${put.status}`)
@@ -75,12 +78,13 @@ const stored = await until('the stored reply', () =>
 process.stdout.write(`stored ${stored.path}\n`)
 
 // An image from an earlier session: not in the blob store until asked for.
-if ((await fetch(await blobUrl(wanted))).status !== 404) throw new Error('expected a 404')
+if ((await fetch(await blobUrl(wanted), { headers })).status !== 404)
+  throw new Error('expected a 404')
 client.sendAttachment({ kind: 'want', hashes: [wanted] })
 await until('the host to upload it', () =>
   received.some((a) => a.kind === 'announce' && a.hash === wanted),
 )
-const res = await fetch(await blobUrl(wanted))
+const res = await fetch(await blobUrl(wanted), { headers })
 const bytes = await protocol.decryptBlob(keys, new Uint8Array(await res.arrayBuffer()), wanted)
 const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 process.stdout.write(`wanted ${hex}\n`)

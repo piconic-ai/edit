@@ -1,4 +1,6 @@
+import { evictDurableObject } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
+import { ADMISSION_HEADER, admissionProtocols } from '@pedit/protocol/admission'
 import { describe, expect, it, vi } from 'vitest'
 import { roomIdFor } from '../src/index.ts'
 import { MAX_BLOB_BYTES, MAX_MESSAGE_BYTES, MAX_PEERS } from '../src/room.ts'
@@ -8,12 +10,18 @@ const ROOM_CLOSED = 4001
 interface Room {
   id: string
   hostToken: string
+  admission: string
 }
+
+const admissions = new Map<string, string>()
 
 async function createRoom(): Promise<Room> {
   const res = await exports.default.fetch('https://pedit.test/api/rooms', { method: 'POST' })
   expect(res.status).toBe(201)
-  return res.json<Room>()
+  const room = await res.json<Room>()
+  room.admission = crypto.randomUUID().replaceAll('-', '') + 'A'.repeat(11)
+  admissions.set(room.id, room.admission)
+  return room
 }
 
 interface Peer {
@@ -24,7 +32,11 @@ interface Peer {
 
 function upgrade(id: string, headers: Record<string, string> = {}): Promise<Response> {
   return exports.default.fetch(`https://pedit.test/api/rooms/${id}/ws`, {
-    headers: { Upgrade: 'websocket', ...headers },
+    headers: {
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Protocol': admissionProtocols(admissions.get(id)!).join(', '),
+      ...headers,
+    },
   })
 }
 
@@ -51,6 +63,52 @@ const until = async (check: () => boolean) => {
 }
 
 describe('rooms', () => {
+  it('rejects keyless clients before they consume peer slots', async () => {
+    const room = await createRoom()
+    await host(room)
+    for (let i = 0; i < MAX_PEERS + 1; i++) {
+      expect((await upgrade(room.id, { 'Sec-WebSocket-Protocol': '' })).status).toBe(403)
+    }
+    const wrong = admissionProtocols('B'.repeat(43)).join(', ')
+    expect((await upgrade(room.id, { 'Sec-WebSocket-Protocol': wrong })).status).toBe(403)
+    expect(
+      (await upgrade(room.id, { 'Sec-WebSocket-Protocol': wrong, 'X-Pedit-Host': '1' })).status,
+    ).toBe(403)
+    const valid = await upgrade(room.id)
+    expect(valid.status).toBe(101)
+    expect(valid.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v1')
+    valid.webSocket?.accept()
+    valid.webSocket?.close()
+  })
+
+  it('only lets the host register admission and preserves it across hibernation', async () => {
+    const room = await createRoom()
+    const attacker = await connect(room.id, {
+      'Sec-WebSocket-Protocol': admissionProtocols('B'.repeat(43)).join(', '),
+    })
+    expect((await attacker.closed).code).toBe(ROOM_CLOSED)
+    await host(room)
+    const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+    await evictDurableObject(stub)
+    await connect(room.id)
+    expect(
+      (
+        await upgrade(room.id, {
+          'Sec-WebSocket-Protocol': admissionProtocols('B'.repeat(43)).join(', '),
+        })
+      ).status,
+    ).toBe(403)
+    // Even an authenticated host cannot change the token during this session.
+    expect(
+      (
+        await upgrade(room.id, {
+          Authorization: `Bearer ${room.hostToken}`,
+          'Sec-WebSocket-Protocol': admissionProtocols('B'.repeat(43)).join(', '),
+        })
+      ).status,
+    ).toBe(403)
+  })
+
   it('issues unguessable room ids derived from the host token', async () => {
     const a = await createRoom()
     const b = await createRoom()
@@ -163,14 +221,23 @@ function blobUrl(room: Room | string, id: string): string {
 }
 
 const putBlob = (room: Room, id: string, body: Uint8Array<ArrayBuffer>) =>
-  exports.default.fetch(blobUrl(room, id), { method: 'PUT', body })
+  exports.default.fetch(blobUrl(room, id), {
+    method: 'PUT',
+    body,
+    headers: { [ADMISSION_HEADER]: room.admission },
+  })
 
-const getBlob = (room: Room, id: string) => exports.default.fetch(blobUrl(room, id))
+const getBlob = (room: Room, id: string) =>
+  exports.default.fetch(blobUrl(room, id), { headers: { [ADMISSION_HEADER]: room.admission } })
 
 /** A PUT whose body arrives only when finish() is called. */
 function slowPut(room: Room, id: string, size: number) {
   const { readable, writable } = new FixedLengthStream(size)
-  const res = exports.default.fetch(blobUrl(room, id), { method: 'PUT', body: readable })
+  const res = exports.default.fetch(blobUrl(room, id), {
+    method: 'PUT',
+    body: readable,
+    headers: { [ADMISSION_HEADER]: room.admission },
+  })
   return {
     // Give the request time to reach the room and claim the id.
     started: () => new Promise((r) => setTimeout(r, 50)),
@@ -190,6 +257,34 @@ async function roomBlobs(room: Room): Promise<string[]> {
 }
 
 describe('blobs', () => {
+  it('rejects missing and wrong admission without consuming blob quota', async () => {
+    const room = await createRoom()
+    await host(room)
+    for (const token of ['', 'B'.repeat(43)]) {
+      for (let i = 0; i < 4; i++) {
+        expect(
+          (
+            await exports.default.fetch(blobUrl(room, blobId(i)), {
+              method: 'PUT',
+              body: new Uint8Array(),
+              headers: { [ADMISSION_HEADER]: token, 'X-Pedit-Host': '1' },
+            })
+          ).status,
+        ).toBe(403)
+      }
+      expect(
+        (
+          await exports.default.fetch(blobUrl(room, blobId(0)), {
+            headers: { [ADMISSION_HEADER]: token },
+          })
+        ).status,
+      ).toBe(403)
+    }
+    expect(await roomBlobs(room)).toEqual([])
+    expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(201)
+    expect((await getBlob(room, blobId(1))).status).toBe(200)
+  })
+
   it('stores and serves blobs while the host is connected', async () => {
     const room = await createRoom()
     await host(room)
@@ -231,7 +326,10 @@ describe('blobs', () => {
     await host(room)
     expect((await exports.default.fetch(blobUrl(room, 'short'))).status).toBe(400)
     expect((await exports.default.fetch(blobUrl('nope', blobId(1)))).status).toBe(400)
-    const del = await exports.default.fetch(blobUrl(room, blobId(1)), { method: 'DELETE' })
+    const del = await exports.default.fetch(blobUrl(room, blobId(1)), {
+      method: 'DELETE',
+      headers: { [ADMISSION_HEADER]: room.admission },
+    })
     expect(del.status).toBe(405)
     const big = await putBlob(room, blobId(1), new Uint8Array(MAX_BLOB_BYTES + 1))
     expect(big.status).toBe(413)
@@ -239,6 +337,7 @@ describe('blobs', () => {
     const { readable, writable } = new TransformStream()
     const unsized = exports.default.fetch(blobUrl(room, blobId(1)), {
       method: 'PUT',
+      headers: { [ADMISSION_HEADER]: room.admission },
       body: readable,
     })
     await writable.close()
