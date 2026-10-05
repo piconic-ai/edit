@@ -496,6 +496,29 @@ func TestLocalChangesAuthorizeOnlyNewReferences(t *testing.T) {
 	}
 }
 
+func TestDocumentHashesIncludesAdjacentReferences(t *testing.T) {
+	first, second := protocol.ContentHash(png), protocol.ContentHash(jpeg)
+	for _, separator := range []string{" ", "\n", ",", ")", "界"} {
+		t.Run(separator, func(t *testing.T) {
+			got := documentHashes("assets/" + first + ".png" + separator + "assets/" + second + ".jpg")
+			if len(got) != 2 {
+				t.Fatalf("extracted %v, want both references", got)
+			}
+			if _, ok := got[first]; !ok {
+				t.Fatal("missing first reference")
+			}
+			if _, ok := got[second]; !ok {
+				t.Fatal("missing second reference")
+			}
+		})
+	}
+	for _, document := range []string{"xassets/" + first + ".png", "_assets/" + first + ".png", "assets/" + first + ".pngx", "assets/" + first + ".png.exe"} {
+		if got := documentHashes(document); len(got) != 0 {
+			t.Fatalf("invalid boundary in %q: %v", document, got)
+		}
+	}
+}
+
 func TestResendsImageSavedInThisSession(t *testing.T) {
 	h := newHarness(t)
 	hash := h.announce(png, "image/png")

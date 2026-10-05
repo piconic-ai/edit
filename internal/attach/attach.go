@@ -139,14 +139,27 @@ func New(opts Options) *Attachments {
 	return a
 }
 
-var assetReference = regexp.MustCompile(`(?:^|[^[:alnum:]_])assets/([0-9a-f]{32})\.(?:png|jpg|gif|webp)(?:$|[^[:alnum:]_.])`)
+var assetReference = regexp.MustCompile(`assets/([0-9a-f]{32})\.(?:png|jpg|gif|webp)`)
 
 func documentHashes(document string) map[string]struct{} {
 	hashes := map[string]struct{}{}
-	for _, match := range assetReference.FindAllStringSubmatch(document, -1) {
-		hashes[match[1]] = struct{}{}
+	// Validate boundaries without consuming them: adjacent references may
+	// share one separator, and both must be present in the authorization base.
+	for _, match := range assetReference.FindAllStringSubmatchIndex(document, -1) {
+		start, end := match[0], match[1]
+		if start > 0 && assetWordByte(document[start-1]) {
+			continue
+		}
+		if end < len(document) && (assetWordByte(document[end]) || document[end] == '.') {
+			continue
+		}
+		hashes[document[match[2]:match[3]]] = struct{}{}
 	}
 	return hashes
+}
+
+func assetWordByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }
 
 // AllowLocalDocument authorizes references in a file read from the host's
