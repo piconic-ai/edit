@@ -6,6 +6,12 @@
   "engines": {
     "node": ">=22"
   },
+  "pnpm": {
+    "overrides": {
+      "sharp": "0.35.4",
+      "undici": "7.29.1"
+    }
+  },
   "scripts": {
     "build": "pnpm -r build",
     "deploy": "node scripts/deploy-self-host.mjs",

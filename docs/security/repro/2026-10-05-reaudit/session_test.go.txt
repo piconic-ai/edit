@@ -1,0 +1,80 @@
+package session
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/piconic-ai/edit/internal/protocol/prototest"
+)
+
+// Audit probes assert the vulnerable behavior. They are saved outside the
+// normal suite after the audit; all credentials and content are synthetic.
+func TestSecurityReauditCreateRoomRedirectLeaksAccessHeader(t *testing.T) {
+	const token = "synthetic-access-token-for-local-audit"
+	seen := make(chan string, 1)
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.Header.Get("Cf-Access-Token")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"id":"AAAAAAAAAAAAAAAAAAAAAA","hostToken":"synthetic-host-token"}`)
+	}))
+	defer destination.Close()
+	// A different hostname and an HTTPS -> HTTP downgrade. Both listeners
+	// are local; no actual access token is used.
+	target := strings.Replace(destination.URL, "127.0.0.1", "localhost", 1)
+	origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cf-Access-Token") != token {
+			t.Error("origin did not receive the synthetic header")
+		}
+		http.Redirect(w, r, target+"/capture", http.StatusTemporaryRedirect)
+	}))
+	defer origin.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := createRoom(ctx, origin.Client(), origin.URL, http.Header{"Cf-Access-Token": {token}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-seen:
+		if got != token {
+			t.Fatal("the audit's credential-forwarding hypothesis did not reproduce")
+		}
+	case <-ctx.Done():
+		t.Fatal("redirect destination was not reached")
+	}
+	t.Log("synthetic Access header reached a different HTTP origin after an HTTPS redirect")
+}
+
+func TestSecurityReauditWatchedSymlinkSharesOutsideFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix symlink audit")
+	}
+	const original = "public shared document\n"
+	const secret = "synthetic private content outside the shared directory\n"
+	f := setup(t, original, setupOpts{watch: true})
+	g := joinAsGuest(t, f.relay, f.session.URL)
+	prototest.WaitFor(t, wait, func() bool { return g.String() == original }, "initial public document")
+	victim := filepath.Join(t.TempDir(), "private.txt")
+	if err := os.WriteFile(victim, []byte(secret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(f.file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, f.file); err != nil {
+		t.Fatal(err)
+	}
+	prototest.WaitFor(t, wait, func() bool { return g.String() == secret }, "outside file arrived at guest")
+	got, err := os.ReadFile(victim)
+	if err != nil || string(got) != secret {
+		t.Fatalf("victim changed or became unreadable: %v", err)
+	}
+	t.Log("a remote guest received the synthetic private file after the watched path became a symlink")
+}

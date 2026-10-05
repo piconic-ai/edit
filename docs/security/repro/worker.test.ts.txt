@@ -1,0 +1,34 @@
+import { exports } from 'cloudflare:workers'
+import { expect, it } from 'vitest'
+import { MAX_PEERS } from '../src/room.ts'
+
+it('audit: room ID alone exhausts connection slots and attachment quota', async () => {
+  const created = await exports.default.fetch('https://pedit.test/api/rooms', { method: 'POST' })
+  const room = await created.json<{ id: string; hostToken: string }>()
+  const sockets: WebSocket[] = []
+  const upgrade = (headers: Record<string, string> = {}) =>
+    exports.default.fetch(`https://pedit.test/api/rooms/${room.id}/ws`, {
+      headers: { Upgrade: 'websocket', ...headers },
+    })
+  const accept = (res: Response) => {
+    expect(res.status).toBe(101)
+    if (!res.webSocket) throw new Error('no websocket')
+    res.webSocket.accept()
+    sockets.push(res.webSocket)
+  }
+  try {
+    accept(await upgrade({ Authorization: `Bearer ${room.hostToken}` }))
+    // No room key is ever generated or presented by these clients.
+    for (let i = 1; i < MAX_PEERS; i++) accept(await upgrade())
+    expect((await upgrade()).status).toBe(429)
+    const blob = (n: number) => `https://pedit.test/api/rooms/${room.id}/blobs/${String(n).padStart(22, '0')}`
+    // Test configuration caps each room at three blobs.
+    for (let i = 0; i < 3; i++) {
+      expect((await exports.default.fetch(blob(i), { method: 'PUT', body: new Uint8Array() })).status).toBe(201)
+    }
+    expect((await exports.default.fetch(blob(3), { method: 'PUT', body: new Uint8Array([1]) })).status).toBe(429)
+    console.log('CONFIRMED: 31 keyless sockets block join; 3 empty unauthenticated PUTs block upload under test quota')
+  } finally {
+    for (const ws of sockets.reverse()) ws.close(1000, 'audit complete')
+  }
+})
