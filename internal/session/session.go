@@ -531,12 +531,12 @@ func (s *Session) Stop() error {
 		}
 		s.stopAlive()
 		s.awareness.Destroy()
-		if s.temp != "" {
-			// A temporary copy is for the session only: nothing to save.
-			s.stopErr = removeTemp(s.temp)
-		}
 		if s.bound != nil {
 			s.stopErr = errors.Join(s.stopErr, s.bound.Close())
+		}
+		if s.temp != "" {
+			// A temporary copy is for the session only: nothing to save.
+			s.stopErr = errors.Join(s.stopErr, removeTemp(s.temp))
 		}
 	})
 	return s.stopErr

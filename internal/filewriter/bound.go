@@ -88,7 +88,7 @@ func (f *BoundFile) Write(content string) error {
 	if _, err := rand.Read(random[:]); err != nil {
 		return err
 	}
-	tmpName := "." + f.name + ".pedit-" + hex.EncodeToString(random[:]) + ".tmp"
+	tmpName := ".pedit-" + hex.EncodeToString(random[:]) + ".tmp"
 	tmp, err := f.root.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err

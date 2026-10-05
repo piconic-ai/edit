@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -72,5 +73,23 @@ func TestBoundFileRejectsInitialLink(t *testing.T) {
 	if f, err := OpenBound(path); err == nil {
 		_ = f.Close()
 		t.Fatal("accepted an initial link")
+	}
+}
+
+func TestBoundFileSavesLongFilename(t *testing.T) {
+	path := filepath.Join(t.TempDir(), strings.Repeat("n", 220)+".md")
+	if err := os.WriteFile(path, []byte("initial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := OpenBound(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := f.Write("updated"); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := f.Read(); !ok || got != "updated" {
+		t.Fatalf("content: %q, %v", got, ok)
 	}
 }
