@@ -262,11 +262,12 @@ func TestGoHostSavesImagesFromJavaScriptGuest(t *testing.T) {
 	dir := protocolDir(t)
 	server := newServer(t)
 	file := filepath.Join(t.TempDir(), "notes.md")
-	if err := os.WriteFile(file, []byte("# notes\n"), 0o644); err != nil {
+	// An image referenced by this document from an earlier session, which a
+	// guest will ask for after the room's blob store starts empty.
+	earlier := []byte("\x89PNG\r\n\x1a\nearlier")
+	if err := os.WriteFile(file, []byte("# notes\n![](assets/"+protocol.ContentHash(earlier)+".png)\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// An image saved in an earlier session, which a guest will ask for.
-	earlier := []byte("\x89PNG\r\n\x1a\nearlier")
 	assets := filepath.Join(filepath.Dir(file), "assets")
 	_ = os.Mkdir(assets, 0o755)
 	if err := os.WriteFile(filepath.Join(assets, protocol.ContentHash(earlier)+".png"), earlier, 0o644); err != nil {
