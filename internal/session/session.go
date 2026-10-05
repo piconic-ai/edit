@@ -213,9 +213,10 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		return nil, err
 	}
 	s.attachments = attach.New(attach.Options{
-		File:   opts.File,
-		Server: server,
-		Room:   room.ID,
+		File:            opts.File,
+		InitialDocument: initial,
+		Server:          server,
+		Room:            room.ID,
 		// Without the host token: blobs are for everyone in the room.
 		Header:     opts.Header,
 		HTTPClient: opts.HTTPClient,
@@ -431,6 +432,9 @@ func (s *Session) syncFromDisk() {
 		}
 		s.invalidOnDisk = ""
 		changed = true
+		if s.attachments != nil {
+			s.attachments.AllowLocalDocument(onDisk)
+		}
 		return onDisk
 	})
 	if changed {
