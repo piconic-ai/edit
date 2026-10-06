@@ -1,4 +1,4 @@
-import { evictDurableObject } from 'cloudflare:test'
+import { evictDurableObject, runInDurableObject } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { ADMISSION_HEADER, admissionProtocols } from '@pedit/protocol/admission'
 import { describe, expect, it, vi } from 'vitest'
@@ -12,6 +12,7 @@ import {
   MAX_UPLOADS,
   MESSAGE_RATE,
   RATE_LIMITED,
+  type Room as RoomObject,
 } from '../src/room.ts'
 
 const ROOM_CLOSED = 4001
@@ -292,9 +293,12 @@ describe('rooms', () => {
       if (i % 10 === 0) await new Promise((r) => setTimeout(r, pause))
       guest.ws.send(new Uint8Array(1))
     }
-    await until(() => h.received.length === MESSAGE_RATE.burst + extra)
+    // Relaying this many takes a while on a slow machine.
+    await vi.waitFor(() => expect(h.received.length).toBe(MESSAGE_RATE.burst + extra), {
+      timeout: 10_000,
+    })
     expect(guest.ws.readyState).toBe(WebSocket.OPEN)
-  })
+  }, 20_000)
 })
 
 // A blob id: 22 base64url characters.
@@ -443,19 +447,20 @@ describe('blobs', () => {
   it('takes only a few uploads at once', async () => {
     const room = await createRoom()
     await host(room)
-    // Repeating a stored upload changes nothing, so it can probe the room
-    // until every slow upload below has reached it.
-    const stored = blobId(99)
-    expect((await putBlob(room, stored, new Uint8Array(4))).status).toBe(201)
     const slow = Array.from({ length: MAX_UPLOADS }, (_, i) => slowPut(room, blobId(i), 4))
-    let busy: Response | undefined
-    await vi.waitFor(async () => {
-      busy = await putBlob(room, stored, new Uint8Array(4))
-      expect(busy.status).toBe(503)
-    })
-    expect(busy?.headers.get('Retry-After')).toBe('1')
+    // Wait for every slow upload to reach the room, looking inside it: any
+    // probe from outside would take an upload slot itself.
+    const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+    await vi.waitFor(() =>
+      runInDurableObject(stub, (instance: RoomObject) =>
+        expect(instance['uploading'].size).toBe(MAX_UPLOADS),
+      ),
+    )
+    const busy = await putBlob(room, blobId(MAX_UPLOADS), new Uint8Array(4))
+    expect(busy.status).toBe(503)
+    expect(busy.headers.get('Retry-After')).toBe('1')
     for (const upload of slow) expect((await upload.finish()).status).toBe(201)
-    expect((await putBlob(room, stored, new Uint8Array(4))).status).toBe(200)
+    expect((await putBlob(room, blobId(MAX_UPLOADS), new Uint8Array(4))).status).toBe(201)
   })
 
   it('waits out every cleanup before serving a new session', async () => {
