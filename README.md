@@ -147,6 +147,8 @@ Markdown previews can request external images, videos and embeds. With Access,
 avatars may load from an identity provider or Gravatar using an email hash.
 Those providers can see the requests.
 
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## Self-host
 
 Self-host when you want to limit who can join editing sessions. Cloudflare

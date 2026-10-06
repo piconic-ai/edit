@@ -4,6 +4,8 @@ Bug reports, documentation improvements and pull requests are welcome.
 [Open an issue](https://github.com/piconic-ai/pedit/issues) with steps to reproduce,
 your OS, pedit version and expected behavior. Remove room links, keys, Access
 tokens and private document content from reports.
+Report security vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md), not in a public issue.
 
 For a substantial change, open an issue to discuss the approach first. Keep pull
 requests focused, describe the resulting behavior and include how you verified it.
