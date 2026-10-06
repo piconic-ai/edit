@@ -28,8 +28,10 @@ export const MAX_UPLOADS = 4
 
 /**
  * What one connection may send: a burst, then a steady rate. Messages are what
- * a room is billed for, so they are counted tightly: typing, cursors and
- * dragging on a canvas stay well under it. Bytes are counted loosely: every
+ * a room is billed for, so they are counted, but above the busiest editing:
+ * dragging on a canvas sends the pointer once per frame, up to 144 times a
+ * second on fast displays, besides typing and cursors. Bytes are counted
+ * loosely: every
  * peer answers a newcomer with the whole document (one message of at most
  * MAX_MESSAGE_BYTES), so a full room reconnecting at once must fit.
  *
@@ -37,7 +39,7 @@ export const MAX_UPLOADS = 4
  * loses nothing. A host over it ends the session, as any host leaving does,
  * so the limits stay far above what editing needs.
  */
-export const MESSAGE_RATE = { burst: 200, perSecond: 50 }
+export const MESSAGE_RATE = { burst: 1000, perSecond: 200 }
 export const BYTE_RATE = { burst: MAX_PEERS * MAX_MESSAGE_BYTES, perSecond: 1024 * 1024 }
 /** Close code for a connection over its rate: a policy violation. */
 export const RATE_LIMITED = 1008

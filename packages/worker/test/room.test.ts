@@ -443,13 +443,19 @@ describe('blobs', () => {
   it('takes only a few uploads at once', async () => {
     const room = await createRoom()
     await host(room)
+    // Repeating a stored upload changes nothing, so it can probe the room
+    // until every slow upload below has reached it.
+    const stored = blobId(99)
+    expect((await putBlob(room, stored, new Uint8Array(4))).status).toBe(201)
     const slow = Array.from({ length: MAX_UPLOADS }, (_, i) => slowPut(room, blobId(i), 4))
-    await slow[0]?.started()
-    const busy = await putBlob(room, blobId(MAX_UPLOADS), new Uint8Array(4))
-    expect(busy.status).toBe(503)
-    expect(busy.headers.get('Retry-After')).toBe('1')
+    let busy: Response | undefined
+    await vi.waitFor(async () => {
+      busy = await putBlob(room, stored, new Uint8Array(4))
+      expect(busy.status).toBe(503)
+    })
+    expect(busy?.headers.get('Retry-After')).toBe('1')
     for (const upload of slow) expect((await upload.finish()).status).toBe(201)
-    expect((await putBlob(room, blobId(MAX_UPLOADS), new Uint8Array(4))).status).toBe(201)
+    expect((await putBlob(room, stored, new Uint8Array(4))).status).toBe(200)
   })
 
   it('waits out every cleanup before serving a new session', async () => {
