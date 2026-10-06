@@ -72,6 +72,21 @@ async function connect(id: string, headers: Record<string, string> = {}): Promis
 
 const host = (room: Room) => connect(room.id, { Authorization: `Bearer ${room.hostToken}` })
 
+/**
+ * Stops the room's clock at 0 and returns a way to move it, so a test decides
+ * how much the allowances refill however slowly its messages are relayed.
+ */
+async function stopClock(room: Room): Promise<(ms: number) => void> {
+  let now = 0
+  const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+  await runInDurableObject(stub, (instance: RoomObject) => {
+    instance['now'] = () => now
+  })
+  return (ms) => {
+    now += ms
+  }
+}
+
 const until = async (check: () => boolean) => {
   for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 10))
   expect(check()).toBe(true)
@@ -286,12 +301,11 @@ describe('rooms', () => {
     const room = await createRoom()
     const h = await host(room)
     const guest = await connect(room.id)
-    // Twice the burst at once: the allowance refills far too slowly to cover it.
-    for (let i = 0; i < MESSAGE_RATE.burst * 2; i++) guest.ws.send(new Uint8Array(1))
+    await stopClock(room)
+    for (let i = 0; i <= MESSAGE_RATE.burst; i++) guest.ws.send(new Uint8Array(1))
     expect((await guest.closed).code).toBe(RATE_LIMITED)
     // The burst itself was relayed, and nobody else was cut off.
-    expect(h.received.length).toBeGreaterThanOrEqual(MESSAGE_RATE.burst)
-    expect(h.received.length).toBeLessThan(MESSAGE_RATE.burst * 2)
+    await until(() => h.received.length === MESSAGE_RATE.burst)
     expect(h.ws.readyState).toBe(WebSocket.OPEN)
   })
 
@@ -299,6 +313,7 @@ describe('rooms', () => {
     const room = await createRoom()
     await host(room)
     const guest = await connect(room.id)
+    await stopClock(room)
     const big = new Uint8Array(MAX_MESSAGE_BYTES)
     for (let i = 0; i <= BYTE_RATE.burst / MAX_MESSAGE_BYTES; i++) guest.ws.send(big)
     expect((await guest.closed).code).toBe(RATE_LIMITED)
@@ -308,20 +323,23 @@ describe('rooms', () => {
     const room = await createRoom()
     const h = await host(room)
     const guest = await connect(room.id)
-    // The whole burst, then more at a little under the refill rate.
-    const extra = MESSAGE_RATE.perSecond * 2
-    const pause = (10 * 1000 * 1.2) / MESSAGE_RATE.perSecond
+    const tick = await stopClock(room)
+    // The whole burst, then a second's worth of messages each second. Each
+    // batch is relayed before the clock moves, so it all counts against the
+    // allowance at the time it was sent.
+    const relayed = (n: number) =>
+      vi.waitFor(() => expect(h.received.length).toBe(n), { timeout: 10_000 })
     for (let i = 0; i < MESSAGE_RATE.burst; i++) guest.ws.send(new Uint8Array(1))
-    for (let i = 0; i < extra; i++) {
-      if (i % 10 === 0) await new Promise((r) => setTimeout(r, pause))
-      guest.ws.send(new Uint8Array(1))
+    let total = MESSAGE_RATE.burst
+    await relayed(total)
+    for (let second = 0; second < 2; second++) {
+      tick(1000)
+      for (let i = 0; i < MESSAGE_RATE.perSecond; i++) guest.ws.send(new Uint8Array(1))
+      total += MESSAGE_RATE.perSecond
+      await relayed(total)
     }
-    // Relaying this many takes a while on a slow machine.
-    await vi.waitFor(() => expect(h.received.length).toBe(MESSAGE_RATE.burst + extra), {
-      timeout: 10_000,
-    })
     expect(guest.ws.readyState).toBe(WebSocket.OPEN)
-  }, 20_000)
+  }, 30_000)
 })
 
 // A blob id: 22 base64url characters.

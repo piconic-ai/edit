@@ -117,6 +117,8 @@ export class Room extends DurableObject<Env> {
   // What each connection may still send. In memory only: a room that wakes
   // from hibernation starts everyone with a full allowance, which is fine.
   private readonly allowances = new WeakMap<WebSocket, Allowance>()
+  // What the allowances are refilled by; the tests stop and move it.
+  private now = () => Date.now()
   // Deleting the blobs of a session that just ended. A reconnecting host must
   // not start using blobs before it finishes.
   private cleaning: Promise<void> = Promise.resolve()
@@ -211,7 +213,7 @@ export class Room extends DurableObject<Env> {
   // Takes one message of `bytes` from the connection's allowance, refilled
   // with the time since its last message.
   private allow(ws: WebSocket, bytes: number): boolean {
-    const now = Date.now()
+    const now = this.now()
     const a = this.allowances.get(ws) ?? {
       messages: MESSAGE_RATE.burst,
       bytes: BYTE_RATE.burst,
