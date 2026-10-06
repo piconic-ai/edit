@@ -24,7 +24,8 @@ fail() {
 # CI archives have no published attestation, so gh is mocked at the process
 # boundary: INSTALL_TEST_GH_AUTH_EXIT is the active account's `gh auth status`
 # result, INSTALL_TEST_GH_INACTIVE_EXPIRED adds another stored account whose
-# token expired, and INSTALL_TEST_GH_EXIT is the `gh attestation verify` result. tar is wrapped only to
+# token expired, and INSTALL_TEST_GH_EXIT is the `gh attestation verify` result,
+# which arrives after INSTALL_TEST_GH_DELAY seconds. tar is wrapped only to
 # record whether install.sh extracted anything.
 setup_mocks() {
   mkdir "$work/mocks"
@@ -45,6 +46,7 @@ fi
 [ "$4" = --repo ] && [ "$5" = piconic-ai/edit ] || exit 99
 [ "$6" = --signer-workflow ] && [ "$7" = piconic-ai/edit/.github/workflows/tagpr.yml ] || exit 99
 [ "$8" = --deny-self-hosted-runners ]
+sleep "${INSTALL_TEST_GH_DELAY:-0}"
 exit "${INSTALL_TEST_GH_EXIT:-0}"
 SH
   cat >"$work/mocks/tar" <<SH
@@ -157,11 +159,12 @@ refuses_failed_provenance() {
 }
 
 cycles_dots_on_a_terminal() {
-  run_install terminal on_terminal /bin/sh
+  # A slow check gives the dots time to cycle; "... DONE" alone has neither
+  # the one-dot nor the two-dot frame, which are padded with spaces.
+  INSTALL_TEST_GH_DELAY=1 run_install terminal on_terminal /bin/sh
   assert_installed terminal
-  # The dots are redrawn with a carriage return; the line still ends in DONE.
-  assert_contains terminal out $'\rDownloading pedit'
-  assert_contains terminal out 'Downloading pedit .*\.\.\. DONE'
+  assert_contains terminal out 'Verifying build provenance\.  '
+  assert_contains terminal out 'Verifying build provenance\.\. '
   assert_contains terminal out 'Verifying build provenance\.\.\. DONE'
 }
 
