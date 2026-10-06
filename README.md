@@ -50,10 +50,26 @@ review or commit.
 
 ## Install
 
+macOS / Linux:
+
+```sh
+curl -fsSL https://edit.piconic.ai/install.sh | sh
+```
+
+It installs the latest release to `~/.local/bin` after checking it against
+`checksums.txt`. Set `PEDIT_INSTALL_DIR` to install elsewhere, or
+`PEDIT_VERSION` to pick a release.
+
 Homebrew (macOS / Linux):
 
 ```sh
 brew install piconic-ai/tap/pedit
+```
+
+mise:
+
+```sh
+mise use -g github:piconic-ai/edit
 ```
 
 Go 1.25+:

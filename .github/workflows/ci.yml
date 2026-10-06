@@ -68,3 +68,6 @@ jobs:
           tar -xzf pedit_v0.0.0-test_linux_amd64.tar.gz
           test "$(./pedit --version)" = v0.0.0-test
           unzip -l pedit_v0.0.0-test_windows_arm64.zip | grep -q pedit.exe
+
+      - name: Install script
+        run: bash scripts/test-install.sh v0.0.0-test "$RUNNER_TEMP/pedit-release"
