@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/piconic-ai/edit/internal/filewriter"
-	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/filewriter"
+	"github.com/piconic-ai/pedit/internal/protocol"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )

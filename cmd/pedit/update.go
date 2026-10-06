@@ -14,7 +14,7 @@ import (
 )
 
 // releasesAPI answers with the newest published release of pedit.
-const releasesAPI = "https://api.github.com/repos/piconic-ai/edit/releases/latest"
+const releasesAPI = "https://api.github.com/repos/piconic-ai/pedit/releases/latest"
 
 // updateInterval is how long a checked release is trusted before asking again.
 const updateInterval = 24 * time.Hour
@@ -187,11 +187,15 @@ func upgradeCommand(exe, goos, home string, goInstalled bool) string {
 	slashed := filepath.ToSlash(exe)
 	switch {
 	case goInstalled:
-		return "go install github.com/piconic-ai/edit/cmd/pedit@latest"
+		return "go install github.com/piconic-ai/pedit/cmd/pedit@latest"
 	case strings.Contains(slashed, "/Cellar/"):
 		return "brew upgrade piconic-ai/tap/pedit"
-	case strings.Contains(slashed, "/installs/github-piconic-ai-edit/"):
+	case strings.Contains(slashed, "/installs/github-piconic-ai-pedit/"):
 		// --bump also moves a version pinned in mise.toml, wherever it is.
+		return "mise upgrade --bump github:piconic-ai/pedit"
+	case strings.Contains(slashed, "/installs/github-piconic-ai-edit/"):
+		// Installed under the repository's old name, which mise.toml still
+		// names; GitHub redirects it to piconic-ai/pedit.
 		return "mise upgrade --bump github:piconic-ai/edit"
 	case goos == "windows":
 		return ""

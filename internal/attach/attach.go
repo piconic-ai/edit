@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/protocol"
 )
 
 const (

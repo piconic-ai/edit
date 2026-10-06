@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/protocol"
 )
 
 func TestGenerateKey(t *testing.T) {

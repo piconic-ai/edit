@@ -3,7 +3,7 @@ package canvas
 import (
 	"sort"
 
-	"github.com/piconic-ai/edit/internal/merge"
+	"github.com/piconic-ai/pedit/internal/merge"
 	"github.com/reearth/ygo/crdt"
 )
 

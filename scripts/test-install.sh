@@ -43,8 +43,8 @@ if [ "$1" = auth ]; then
 fi
 [ "$#" -eq 8 ]
 [ "$1" = attestation ] && [ "$2" = verify ] && [ -f "$3" ] || exit 99
-[ "$4" = --repo ] && [ "$5" = piconic-ai/edit ] || exit 99
-[ "$6" = --signer-workflow ] && [ "$7" = piconic-ai/edit/.github/workflows/tagpr.yml ] || exit 99
+[ "$4" = --repo ] && [ "$5" = piconic-ai/pedit ] || exit 99
+[ "$6" = --signer-workflow ] && [ "$7" = piconic-ai/pedit/.github/workflows/tagpr.yml ] || exit 99
 [ "$8" = --deny-self-hosted-runners ]
 sleep "${INSTALL_TEST_GH_DELAY:-0}"
 exit "${INSTALL_TEST_GH_EXIT:-0}"

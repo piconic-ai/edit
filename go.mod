@@ -1,4 +1,4 @@
-module github.com/piconic-ai/edit
+module github.com/piconic-ai/pedit
 
 go 1.25.0
 

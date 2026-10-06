@@ -34,7 +34,7 @@ is disconnected, so keep this table in sync with them:
 
 | Setting | Production | Previews Base |
 | --- | --- | --- |
-| Git repository | `piconic-ai/edit` | *(shared)* |
+| Git repository | `piconic-ai/pedit` | *(shared)* |
 | Branch control | `release` | Builds for Preview branches enabled |
 | Build command | *(empty)* | *(empty)* |
 | Deploy / Preview command | `pnpm run deploy:production` | `pnpm run preview` |

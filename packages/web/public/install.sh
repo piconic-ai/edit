@@ -12,7 +12,7 @@
 # main(), called on the last line, so a truncated download does nothing.
 set -eu
 
-repo=piconic-ai/edit
+repo=piconic-ai/pedit
 
 fail() {
   [ -z "${step_label:-}" ] || step_end FAILED

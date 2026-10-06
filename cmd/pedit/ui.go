@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/protocol"
 )
 
 // ui is what the person sharing the file reads. They are not necessarily an

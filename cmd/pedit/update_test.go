@@ -51,10 +51,12 @@ func TestUpgradeCommand(t *testing.T) {
 	}{
 		{"/opt/homebrew/Cellar/pedit/0.0.11/bin/pedit", "darwin", false, "brew upgrade piconic-ai/tap/pedit"},
 		{"/home/linuxbrew/.linuxbrew/Cellar/pedit/0.0.11/bin/pedit", "linux", false, "brew upgrade piconic-ai/tap/pedit"},
-		{"/Users/me/.local/share/mise/installs/github-piconic-ai-edit/0.0.11/pedit", "darwin", false, "mise upgrade --bump github:piconic-ai/edit"},
+		{"/Users/me/.local/share/mise/installs/github-piconic-ai-pedit/0.0.13/pedit", "darwin", false, "mise upgrade --bump github:piconic-ai/pedit"},
 		// MISE_DATA_DIR moves the installs elsewhere.
-		{"/data/mise/installs/github-piconic-ai-edit/0.0.11/pedit", "linux", false, "mise upgrade --bump github:piconic-ai/edit"},
-		{"/Users/me/go/bin/pedit", "darwin", true, "go install github.com/piconic-ai/edit/cmd/pedit@latest"},
+		{"/data/mise/installs/github-piconic-ai-pedit/0.0.13/pedit", "linux", false, "mise upgrade --bump github:piconic-ai/pedit"},
+		// Installed before the repository was renamed from piconic-ai/edit.
+		{"/Users/me/.local/share/mise/installs/github-piconic-ai-edit/0.0.11/pedit", "darwin", false, "mise upgrade --bump github:piconic-ai/edit"},
+		{"/Users/me/go/bin/pedit", "darwin", true, "go install github.com/piconic-ai/pedit/cmd/pedit@latest"},
 		{"/Users/me/.local/bin/pedit", "darwin", false, install + "sh"},
 		// Installed with PEDIT_INSTALL_DIR, or put there by hand.
 		{"/usr/local/bin/pedit", "darwin", false, install + "PEDIT_INSTALL_DIR=/usr/local/bin sh"},
@@ -75,7 +77,7 @@ func releaseServer(t *testing.T, status int, tag string) (*httptest.Server, *int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(release{Version: tag, URL: "https://github.com/piconic-ai/edit/releases/tag/" + tag})
+		_ = json.NewEncoder(w).Encode(release{Version: tag, URL: "https://github.com/piconic-ai/pedit/releases/tag/" + tag})
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &requests
@@ -98,7 +100,7 @@ func TestUpdateCheckFindsNewerRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r == nil || r.Version != "v0.0.12" || r.URL != "https://github.com/piconic-ai/edit/releases/tag/v0.0.12" {
+	if r == nil || r.Version != "v0.0.12" || r.URL != "https://github.com/piconic-ai/pedit/releases/tag/v0.0.12" {
 		t.Fatalf("check = %+v", r)
 	}
 	if *requests != 1 {
@@ -169,12 +171,12 @@ func TestStartUpdateCheckSkipped(t *testing.T) {
 }
 
 func TestUpdateAvailable(t *testing.T) {
-	r := release{Version: "v0.0.12", URL: "https://github.com/piconic-ai/edit/releases/tag/v0.0.12"}
+	r := release{Version: "v0.0.12", URL: "https://github.com/piconic-ai/pedit/releases/tag/v0.0.12"}
 	var out bytes.Buffer
 	newUI(&out, false, false).updateAvailable("v0.0.11", r, "brew upgrade piconic-ai/tap/pedit")
 	want := `  A new release of pedit is available: v0.0.11 → v0.0.12
   To upgrade, run: brew upgrade piconic-ai/tap/pedit
-  https://github.com/piconic-ai/edit/releases/tag/v0.0.12
+  https://github.com/piconic-ai/pedit/releases/tag/v0.0.12
 
 `
 	if out.String() != want {
@@ -184,7 +186,7 @@ func TestUpdateAvailable(t *testing.T) {
 	out.Reset()
 	newUI(&out, false, false).updateAvailable("v0.0.11", r, "")
 	want = `  A new release of pedit is available: v0.0.11 → v0.0.12
-  https://github.com/piconic-ai/edit/releases/tag/v0.0.12
+  https://github.com/piconic-ai/pedit/releases/tag/v0.0.12
 
 `
 	if out.String() != want {

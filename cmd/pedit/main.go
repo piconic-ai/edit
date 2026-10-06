@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/piconic-ai/edit/internal/access"
-	"github.com/piconic-ai/edit/internal/clipboard"
-	"github.com/piconic-ai/edit/internal/protocol"
-	"github.com/piconic-ai/edit/internal/session"
+	"github.com/piconic-ai/pedit/internal/access"
+	"github.com/piconic-ai/pedit/internal/clipboard"
+	"github.com/piconic-ai/pedit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/session"
 	"golang.org/x/term"
 )
 
