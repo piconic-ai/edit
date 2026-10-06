@@ -15,8 +15,38 @@ set -eu
 repo=piconic-ai/edit
 
 fail() {
+  [ -z "${step_label:-}" ] || step_end FAILED
   echo "pedit install: $*" >&2
   exit 1
+}
+
+# Steps print "<label>... DONE". On a terminal the dots after the label cycle
+# while the step runs, so a slow download or check does not look stuck.
+step_start() {
+  step_label=$1
+  if [ -t 1 ]; then
+    while :; do
+      for dots in '.  ' '.. ' '...'; do
+        printf '\r%s%s' "$step_label" "$dots"
+        sleep 0.3 2>/dev/null || sleep 1
+      done
+    done &
+    dots_pid=$!
+  else
+    printf '%s... ' "$step_label"
+  fi
+}
+
+# step_end DONE|FAILED
+step_end() {
+  if [ -n "${dots_pid:-}" ]; then
+    kill "$dots_pid" 2>/dev/null || true
+    wait "$dots_pid" 2>/dev/null || true
+    dots_pid=
+    printf '\r%s... ' "$step_label"
+  fi
+  echo "$1"
+  step_label=
 }
 
 detect_target() {
@@ -42,6 +72,17 @@ latest_version() {
   esac
 }
 
+# Background jobs ignore SIGINT in a script, so stop the dots on any exit.
+cleanup() {
+  [ -z "${dots_pid:-}" ] || kill "$dots_pid" 2>/dev/null || true
+  rm -rf "$tmp"
+  [ -z "$stage" ] || rm -rf "$stage"
+}
+
+download() {
+  curl -fsSL -o "$2" "$1" 2>"$tmp/curl.err" || fail "could not download $1: $(cat "$tmp/curl.err")"
+}
+
 verify_checksum() {
   # $1: directory holding the archive and checksums.txt, $2: archive name
   grep "  $2\$" "$1/checksums.txt" >"$1/expected.txt" || fail "$2 is not listed in checksums.txt"
@@ -62,12 +103,16 @@ verify_provenance() {
     echo "Skipped the build provenance check (needs the GitHub CLI, signed in)"
     return
   fi
-  gh attestation verify "$1" \
+  step_start "Verifying build provenance"
+  if ! gh attestation verify "$1" \
     --repo "$repo" \
     --signer-workflow "$repo/.github/workflows/tagpr.yml" \
-    --deny-self-hosted-runners >/dev/null ||
+    --deny-self-hosted-runners >/dev/null 2>"$tmp/gh.err"; then
+    step_end FAILED
+    cat "$tmp/gh.err" >&2
     fail "release provenance verification failed; no files were installed"
-  echo "Verified build provenance"
+  fi
+  step_end DONE
 }
 
 main() {
@@ -81,12 +126,15 @@ main() {
   archive="pedit_${version}_${os}_${arch}.tar.gz"
 
   tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT
+  stage=
+  trap cleanup EXIT
+  trap 'fail interrupted' INT TERM
 
-  echo "Downloading pedit $version ($os/$arch)"
-  curl -fsSL -o "$tmp/$archive" "$base/$archive" || fail "could not download $base/$archive"
-  curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" || fail "could not download $base/checksums.txt"
+  step_start "Downloading pedit $version ($os/$arch)"
+  download "$base/$archive" "$tmp/$archive"
+  download "$base/checksums.txt" "$tmp/checksums.txt"
   verify_checksum "$tmp" "$archive"
+  step_end DONE
   verify_provenance "$tmp/$archive"
 
   tar -xzf "$tmp/$archive" -C "$tmp" pedit
@@ -98,7 +146,6 @@ main() {
   # a half-written binary behind. mktemp creates the staging directory
   # exclusively, so nothing planted under a guessable name gets written to.
   stage=$(mktemp -d "$install_dir/.pedit.XXXXXXXX")
-  trap 'rm -rf "$tmp" "$stage"' EXIT
   cp "$tmp/pedit" "$stage/pedit"
   chmod 755 "$stage/pedit"
   mv -f "$stage/pedit" "$install_dir/pedit"
