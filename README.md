@@ -50,10 +50,22 @@ review or commit.
 
 ## Install
 
+macOS / Linux:
+
+```sh
+curl -fsSL https://edit.piconic.ai/install.sh | sh
+```
+
 Homebrew (macOS / Linux):
 
 ```sh
 brew install piconic-ai/tap/pedit
+```
+
+mise:
+
+```sh
+mise use -g github:piconic-ai/edit
 ```
 
 Go 1.25+:
