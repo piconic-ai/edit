@@ -359,7 +359,7 @@ async function joinRoom(
 
   const setStatus = (s: RoomStatus) => {
     roomStatus.set(s)
-    if (s === 'closed') {
+    if (s === 'closed' || s === 'full') {
       editor.dispatch({ effects: editable.reconfigure(readOnly) })
       board.readOnly = true
     }

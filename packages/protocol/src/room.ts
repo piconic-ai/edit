@@ -12,7 +12,7 @@ import {
 } from './attachment.ts'
 import { type CanvasMessage, decodeCanvas, encodeCanvas, UnknownCanvasKindError } from './canvas.ts'
 import { decrypt, encrypt } from './cipher.ts'
-import { ROOM_CLOSED } from './close.ts'
+import { ROOM_CLOSED, ROOM_FULL } from './close.ts'
 import {
   decodeMessage,
   encodeMessage,
@@ -22,7 +22,8 @@ import {
 } from './message.ts'
 
 /** `closed` is final: the host ended the session. */
-export type RoomStatus = 'connecting' | 'connected' | 'disconnected' | 'closed'
+/** 'closed' and 'full' are final: the session ended, or had no room for us. */
+export type RoomStatus = 'connecting' | 'connected' | 'disconnected' | 'closed' | 'full'
 
 /** The subset of the WebSocket API used by RoomClient (browser and Node.js 22+ globals both fit). */
 export interface SocketLike {
@@ -120,6 +121,10 @@ export class RoomClient {
       this.dropRemoteAwareness()
       if (ev.code === ROOM_CLOSED && !this.destroyed) {
         this.setStatus('closed')
+        return
+      }
+      if (ev.code === ROOM_FULL && !this.destroyed) {
+        this.setStatus('full')
         return
       }
       this.setStatus('disconnected')

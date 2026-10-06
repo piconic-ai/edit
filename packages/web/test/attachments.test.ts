@@ -105,8 +105,8 @@ describe('Attachments', () => {
     expect(requests).toHaveLength(0)
   })
 
-  it('waits out someone uploading the same image', async () => {
-    const { attachments, requests, store } = await setup([409, 409, 201])
+  it.each([409, 503])('waits out a %i: an upload the room cannot take yet', async (status) => {
+    const { attachments, requests, store } = await setup([status, status, 201])
     const upload = attachments.upload(file())
     await vi.waitFor(() => expect(requests).toHaveLength(3))
     store()
@@ -181,6 +181,7 @@ describe('whyNoImages', () => {
   it('lets images in only with a host that saves them, in an open room', () => {
     expect(whyNoImages('connected', true, host)).toBeNull()
     expect(whyNoImages('closed', true, host)).toMatch(/ended/)
+    expect(whyNoImages('full', true, host)).toMatch(/full/)
     expect(whyNoImages('connected', true, null)).toMatch(/too old/)
   })
 

@@ -14,8 +14,8 @@ import (
 	ysync "github.com/reearth/ygo/sync"
 )
 
-// Status is the connection state of a Client. StatusClosed is final: the host
-// ended the session.
+// Status is the connection state of a Client. StatusClosed and StatusFull are
+// final: the host ended the session, or the room had no place for us.
 type Status string
 
 // errDestroyed ends the connection loop when the Client was destroyed mid-dial.
@@ -26,6 +26,7 @@ const (
 	StatusConnected    Status = "connected"
 	StatusDisconnected Status = "disconnected"
 	StatusClosed       Status = "closed"
+	StatusFull         Status = "full"
 )
 
 type ClientOptions struct {
@@ -200,8 +201,12 @@ func (c *Client) run() {
 			return
 		}
 		c.dropRemoteAwareness()
-		if closeCode(err) == RoomClosed {
+		switch closeCode(err) {
+		case RoomClosed:
 			c.setStatus(StatusClosed)
+			return
+		case RoomFull:
+			c.setStatus(StatusFull)
 			return
 		}
 		c.onError(err)

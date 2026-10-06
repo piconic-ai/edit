@@ -84,6 +84,8 @@ describe('Header', () => {
     expect(el.textContent).toBe('Offline')
     status.set('closed')
     expect(el.textContent).toBe('Ended')
+    status.set('full')
+    expect(el.textContent).toBe('Room full')
   })
 
   it('lists participants with the host and you marked, and their colours', () => {

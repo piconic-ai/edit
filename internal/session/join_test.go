@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -302,6 +303,26 @@ func TestJoinFailsWhenNobodyHosts(t *testing.T) {
 		Dial:      relay.Dial,
 	})
 	if !errors.Is(err, ErrRoomClosed) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestJoinFailsWhenTheRoomIsFull(t *testing.T) {
+	relay := prototest.NewRelay(true)
+	relay.Guests = 1
+	url := "https://edit.example/r/AAAAAAAAAAAAAAAAAAAAAA#" + protocol.GenerateKey()
+	host, err := relay.Dial(context.Background(), "", http.Header{"Authorization": {"Bearer t"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	guest, err := relay.Dial(context.Background(), "", http.Header{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer guest.Close()
+	_, err = Join(context.Background(), JoinOptions{URL: url, Directory: t.TempDir(), Dial: relay.Dial})
+	if !errors.Is(err, ErrRoomFull) {
 		t.Fatalf("err = %v", err)
 	}
 }

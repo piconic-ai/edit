@@ -310,6 +310,22 @@ func TestStopsForGoodWhenHostLeaves(t *testing.T) {
 	}
 }
 
+func TestStopsForGoodWhenRoomIsFull(t *testing.T) {
+	relay := prototest.NewRelay(true)
+	relay.Guests = 1
+	key := protocol.GenerateKey()
+	host := join(t, relay, key, joinOpts{init: "x", header: hostHeader()})
+	prototest.WaitFor(t, wait, func() bool { return host.Status() == protocol.StatusConnected }, "host connected")
+	first := join(t, relay, key, joinOpts{})
+	prototest.WaitFor(t, wait, func() bool { return first.String() == "x" }, "first guest to sync")
+	late := join(t, relay, key, joinOpts{})
+	prototest.WaitFor(t, wait, func() bool { return late.Status() == protocol.StatusFull }, "late guest turned away")
+	time.Sleep(200 * time.Millisecond)
+	if late.Status() != protocol.StatusFull || len(relay.URLs()) != 3 {
+		t.Fatalf("status=%v dials=%d", late.Status(), len(relay.URLs()))
+	}
+}
+
 func TestTurnedAwayWithoutHost(t *testing.T) {
 	relay := prototest.NewRelay(true)
 	guest := join(t, relay, protocol.GenerateKey(), joinOpts{})

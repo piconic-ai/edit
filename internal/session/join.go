@@ -49,6 +49,9 @@ type JoinOptions struct {
 // the host left, or the link is wrong.
 var ErrRoomClosed = errors.New("the room is closed: the host left, or the link is wrong")
 
+// ErrRoomFull means the room already has as many guests as its relay allows.
+var ErrRoomFull = errors.New("the room is full: its relay takes only so many people at once; try again when someone leaves")
+
 // ErrFileExists means the copy was not written because a file of that name is
 // already in Directory.
 type ErrFileExists struct{ Path string }
@@ -110,7 +113,8 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		beforePublishWriter: opts.beforePublishWriter,
 	}
 	synced := make(chan struct{})
-	closed := make(chan struct{})
+	// Closed or full, whichever came: both end the session for good.
+	ended := make(chan error, 1)
 	s.Client, err = protocol.NewClient(protocol.ClientOptions{
 		URL:       wsURL,
 		Key:       rawKey,
@@ -119,11 +123,17 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		Header:    opts.Header,
 		Dial:      opts.Dial,
 		OnStatus: func(st protocol.Status) {
-			if st == protocol.StatusClosed {
+			var err error
+			switch st {
+			case protocol.StatusClosed:
+				err = ErrRoomClosed
+			case protocol.StatusFull:
+				err = ErrRoomFull
+			}
+			if err != nil {
 				select {
-				case <-closed:
+				case ended <- err:
 				default:
-					close(closed)
 				}
 			}
 			if opts.OnStatus != nil {
@@ -179,8 +189,8 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		select {
 		case <-hostSeen:
 			host, _ = hostState(aw)
-		case <-closed:
-			return fail(ErrRoomClosed)
+		case err := <-ended:
+			return fail(err)
 		case <-deadline.C:
 			return fail(fmt.Errorf("no host answered within %s", opts.Timeout))
 		case <-ctx.Done():
@@ -189,8 +199,8 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	}
 	select {
 	case <-synced:
-	case <-closed:
-		return fail(ErrRoomClosed)
+	case err := <-ended:
+		return fail(err)
 	case <-deadline.C:
 		return fail(fmt.Errorf("the room did not send its content within %s", opts.Timeout))
 	case <-ctx.Done():

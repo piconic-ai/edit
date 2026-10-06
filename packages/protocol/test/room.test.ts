@@ -245,4 +245,18 @@ describe('RoomClient', () => {
     const guest = await join(relay, await importKey(generateKey()))
     await vi.waitFor(() => expect(guest.status).toBe('closed'))
   })
+
+  it('stops for good when the room is full', async () => {
+    const relay = new Relay({ hosted: true, guests: 1 })
+    const key = await importKey(generateKey())
+    const host = await join(relay, key, 'x', undefined, { Authorization: 'Bearer t' })
+    await vi.waitFor(() => expect(host.status).toBe('connected'))
+    const first = await join(relay, key)
+    await vi.waitFor(() => expect(first.status).toBe('connected'))
+    const late = await join(relay, key)
+    await vi.waitFor(() => expect(late.status).toBe('full'))
+    await new Promise((r) => setTimeout(r, 1500))
+    expect(late.status).toBe('full')
+    expect(relay.urls).toHaveLength(3)
+  })
 })

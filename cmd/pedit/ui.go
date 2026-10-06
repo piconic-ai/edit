@@ -269,6 +269,8 @@ func (u *ui) liveLine() string {
 		return u.yellow("○") + " Offline. Reconnecting…"
 	case protocol.StatusClosed:
 		return u.yellow("○") + " Closed."
+	case protocol.StatusFull:
+		return u.yellow("○") + " The room is full."
 	default:
 		return u.yellow("○") + " Connecting…"
 	}

@@ -19,9 +19,10 @@ export interface EndedBannerProps {
 const LABELS = { idle: 'Copy text', copied: 'Copied', failed: 'Could not copy' } as const
 
 /**
- * Shown once the room closes, which it does as soon as the host leaves.
- * Copy text matters on phones, where selecting the whole document by hand
- * does not work: the editor only draws the lines on screen.
+ * Shown once the room closes, which it does as soon as the host leaves, or
+ * when it had no place for us. Copy text matters on phones, where selecting
+ * the whole document by hand does not work: the editor only draws the lines
+ * on screen. A full room never sent us any text, so there is none to copy.
  */
 export function EndedBanner(props: EndedBannerProps) {
   const status = () => props.status.get()
@@ -37,9 +38,15 @@ export function EndedBanner(props: EndedBannerProps) {
   }
 
   return (
-    <div className="banner" role="status" hidden={status() !== 'closed'}>
-      <span>This session has ended: the host is not connected. You can still copy the text.</span>
-      <button type="button" onClick={copyAll}>
+    <div className="banner" role="status" hidden={status() !== 'closed' && status() !== 'full'}>
+      <span hidden={status() !== 'closed'}>
+        This session has ended: the host is not connected. You can still copy the text.
+      </span>
+      <span hidden={status() !== 'full'}>
+        This room is full: its relay takes only so many people at once. Try again when someone
+        leaves, or ask the host to run their own relay, which can take more.
+      </span>
+      <button type="button" onClick={copyAll} hidden={status() !== 'closed'}>
         {LABELS[copy()]}
       </button>
       <button type="button" onClick={() => props.onReconnect()}>

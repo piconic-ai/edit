@@ -15,9 +15,11 @@ import (
 // With Hosted set it behaves like the real Room: a connection that sent an
 // Authorization header is the host, guests are turned away while no host is
 // connected, and everyone is disconnected with RoomClosed when the last host
-// leaves.
+// leaves. With Guests set, guests beyond that many are turned away with
+// RoomFull.
 type Relay struct {
 	Hosted bool
+	Guests int
 
 	mu      sync.Mutex
 	conns   map[*Conn]bool
@@ -39,6 +41,9 @@ func (r *Relay) Dial(_ context.Context, url string, header http.Header) (protoco
 	c := &Conn{relay: r, isHost: header.Get("Authorization") != "", wake: make(chan struct{}, 1)}
 	if r.Hosted && !c.isHost && !r.hasHost() {
 		return nil, &protocol.CloseError{Code: protocol.RoomClosed}
+	}
+	if !c.isHost && r.Guests > 0 && r.guests() >= r.Guests {
+		return nil, &protocol.CloseError{Code: protocol.RoomFull}
 	}
 	r.conns[c] = true
 	return c, nil
@@ -82,6 +87,16 @@ func (r *Relay) hasHost() bool {
 		}
 	}
 	return false
+}
+
+func (r *Relay) guests() int {
+	n := 0
+	for c := range r.conns {
+		if !c.isHost {
+			n++
+		}
+	}
+	return n
 }
 
 // left is called with r.mu held.
