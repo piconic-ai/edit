@@ -63,6 +63,9 @@ go install github.com/piconic-ai/edit/cmd/pedit@latest
 ```
 
 Binaries: [GitHub Releases](https://github.com/piconic-ai/edit/releases) (macOS / Linux / Windows · amd64 / arm64).
+Each archive carries a build provenance attestation; check that it was built
+by this repository's release workflow with
+`gh attestation verify <archive> --repo piconic-ai/edit`.
 
 ## Configuration and templates
 

@@ -53,6 +53,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # Build provenance: id-token signs it through Sigstore, attestations and
+      # artifact-metadata store it on GitHub for `gh attestation verify`.
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.tagpr.outputs.tag }}
@@ -66,6 +71,10 @@ jobs:
           go-version-file: go.mod
       - name: Build release archives and checksums
         run: bash scripts/build-cli-release.sh "$TAG" "$RUNNER_TEMP/pedit-release"
+      - name: Attest build provenance of the archives
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/pedit-release/pedit_*
       - name: Attach binaries to the tagpr release
         run: gh release upload "$TAG" "$RUNNER_TEMP"/pedit-release/* --clobber
       - name: Publish the completed release
