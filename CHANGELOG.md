@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.12](https://github.com/piconic-ai/edit/compare/v0.0.11...v0.0.12) - 2026-10-06
+
+- Show the Come over film at the top of the README by @kfly8 in https://github.com/piconic-ai/edit/pull/85
+- Fix image link in README.md by @kfly8 in https://github.com/piconic-ai/edit/pull/87
+- Attest build provenance of the release archives by @kfly8 in https://github.com/piconic-ai/edit/pull/88
+- Add an install script served from edit.piconic.ai by @kfly8 in https://github.com/piconic-ai/edit/pull/89
+
 ## [v0.0.11](https://github.com/piconic-ai/edit/compare/v0.0.10...v0.0.11) - 2026-10-05
 
 - Preserve adjacent image references in authorization baselines by @kfly8 in https://github.com/piconic-ai/edit/pull/83
