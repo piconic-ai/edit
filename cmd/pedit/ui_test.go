@@ -239,3 +239,16 @@ func TestHostOf(t *testing.T) {
 		}
 	}
 }
+
+func TestUILiveLineWhenOutdated(t *testing.T) {
+	for st, want := range map[protocol.Status]string{
+		protocol.StatusClientOutdated: "○ This pedit is out of date.",
+		protocol.StatusServerOutdated: "○ The server is out of date.",
+	} {
+		u := newUI(&strings.Builder{}, false, false)
+		u.status = st
+		if got := u.liveLine(); got != want {
+			t.Errorf("%s: got %q, want %q", st, got, want)
+		}
+	}
+}

@@ -17,9 +17,13 @@ import (
 // connected, and everyone is disconnected with RoomClosed when the last host
 // leaves. With Guests set, guests beyond that many are turned away with
 // RoomFull.
+//
+// With Refuse set it turns every connection away with that close code, as the
+// Room does on a protocol version mismatch.
 type Relay struct {
 	Hosted bool
 	Guests int
+	Refuse int
 
 	mu      sync.Mutex
 	conns   map[*Conn]bool
@@ -38,6 +42,9 @@ func (r *Relay) Dial(_ context.Context, url string, header http.Header) (protoco
 	defer r.mu.Unlock()
 	r.urls = append(r.urls, url)
 	r.headers = append(r.headers, header.Clone())
+	if r.Refuse != 0 {
+		return nil, &protocol.CloseError{Code: r.Refuse}
+	}
 	c := &Conn{relay: r, isHost: header.Get("Authorization") != "", wake: make(chan struct{}, 1)}
 	if r.Hosted && !c.isHost && !r.hasHost() {
 		return nil, &protocol.CloseError{Code: protocol.RoomClosed}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -51,6 +52,27 @@ var ErrRoomClosed = errors.New("the room is closed: the host left, or the link i
 
 // ErrRoomFull means the room already has as many guests as its relay allows.
 var ErrRoomFull = errors.New("the room is full: its relay takes only so many people at once; try again when someone leaves")
+
+// ErrClientOutdated means the server speaks a newer protocol version than this
+// pedit, which has to be updated.
+var ErrClientOutdated = errors.New("this pedit is too old for the server; update it")
+
+// ErrServerOutdated means the server speaks an older protocol version than
+// this pedit; whoever runs it has to update it.
+var ErrServerOutdated = errors.New("the server is older than this pedit; ask whoever runs it to update it")
+
+// endedErr says why a Client ended in the final status st.
+func endedErr(st protocol.Status) error {
+	switch st {
+	case protocol.StatusFull:
+		return ErrRoomFull
+	case protocol.StatusClientOutdated:
+		return ErrClientOutdated
+	case protocol.StatusServerOutdated:
+		return ErrServerOutdated
+	}
+	return ErrRoomClosed
+}
 
 // ErrFileExists means the copy was not written because a file of that name is
 // already in Directory.
@@ -113,8 +135,8 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		beforePublishWriter: opts.beforePublishWriter,
 	}
 	synced := make(chan struct{})
-	// Closed or full, whichever came: both end the session for good.
-	ended := make(chan error, 1)
+	closed := make(chan struct{})
+	var ended atomic.Value // the final protocol.Status, set before closed is
 	s.Client, err = protocol.NewClient(protocol.ClientOptions{
 		URL:       wsURL,
 		Key:       rawKey,
@@ -123,17 +145,12 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		Header:    opts.Header,
 		Dial:      opts.Dial,
 		OnStatus: func(st protocol.Status) {
-			var err error
-			switch st {
-			case protocol.StatusClosed:
-				err = ErrRoomClosed
-			case protocol.StatusFull:
-				err = ErrRoomFull
-			}
-			if err != nil {
+			if st.Final() {
 				select {
-				case ended <- err:
+				case <-closed:
 				default:
+					ended.Store(st)
+					close(closed)
 				}
 			}
 			if opts.OnStatus != nil {
@@ -182,6 +199,16 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		_ = removeTemp(temp)
 		return nil, err
 	}
+	// OnStatus may cancel ctx on the very status that ended the room, so both
+	// are ready at once; the reason the room ended wins.
+	canceled := func() (*Session, error) {
+		select {
+		case <-closed:
+			return fail(endedErr(ended.Load().(protocol.Status)))
+		default:
+			return fail(ctx.Err())
+		}
+	}
 	deadline := time.NewTimer(opts.Timeout)
 	defer deadline.Stop()
 	var host map[string]any
@@ -189,22 +216,22 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		select {
 		case <-hostSeen:
 			host, _ = hostState(aw)
-		case err := <-ended:
-			return fail(err)
+		case <-closed:
+			return fail(endedErr(ended.Load().(protocol.Status)))
 		case <-deadline.C:
 			return fail(fmt.Errorf("no host answered within %s", opts.Timeout))
 		case <-ctx.Done():
-			return fail(ctx.Err())
+			return canceled()
 		}
 	}
 	select {
 	case <-synced:
-	case err := <-ended:
-		return fail(err)
+	case <-closed:
+		return fail(endedErr(ended.Load().(protocol.Status)))
 	case <-deadline.C:
 		return fail(fmt.Errorf("the room did not send its content within %s", opts.Timeout))
 	case <-ctx.Done():
-		return fail(ctx.Err())
+		return canceled()
 	}
 	if format, _ := host["format"].(string); format == formatCanvas {
 		return fail(errors.New("this room shares a canvas as nodes and edges, which pedit cannot join from the command line yet; open the link in a browser"))

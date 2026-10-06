@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/piconic-ai/pedit/internal/protocol"
 )
 
 func TestNewerVersion(t *testing.T) {
@@ -191,5 +193,37 @@ func TestUpdateAvailable(t *testing.T) {
 `
 	if out.String() != want {
 		t.Fatalf("without a command, got:\n%q\nwant:\n%q", out.String(), want)
+	}
+}
+
+func TestOutdated(t *testing.T) {
+	var out bytes.Buffer
+	newUI(&out, false, false).outdated(protocol.StatusClientOutdated, "brew upgrade piconic-ai/tap/pedit")
+	want := `  This pedit is too old for the server. Update it and run pedit again.
+  To upgrade, run: brew upgrade piconic-ai/tap/pedit
+
+`
+	if out.String() != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", out.String(), want)
+	}
+
+	out.Reset()
+	newUI(&out, false, false).outdated(protocol.StatusClientOutdated, "")
+	want = `  This pedit is too old for the server. Update it and run pedit again.
+  https://github.com/piconic-ai/pedit#install
+
+`
+	if out.String() != want {
+		t.Fatalf("without a command, got:\n%q\nwant:\n%q", out.String(), want)
+	}
+
+	out.Reset()
+	newUI(&out, false, false).outdated(protocol.StatusServerOutdated, "brew upgrade piconic-ai/tap/pedit")
+	want = `  The server is older than this pedit and cannot be used with it.
+  Ask whoever runs the server to update it, or use an older pedit.
+
+`
+	if out.String() != want {
+		t.Fatalf("server outdated, got:\n%q\nwant:\n%q", out.String(), want)
 	}
 }

@@ -5,8 +5,21 @@
 export const ROOM_CLOSED = 4001
 
 /**
+ * WebSocket close code for a client that speaks an older protocol version
+ * than the server. Clients must not reconnect on it: the client has to be
+ * updated (or the page reloaded) first.
+ */
+export const CLIENT_OUTDATED = 4002
+
+/**
+ * WebSocket close code for a client that speaks a newer protocol version than
+ * the server. Clients must not reconnect on it: the server has to be updated.
+ */
+export const SERVER_OUTDATED = 4003
+
+/**
  * WebSocket close code sent to a guest who tries to join a room that already
  * has as many guests as the relay allows. Clients must not reconnect on it by
  * themselves: the room stays full until someone leaves.
  */
-export const ROOM_FULL = 4002
+export const ROOM_FULL = 4004

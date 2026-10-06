@@ -12,7 +12,7 @@ import {
 } from './attachment.ts'
 import { type CanvasMessage, decodeCanvas, encodeCanvas, UnknownCanvasKindError } from './canvas.ts'
 import { decrypt, encrypt } from './cipher.ts'
-import { ROOM_CLOSED, ROOM_FULL } from './close.ts'
+import { CLIENT_OUTDATED, ROOM_CLOSED, ROOM_FULL, SERVER_OUTDATED } from './close.ts'
 import {
   decodeMessage,
   encodeMessage,
@@ -21,9 +21,37 @@ import {
   UnknownMessageTypeError,
 } from './message.ts'
 
-/** `closed` is final: the host ended the session. */
-/** 'closed' and 'full' are final: the session ended, or had no room for us. */
-export type RoomStatus = 'connecting' | 'connected' | 'disconnected' | 'closed' | 'full'
+/**
+ * `closed` is final: the host ended the session. So is `full`: the room had no
+ * place for us. So are `client-outdated` and `server-outdated`: the server
+ * speaks an older or newer protocol version.
+ */
+export type RoomStatus =
+  | 'connecting'
+  | 'connected'
+  | 'disconnected'
+  | 'closed'
+  | 'full'
+  | 'client-outdated'
+  | 'server-outdated'
+
+/** Whether a client stays in this status for good and no longer reconnects. */
+export function isFinalStatus(status: RoomStatus): boolean {
+  return (
+    status === 'closed' ||
+    status === 'full' ||
+    status === 'client-outdated' ||
+    status === 'server-outdated'
+  )
+}
+
+/** The status each final close code leaves a client in. */
+const FINAL_CLOSE: ReadonlyMap<number, RoomStatus> = new Map([
+  [ROOM_CLOSED, 'closed'],
+  [ROOM_FULL, 'full'],
+  [CLIENT_OUTDATED, 'client-outdated'],
+  [SERVER_OUTDATED, 'server-outdated'],
+])
 
 /** The subset of the WebSocket API used by RoomClient (browser and Node.js 22+ globals both fit). */
 export interface SocketLike {
@@ -119,12 +147,9 @@ export class RoomClient {
       if (this.socket !== socket) return
       this.socket = null
       this.dropRemoteAwareness()
-      if (ev.code === ROOM_CLOSED && !this.destroyed) {
-        this.setStatus('closed')
-        return
-      }
-      if (ev.code === ROOM_FULL && !this.destroyed) {
-        this.setStatus('full')
+      const final = ev.code === undefined ? undefined : FINAL_CLOSE.get(ev.code)
+      if (final && !this.destroyed) {
+        this.setStatus(final)
         return
       }
       this.setStatus('disconnected')

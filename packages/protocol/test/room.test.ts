@@ -4,11 +4,13 @@ import * as Y from 'yjs'
 import {
   type Attachment,
   type CanvasMessage,
+  CLIENT_OUTDATED,
   encrypt,
   generateKey,
   importKey,
   MessageType,
   RoomClient,
+  SERVER_OUTDATED,
 } from '../src/index.ts'
 import { Relay } from '../src/testing.ts'
 
@@ -259,4 +261,19 @@ describe('RoomClient', () => {
     expect(late.status).toBe('full')
     expect(relay.urls).toHaveLength(3)
   })
+
+  it.each([
+    [CLIENT_OUTDATED, 'client-outdated'],
+    [SERVER_OUTDATED, 'server-outdated'],
+  ] as const)(
+    'stops for good when the server turns its protocol version away (%i)',
+    async (code, status) => {
+      const relay = new Relay({ refuse: code })
+      const client = await join(relay, await importKey(generateKey()))
+      await vi.waitFor(() => expect(client.status).toBe(status))
+      await new Promise((r) => setTimeout(r, 1500))
+      expect(client.status).toBe(status)
+      expect(relay.urls).toHaveLength(1)
+    },
+  )
 })

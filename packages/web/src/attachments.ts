@@ -51,6 +51,8 @@ export function whyNoImages(
 ): string | null {
   if (status === 'closed') return 'The session has ended.'
   if (status === 'full') return 'This room is full.'
+  if (status === 'client-outdated') return 'This page is out of date. Reload it first.'
+  if (status === 'server-outdated') return 'The server is older than this page.'
   if (status !== 'connected' || !hostHere) return 'Connecting to the host. Try again in a moment.'
   if (!host) return "The host's pedit is too old to save images."
   return null

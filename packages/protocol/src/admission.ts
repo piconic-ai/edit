@@ -1,7 +1,13 @@
 import { decodeKey, toBase64Url } from './key.ts'
 
 export const ADMISSION_HEADER = 'X-Pedit-Admission'
-export const SOCKET_PROTOCOL = 'pedit-v1'
+/**
+ * The wire format version. Bump it only for changes older peers cannot skip;
+ * adding a message type or kind does not need a bump.
+ */
+export const PROTOCOL_VERSION = 1
+export const SOCKET_PROTOCOL = `pedit-v${PROTOCOL_VERSION}`
+const VERSION_PROTOCOL = /^pedit-v(0|[1-9][0-9]{0,8})$/
 export const ADMISSION_PROTOCOL_PREFIX = 'pedit-admission.'
 export const ADMISSION_PATTERN = /^[A-Za-z0-9_-]{43}$/
 
@@ -39,4 +45,29 @@ export function readAdmissionProtocol(header: string | null): string | null {
   const tokens = protocols.filter((p) => p.startsWith(ADMISSION_PROTOCOL_PREFIX))
   const token = tokens[0]?.slice(ADMISSION_PROTOCOL_PREFIX.length)
   return tokens.length === 1 && token && ADMISSION_PATTERN.test(token) ? token : null
+}
+
+/**
+ * Compares the protocol versions a client offers with PROTOCOL_VERSION:
+ * `current` when it speaks this one, `client-outdated` or `server-outdated`
+ * when it only speaks others, and `none` when it offers no version at all.
+ * `offered` is the subprotocol to echo when accepting just to close.
+ */
+export function checkProtocolVersion(
+  header: string | null,
+):
+  | { result: 'current' | 'none' }
+  | { result: 'client-outdated' | 'server-outdated'; offered: string } {
+  const protocols = header?.split(',').map((p) => p.trim()) ?? []
+  const versions = protocols.flatMap((p) => {
+    const m = VERSION_PROTOCOL.exec(p)
+    return m ? [{ protocol: p, version: Number(m[1]) }] : []
+  })
+  if (versions.length === 0) return { result: 'none' }
+  if (versions.some((v) => v.version === PROTOCOL_VERSION)) return { result: 'current' }
+  const newest = versions.reduce((a, b) => (b.version > a.version ? b : a))
+  return {
+    result: newest.version > PROTOCOL_VERSION ? 'server-outdated' : 'client-outdated',
+    offered: newest.protocol,
+  }
 }

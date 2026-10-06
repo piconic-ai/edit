@@ -10,6 +10,8 @@ export interface RelayOptions {
   hosted?: boolean
   /** Guests at once, the host not counted; more are turned away with ROOM_FULL. */
   guests?: number
+  /** Turn every socket away with this close code, as the Room does on a protocol version mismatch. */
+  refuse?: number
 }
 
 /** An in-memory stand-in for the Worker: relays every frame to all other sockets. */
@@ -29,6 +31,10 @@ export class Relay {
     const socket = new FakeSocket(this, Boolean(headers?.Authorization))
     this.sockets.add(socket)
     queueMicrotask(() => {
+      if (this.opts.refuse !== undefined) {
+        socket.close(this.opts.refuse)
+        return
+      }
       if (this.opts.hosted && !socket.isHost && !this.hasHost()) {
         socket.close(ROOM_CLOSED)
         return

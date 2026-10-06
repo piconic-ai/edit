@@ -16,7 +16,9 @@ import {
 } from '../src/room.ts'
 
 const ROOM_CLOSED = 4001
-const ROOM_FULL = 4002
+const CLIENT_OUTDATED = 4002
+const SERVER_OUTDATED = 4003
+const ROOM_FULL = 4004
 // The tests run with small limits (vitest.config.ts).
 const { guests: GUESTS, blobBytes: BLOB_BYTES } = limits(env)
 
@@ -92,6 +94,27 @@ describe('rooms', () => {
     expect(valid.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v1')
     valid.webSocket?.accept()
     valid.webSocket?.close()
+  })
+
+  it('tells clients of another protocol version to update, before admission', async () => {
+    const room = await createRoom()
+    await host(room)
+    const admission = admissionProtocols(admissions.get(room.id)!)[1]
+    const old = await upgrade(room.id, { 'Sec-WebSocket-Protocol': `pedit-v0, ${admission}` })
+    expect(old.status).toBe(101)
+    expect(old.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v0')
+    // A wrong admission makes no difference: the version is checked first.
+    const newer = await connect(room.id, {
+      'Sec-WebSocket-Protocol': `pedit-v2, pedit-admission.${'B'.repeat(43)}`,
+    })
+    expect((await newer.closed).code).toBe(SERVER_OUTDATED)
+    const ws = old.webSocket!
+    const closed = new Promise<CloseEvent>((resolve) => ws.addEventListener('close', resolve))
+    ws.accept()
+    expect((await closed).code).toBe(CLIENT_OUTDATED)
+    // Neither took a peer slot or registered anything.
+    const guest = await connect(room.id)
+    guest.ws.close()
   })
 
   it('only lets the host register admission and preserves it across hibernation', async () => {

@@ -182,6 +182,8 @@ describe('whyNoImages', () => {
     expect(whyNoImages('connected', true, host)).toBeNull()
     expect(whyNoImages('closed', true, host)).toMatch(/ended/)
     expect(whyNoImages('full', true, host)).toMatch(/full/)
+    expect(whyNoImages('client-outdated', true, host)).toMatch(/Reload/)
+    expect(whyNoImages('server-outdated', true, host)).toMatch(/server is older/)
     expect(whyNoImages('connected', true, null)).toMatch(/too old/)
   })
 

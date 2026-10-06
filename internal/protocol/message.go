@@ -18,10 +18,20 @@ const (
 // host leaves. Clients must not reconnect on it: the session is over.
 const RoomClosed = 4001
 
+// ClientOutdated is the WebSocket close code for a client that speaks an older
+// protocol version than the server. Clients must not reconnect on it: pedit
+// has to be updated first.
+const ClientOutdated = 4002
+
+// ServerOutdated is the WebSocket close code for a client that speaks a newer
+// protocol version than the server. Clients must not reconnect on it: the
+// server has to be updated.
+const ServerOutdated = 4003
+
 // RoomFull is the WebSocket close code sent to a guest who tries to join a
 // room that already has as many guests as the relay allows. Clients must not
 // reconnect on it by themselves: the room stays full until someone leaves.
-const RoomFull = 4002
+const RoomFull = 4004
 
 // ErrUnknownMessageType marks a message type this version does not know, from
 // a newer peer. Clients skip such messages instead of reporting them.

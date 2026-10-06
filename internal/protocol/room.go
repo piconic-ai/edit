@@ -14,8 +14,10 @@ import (
 	ysync "github.com/reearth/ygo/sync"
 )
 
-// Status is the connection state of a Client. StatusClosed and StatusFull are
-// final: the host ended the session, or the room had no place for us.
+// Status is the connection state of a Client. StatusClosed is final: the host
+// ended the session. So is StatusFull: the room had no place for us. So are
+// StatusClientOutdated and StatusServerOutdated: the server speaks an older or
+// newer protocol version.
 type Status string
 
 // errDestroyed ends the connection loop when the Client was destroyed mid-dial.
@@ -27,7 +29,23 @@ const (
 	StatusDisconnected Status = "disconnected"
 	StatusClosed       Status = "closed"
 	StatusFull         Status = "full"
+
+	StatusClientOutdated Status = "client-outdated"
+	StatusServerOutdated Status = "server-outdated"
 )
+
+// finalStatus maps the close codes that end a Client for good to its status.
+var finalStatus = map[int]Status{
+	RoomClosed:     StatusClosed,
+	RoomFull:       StatusFull,
+	ClientOutdated: StatusClientOutdated,
+	ServerOutdated: StatusServerOutdated,
+}
+
+// Final reports whether a Client stays in s for good and no longer reconnects.
+func (s Status) Final() bool {
+	return s == StatusClosed || s == StatusFull || s == StatusClientOutdated || s == StatusServerOutdated
+}
 
 type ClientOptions struct {
 	// URL is the WebSocket URL of the room. It must never contain the key.
@@ -201,12 +219,8 @@ func (c *Client) run() {
 			return
 		}
 		c.dropRemoteAwareness()
-		switch closeCode(err) {
-		case RoomClosed:
-			c.setStatus(StatusClosed)
-			return
-		case RoomFull:
-			c.setStatus(StatusFull)
+		if st, ok := finalStatus[closeCode(err)]; ok {
+			c.setStatus(st)
 			return
 		}
 		c.onError(err)
