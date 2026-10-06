@@ -225,6 +225,16 @@ func (u *ui) saved(file string) {
 	u.print(u.green("✓")+" Saved "+file+". The link no longer works.", "")
 }
 
+// updateAvailable points to a newer release and how to upgrade to it.
+func (u *ui) updateAvailable(current string, latest release, command string) {
+	lines := []string{u.yellow("A new release of pedit is available: ") + current + " → " + u.bold(latest.Version)}
+	if command != "" {
+		lines = append(lines, "To upgrade, run: "+u.bold(command))
+	}
+	lines = append(lines, u.link(latest.URL), "")
+	u.print(lines...)
+}
+
 // scratch names the scratch file pedit created and how to open it again.
 func (u *ui) scratch(file string) {
 	u.print("Saved to "+file, u.resume(file), "")

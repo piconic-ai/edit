@@ -104,8 +104,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	out := newUI(stdout, isTerminal(stdout), os.Getenv("NO_COLOR") != "")
+	latest := startUpdateCheck(getVersion(), out.tty)
 	if opts.Room != "" {
-		return runJoin(opts, out, stderr)
+		code := runJoin(opts, out, stderr)
+		notifyUpdate(out, latest)
+		return code
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -203,7 +206,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		<-signals
 		os.Exit(130)
 	}()
-	return finish(out, stderr, arg, scratch, s.Stop)
+	code := finish(out, stderr, arg, scratch, s.Stop)
+	notifyUpdate(out, latest)
+	return code
 }
 
 // runJoin joins the room at opts.Room and mirrors its file to a local copy
