@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.13](https://github.com/piconic-ai/pedit/compare/v0.0.12...v0.0.13) - 2026-10-06
+
+- Show install progress with cycling dots by @kfly8 in https://github.com/piconic-ai/pedit/pull/90
+- Tell the user when a newer pedit is released by @kfly8 in https://github.com/piconic-ai/pedit/pull/92
+- Name the service pedit everywhere it is shown by @kfly8 in https://github.com/piconic-ai/pedit/pull/93
+- Move the module and links to piconic-ai/pedit by @kfly8 in https://github.com/piconic-ai/pedit/pull/94
+
 ## [v0.0.12](https://github.com/piconic-ai/edit/compare/v0.0.11...v0.0.12) - 2026-10-06
 
 - Show the Come over film at the top of the README by @kfly8 in https://github.com/piconic-ai/edit/pull/85
