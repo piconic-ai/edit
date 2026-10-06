@@ -31,7 +31,7 @@ describe('Landing', () => {
     expect(el.querySelector('h1 .visually-hidden')?.textContent).toBe('pedit')
     expect(el.querySelector('p .visually-hidden')?.textContent).toBe('Pair edit your local files.')
     const link = el.querySelector('a')
-    expect(link?.getAttribute('href')).toBe('https://github.com/piconic-ai/edit')
+    expect(link?.getAttribute('href')).toBe('https://github.com/piconic-ai/pedit')
     expect(link?.getAttribute('aria-label')).toBe('GitHub')
     expect(link?.querySelector('svg')).not.toBeNull()
   })

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/piconic-ai/edit/internal/suggest"
+	"github.com/piconic-ai/pedit/internal/suggest"
 )
 
 // checkFile tells why arg cannot be shared, in words that help fix it, or

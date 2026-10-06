@@ -25,7 +25,8 @@ fail() {
 # boundary: INSTALL_TEST_GH_AUTH_EXIT is the active account's `gh auth status`
 # result, INSTALL_TEST_GH_INACTIVE_EXPIRED adds another stored account whose
 # token expired, and INSTALL_TEST_GH_EXIT is the `gh attestation verify` result,
-# which arrives after INSTALL_TEST_GH_DELAY seconds. tar is wrapped only to
+# which arrives after INSTALL_TEST_GH_DELAY seconds. Like the real gh, the
+# mock rejects any identity but the release's signer, INSTALL_TEST_GH_SIGNER. tar is wrapped only to
 # record whether install.sh extracted anything.
 setup_mocks() {
   mkdir "$work/mocks"
@@ -43,8 +44,9 @@ if [ "$1" = auth ]; then
 fi
 [ "$#" -eq 8 ]
 [ "$1" = attestation ] && [ "$2" = verify ] && [ -f "$3" ] || exit 99
-[ "$4" = --repo ] && [ "$5" = piconic-ai/edit ] || exit 99
-[ "$6" = --signer-workflow ] && [ "$7" = piconic-ai/edit/.github/workflows/tagpr.yml ] || exit 99
+signer=${INSTALL_TEST_GH_SIGNER:-piconic-ai/pedit}
+[ "$4" = --repo ] && [ "$5" = "$signer" ] || exit 99
+[ "$6" = --signer-workflow ] && [ "$7" = "$signer/.github/workflows/tagpr.yml" ] || exit 99
 [ "$8" = --deny-self-hosted-runners ]
 sleep "${INSTALL_TEST_GH_DELAY:-0}"
 exit "${INSTALL_TEST_GH_EXIT:-0}"
@@ -66,7 +68,7 @@ try_install() {
   shift
   mkdir -p "$work/$name"
   INSTALL_TEST_GH_LOG="$work/$name/gh.log" INSTALL_TEST_TAR_LOG="$work/$name/tar.log" \
-    PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="${PEDIT_DOWNLOAD_URL:-file://$release}" \
+    PEDIT_VERSION="${PEDIT_VERSION:-$version}" PEDIT_DOWNLOAD_URL="${PEDIT_DOWNLOAD_URL:-file://$release}" \
     PEDIT_INSTALL_DIR="$work/$name/bin" \
     "${@:-/bin/sh}" "$script" >"$work/$name/out" 2>"$work/$name/err"
 }
@@ -121,6 +123,22 @@ verifies_provenance_despite_an_expired_inactive_account() {
   assert_installed inactive-expired
   assert_contains inactive-expired out 'Verifying build provenance\.\.\. DONE'
   assert_contains inactive-expired gh.log '^attestation verify '
+}
+
+verifies_a_release_signed_before_the_rename() {
+  # The same archives, published as v0.0.12: signed as piconic-ai/edit.
+  local old="$work/old-release" f
+  mkdir "$old"
+  for f in "$release"/pedit_*; do
+    f=${f##*/}
+    cp "$release/$f" "$old/${f/"$version"/v0.0.12}"
+  done
+  sed "s/$version/v0.0.12/" "$release/checksums.txt" >"$old/checksums.txt"
+  PEDIT_VERSION=v0.0.12 PEDIT_DOWNLOAD_URL="file://$old" INSTALL_TEST_GH_SIGNER=piconic-ai/edit \
+    run_install renamed
+  assert_contains renamed out 'Verifying build provenance\.\.\. DONE'
+  assert_contains renamed out 'Installed pedit v0\.0\.12'
+  assert_contains renamed gh.log ' --repo piconic-ai/edit --signer-workflow piconic-ai/edit/'
 }
 
 skips_provenance_when_gh_is_signed_out() {
@@ -220,6 +238,7 @@ setup_mocks
 for case in \
   verifies_provenance_when_gh_is_signed_in \
   verifies_provenance_despite_an_expired_inactive_account \
+  verifies_a_release_signed_before_the_rename \
   skips_provenance_when_gh_is_signed_out \
   skips_provenance_without_gh \
   refuses_failed_provenance \

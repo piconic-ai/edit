@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/edit/internal/protocol/prototest"
+	"github.com/piconic-ai/pedit/internal/protocol/prototest"
 )
 
 // Audit probes assert the vulnerable behavior. They are saved outside the

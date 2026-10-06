@@ -65,19 +65,19 @@ brew install piconic-ai/tap/pedit
 mise:
 
 ```sh
-mise use -g github:piconic-ai/edit
+mise use -g github:piconic-ai/pedit
 ```
 
 Go 1.25+:
 
 ```sh
-go install github.com/piconic-ai/edit/cmd/pedit@latest
+go install github.com/piconic-ai/pedit/cmd/pedit@latest
 ```
 
-Binaries: [GitHub Releases](https://github.com/piconic-ai/edit/releases) (macOS / Linux / Windows · amd64 / arm64).
+Binaries: [GitHub Releases](https://github.com/piconic-ai/pedit/releases) (macOS / Linux / Windows · amd64 / arm64).
 Each archive carries a build provenance attestation; check that it was built
 by this repository's release workflow with
-`gh attestation verify <archive> --repo piconic-ai/edit`.
+`gh attestation verify <archive> --repo piconic-ai/pedit`.
 
 ## Configuration and templates
 
@@ -153,7 +153,7 @@ Self-host when you want to limit who can join editing sessions. Cloudflare
 Access lets you allow specific email addresses or identity provider groups;
 participants need both an allowed identity and the session link.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fedit%2Ftree%2Fmain%2Fpackages)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fpedit%2Ftree%2Fmain%2Fpackages)
 
 The button copies only the server workspace (`packages/`), without the Go CLI.
 Deploy the relay and browser editor to your Cloudflare account, then:

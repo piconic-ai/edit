@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/piconic-ai/edit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/protocol"
 )
 
 // blobVectors pins the attachment crypto so the TypeScript side

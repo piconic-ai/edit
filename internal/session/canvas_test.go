@@ -11,9 +11,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/piconic-ai/edit/internal/canvas"
-	"github.com/piconic-ai/edit/internal/protocol"
-	"github.com/piconic-ai/edit/internal/protocol/prototest"
+	"github.com/piconic-ai/pedit/internal/canvas"
+	"github.com/piconic-ai/pedit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/protocol/prototest"
 	"github.com/reearth/ygo/awareness"
 	"github.com/reearth/ygo/crdt"
 )

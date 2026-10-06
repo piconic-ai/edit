@@ -9,7 +9,7 @@ an existing open PR for the same tag. Tap PRs are merged manually.
 
 Merge the initial tap Formula PR before the first automated update.
 
-Set the `HOMEBREW_TAP_TOKEN` Actions secret in **piconic-ai/edit** to a
+Set the `HOMEBREW_TAP_TOKEN` Actions secret in **piconic-ai/pedit** to a
 fine-grained personal access token for **piconic-ai/homebrew-tap** with
 **Contents: Read and write** and **Pull requests: Read and write** permissions.
 Approve the token if required by the organization. `GITHUB_TOKEN` cannot write

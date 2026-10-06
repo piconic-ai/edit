@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/edit/internal/access"
-	"github.com/piconic-ai/edit/internal/session"
+	"github.com/piconic-ai/pedit/internal/access"
+	"github.com/piconic-ai/pedit/internal/session"
 )
 
 func TestRunArgs(t *testing.T) {

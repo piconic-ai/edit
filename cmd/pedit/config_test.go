@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/piconic-ai/edit/internal/canvas"
+	"github.com/piconic-ai/pedit/internal/canvas"
 )
 
 func put(t *testing.T, path, content string) {

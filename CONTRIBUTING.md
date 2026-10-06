@@ -1,7 +1,7 @@
 # Contributing to pedit
 
 Bug reports, documentation improvements and pull requests are welcome.
-[Open an issue](https://github.com/piconic-ai/edit/issues) with steps to reproduce,
+[Open an issue](https://github.com/piconic-ai/pedit/issues) with steps to reproduce,
 your OS, pedit version and expected behavior. Remove room links, keys, Access
 tokens and private document content from reports.
 

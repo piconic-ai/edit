@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/piconic-ai/edit/internal/protocol"
-	"github.com/piconic-ai/edit/internal/protocol/prototest"
+	"github.com/piconic-ai/pedit/internal/protocol"
+	"github.com/piconic-ai/pedit/internal/protocol/prototest"
 )
 
 // joinFromCLI joins the room of f as a second pedit would, keeping its copy in
