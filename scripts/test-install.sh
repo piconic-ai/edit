@@ -22,8 +22,9 @@ fail() {
 }
 
 # CI archives have no published attestation, so gh is mocked at the process
-# boundary: INSTALL_TEST_GH_AUTH_EXIT is the `gh auth status` result and
-# INSTALL_TEST_GH_EXIT the `gh attestation verify` one. tar is wrapped only to
+# boundary: INSTALL_TEST_GH_AUTH_EXIT is the active account's `gh auth status`
+# result, INSTALL_TEST_GH_INACTIVE_EXPIRED adds another stored account whose
+# token expired, and INSTALL_TEST_GH_EXIT is the `gh attestation verify` result. tar is wrapped only to
 # record whether install.sh extracted anything.
 setup_mocks() {
   mkdir "$work/mocks"
@@ -32,7 +33,11 @@ setup_mocks() {
 set -eu
 printf '%s\n' "$*" >>"$INSTALL_TEST_GH_LOG"
 if [ "$1" = auth ]; then
-  [ "$*" = "auth status --hostname github.com" ] || exit 99
+  case "$*" in
+    "auth status --active --hostname github.com") ;;
+    "auth status --hostname github.com") [ -z "${INSTALL_TEST_GH_INACTIVE_EXPIRED:-}" ] || exit 1 ;;
+    *) exit 99 ;;
+  esac
   exit "${INSTALL_TEST_GH_AUTH_EXIT:-0}"
 fi
 [ "$#" -eq 8 ]
@@ -97,6 +102,13 @@ verifies_provenance_when_gh_is_signed_in() {
   assert_installed signed-in
   assert_contains signed-in out 'Verified build provenance'
   assert_contains signed-in gh.log '^attestation verify '
+}
+
+verifies_provenance_despite_an_expired_inactive_account() {
+  INSTALL_TEST_GH_INACTIVE_EXPIRED=1 run_install inactive-expired
+  assert_installed inactive-expired
+  assert_contains inactive-expired out 'Verified build provenance'
+  assert_contains inactive-expired gh.log '^attestation verify '
 }
 
 skips_provenance_when_gh_is_signed_out() {
@@ -184,6 +196,7 @@ refuses_a_checksum_mismatch() {
 setup_mocks
 for case in \
   verifies_provenance_when_gh_is_signed_in \
+  verifies_provenance_despite_an_expired_inactive_account \
   skips_provenance_when_gh_is_signed_out \
   skips_provenance_without_gh \
   refuses_failed_provenance \

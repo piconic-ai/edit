@@ -57,7 +57,8 @@ verify_checksum() {
 
 verify_provenance() {
   # Optional: gh fetches attestations from the GitHub API, which needs a sign-in.
-  if ! command -v gh >/dev/null 2>&1 || ! gh auth status --hostname github.com >/dev/null 2>&1; then
+  # --active: without it, any other stored account with an expired token fails.
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
     echo "Skipped the build provenance check (needs the GitHub CLI, signed in)"
     return
   fi
