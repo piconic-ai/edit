@@ -10,10 +10,68 @@ script="$(cd "$(dirname "$0")/.." && pwd)/packages/web/public/install.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
+# CI archives have no published attestation. Mock the verifier at the process
+# boundary; production verification remains mandatory, including for file://.
+mkdir "$work/tools"
+export INSTALL_TEST_GH_LOG="$work/gh.log"
+export INSTALL_TEST_TAR_LOG="$work/tar.log"
+export INSTALL_TEST_REAL_TAR
+INSTALL_TEST_REAL_TAR=$(command -v tar)
+cat >"$work/tools/gh" <<'SH'
+#!/bin/sh
+set -eu
+printf '%s\n' "$*" >>"$INSTALL_TEST_GH_LOG"
+[ "$#" -eq 8 ]
+[ "$1" = attestation ] && [ "$2" = verify ] && [ -f "$3" ] || exit 99
+[ "$4" = --repo ] && [ "$5" = piconic-ai/edit ] || exit 99
+[ "$6" = --signer-workflow ] && [ "$7" = piconic-ai/edit/.github/workflows/tagpr.yml ] || exit 99
+[ "$8" = --deny-self-hosted-runners ]
+exit "${INSTALL_TEST_GH_EXIT:-0}"
+SH
+cat >"$work/tools/tar" <<'SH'
+#!/bin/sh
+echo invoked >>"$INSTALL_TEST_TAR_LOG"
+exec "$INSTALL_TEST_REAL_TAR" "$@"
+SH
+chmod +x "$work/tools/gh" "$work/tools/tar"
+export PATH="$work/tools:$PATH"
+
+echo "--- requires GitHub CLI before downloading"
+mkdir "$work/no-gh"
+ln -s "$(command -v curl)" "$work/no-gh/curl"
+if PATH="$work/no-gh" /bin/sh "$script" >"$work/missing.stdout" 2>"$work/missing.stderr"; then
+  echo "install.sh accepted a missing GitHub CLI" >&2
+  exit 1
+fi
+grep -q 'GitHub CLI (gh) is required' "$work/missing.stderr"
+test ! -s "$work/missing.stdout"
+
 echo "--- installs and verifies a release"
 PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/ok/bin" \
   sh "$script"
 test "$("$work/ok/bin/pedit" --version)" = "$version"
+test -s "$INSTALL_TEST_GH_LOG"
+
+echo "--- refuses failed provenance verification before extraction or replacement"
+for verifier_exit in 1 2 127; do
+  mkdir -p "$work/rejected-$verifier_exit/bin"
+  echo untouched >"$work/rejected-$verifier_exit/bin/pedit"
+  : >"$INSTALL_TEST_TAR_LOG"
+  if INSTALL_TEST_GH_EXIT="$verifier_exit" PEDIT_VERSION="$version" \
+    PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/rejected-$verifier_exit/bin" \
+    sh "$script" >"$work/rejected.stdout" 2>"$work/rejected.stderr"; then
+    echo "install.sh accepted failed provenance verification" >&2
+    exit 1
+  fi
+  grep -q 'release provenance verification failed' "$work/rejected.stderr"
+  test "$(cat "$work/rejected-$verifier_exit/bin/pedit")" = untouched
+  test ! -s "$INSTALL_TEST_TAR_LOG"
+  test -z "$(find "$work/rejected-$verifier_exit/bin" -name '.pedit.*')"
+  if grep -q Installed "$work/rejected.stdout"; then
+    echo "install.sh reported success after failed verification" >&2
+    exit 1
+  fi
+done
 
 echo "--- replaces a pedit that is running"
 mkdir -p "$work/busy/bin"
@@ -53,6 +111,8 @@ test -d "$work/dir/bin/pedit"
 test -z "$(ls -A "$work/dir/bin/pedit")"
 
 echo "--- refuses an archive that does not match checksums.txt"
+: >"$INSTALL_TEST_GH_LOG"
+: >"$INSTALL_TEST_TAR_LOG"
 mkdir "$work/bad"
 cp "$release"/* "$work/bad/"
 sed -E 's/^[0-9a-f]{64}/0000000000000000000000000000000000000000000000000000000000000000/' \
@@ -64,5 +124,7 @@ if PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$work/bad" PEDIT_INSTALL_
 fi
 grep -q "checksum mismatch" "$work/bad/stderr"
 test ! -e "$work/bad/bin/pedit"
+test ! -s "$INSTALL_TEST_GH_LOG"
+test ! -s "$INSTALL_TEST_TAR_LOG"
 
 echo "ok"

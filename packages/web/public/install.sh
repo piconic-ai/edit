@@ -55,6 +55,7 @@ verify_checksum() {
 
 main() {
   command -v curl >/dev/null 2>&1 || fail "curl is required"
+  command -v gh >/dev/null 2>&1 || fail "GitHub CLI (gh) is required to verify release provenance; install it from https://cli.github.com"
   detect_target
   version=${PEDIT_VERSION:-}
   [ -n "$version" ] || version=$(latest_version)
@@ -70,6 +71,11 @@ main() {
   curl -fsSL -o "$tmp/$archive" "$base/$archive" || fail "could not download $base/$archive"
   curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" || fail "could not download $base/checksums.txt"
   verify_checksum "$tmp" "$archive"
+  gh attestation verify "$tmp/$archive" \
+    --repo "$repo" \
+    --signer-workflow "$repo/.github/workflows/tagpr.yml" \
+    --deny-self-hosted-runners \
+    || fail "release provenance verification failed; no files were installed"
 
   tar -xzf "$tmp/$archive" -C "$tmp" pedit
   mkdir -p "$install_dir"
