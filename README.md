@@ -50,27 +50,11 @@ review or commit.
 
 ## Install
 
-macOS / Linux (requires [GitHub CLI](https://cli.github.com/), authenticated with `gh auth login`):
+macOS / Linux:
 
 ```sh
 curl -fsSL https://edit.piconic.ai/install.sh | sh
 ```
-
-The installer verifies the SHA-256 checksum and GitHub build provenance before
-extracting or installing the archive. Verification must succeed; releases without
-an attestation cannot be installed with this script.
-
-To avoid running a downloaded installer, download an archive from Releases,
-verify it with your own GitHub CLI, then extract and place `pedit` on your PATH:
-
-```sh
-gh attestation verify ./pedit_VERSION_OS_ARCH.tar.gz \
-  --repo piconic-ai/edit \
-  --signer-workflow piconic-ai/edit/.github/workflows/tagpr.yml \
-  --deny-self-hosted-runners
-```
-
-Replace the filename with the downloaded archive and proceed only if verification succeeds.
 
 Homebrew (macOS / Linux):
 

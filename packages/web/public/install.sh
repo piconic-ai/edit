@@ -6,6 +6,8 @@
 # PEDIT_VERSION     release tag to install (default: the latest release)
 # PEDIT_INSTALL_DIR where to put the binary (default: ~/.local/bin)
 #
+# The archive is checked against checksums.txt, and against its build
+# provenance too when the GitHub CLI is installed and signed in.
 # It never uses sudo and never edits shell profiles. Everything runs from
 # main(), called on the last line, so a truncated download does nothing.
 set -eu
@@ -53,9 +55,22 @@ verify_checksum() {
   (cd "$1" && $sum -c expected.txt >/dev/null 2>&1) || fail "checksum mismatch for $2"
 }
 
+verify_provenance() {
+  # Optional: gh fetches attestations from the GitHub API, which needs a sign-in.
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status --hostname github.com >/dev/null 2>&1; then
+    echo "Skipped the build provenance check (needs the GitHub CLI, signed in)"
+    return
+  fi
+  gh attestation verify "$1" \
+    --repo "$repo" \
+    --signer-workflow "$repo/.github/workflows/tagpr.yml" \
+    --deny-self-hosted-runners >/dev/null ||
+    fail "release provenance verification failed; no files were installed"
+  echo "Verified build provenance"
+}
+
 main() {
   command -v curl >/dev/null 2>&1 || fail "curl is required"
-  command -v gh >/dev/null 2>&1 || fail "GitHub CLI (gh) is required to verify release provenance; install it from https://cli.github.com"
   detect_target
   version=${PEDIT_VERSION:-}
   [ -n "$version" ] || version=$(latest_version)
@@ -71,11 +86,7 @@ main() {
   curl -fsSL -o "$tmp/$archive" "$base/$archive" || fail "could not download $base/$archive"
   curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" || fail "could not download $base/checksums.txt"
   verify_checksum "$tmp" "$archive"
-  gh attestation verify "$tmp/$archive" \
-    --repo "$repo" \
-    --signer-workflow "$repo/.github/workflows/tagpr.yml" \
-    --deny-self-hosted-runners \
-    || fail "release provenance verification failed; no files were installed"
+  verify_provenance "$tmp/$archive"
 
   tar -xzf "$tmp/$archive" -C "$tmp" pedit
   mkdir -p "$install_dir"

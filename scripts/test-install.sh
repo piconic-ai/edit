@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Run packages/web/public/install.sh against archives from build-cli-release.sh,
 # served from a local directory instead of GitHub Releases.
+#
+# Each case installs into its own $work/<name>/bin and keeps install.sh's
+# output in $work/<name>/{out,err}, plus what the gh and tar mocks saw in
+# $work/<name>/{gh,tar}.log.
 set -euo pipefail
 
 version=${1:?Usage: test-install.sh VERSION RELEASE_DIRECTORY}
@@ -10,17 +14,27 @@ script="$(cd "$(dirname "$0")/.." && pwd)/packages/web/public/install.sh"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# CI archives have no published attestation. Mock the verifier at the process
-# boundary; production verification remains mandatory, including for file://.
-mkdir "$work/tools"
-export INSTALL_TEST_GH_LOG="$work/gh.log"
-export INSTALL_TEST_TAR_LOG="$work/tar.log"
-export INSTALL_TEST_REAL_TAR
-INSTALL_TEST_REAL_TAR=$(command -v tar)
-cat >"$work/tools/gh" <<'SH'
+# --- Helpers ---------------------------------------------------------------
+
+fail() {
+  echo "FAIL: $*" >&2
+  exit 1
+}
+
+# CI archives have no published attestation, so gh is mocked at the process
+# boundary: INSTALL_TEST_GH_AUTH_EXIT is the `gh auth status` result and
+# INSTALL_TEST_GH_EXIT the `gh attestation verify` one. tar is wrapped only to
+# record whether install.sh extracted anything.
+setup_mocks() {
+  mkdir "$work/mocks"
+  cat >"$work/mocks/gh" <<'SH'
 #!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$INSTALL_TEST_GH_LOG"
+if [ "$1" = auth ]; then
+  [ "$*" = "auth status --hostname github.com" ] || exit 99
+  exit "${INSTALL_TEST_GH_AUTH_EXIT:-0}"
+fi
 [ "$#" -eq 8 ]
 [ "$1" = attestation ] && [ "$2" = verify ] && [ -f "$3" ] || exit 99
 [ "$4" = --repo ] && [ "$5" = piconic-ai/edit ] || exit 99
@@ -28,103 +42,156 @@ printf '%s\n' "$*" >>"$INSTALL_TEST_GH_LOG"
 [ "$8" = --deny-self-hosted-runners ]
 exit "${INSTALL_TEST_GH_EXIT:-0}"
 SH
-cat >"$work/tools/tar" <<'SH'
+  cat >"$work/mocks/tar" <<SH
 #!/bin/sh
-echo invoked >>"$INSTALL_TEST_TAR_LOG"
-exec "$INSTALL_TEST_REAL_TAR" "$@"
+echo invoked >>"\$INSTALL_TEST_TAR_LOG"
+exec "$(command -v tar)" "\$@"
 SH
-chmod +x "$work/tools/gh" "$work/tools/tar"
-export PATH="$work/tools:$PATH"
+  chmod +x "$work/mocks/gh" "$work/mocks/tar"
+  export PATH="$work/mocks:$PATH"
+}
 
-echo "--- requires GitHub CLI before downloading"
-mkdir "$work/no-gh"
-ln -s "$(command -v curl)" "$work/no-gh/curl"
-if PATH="$work/no-gh" /bin/sh "$script" >"$work/missing.stdout" 2>"$work/missing.stderr"; then
-  echo "install.sh accepted a missing GitHub CLI" >&2
-  exit 1
-fi
-grep -q 'GitHub CLI (gh) is required' "$work/missing.stderr"
-test ! -s "$work/missing.stdout"
+# try_install NAME [LAUNCHER...]: run install.sh (through LAUNCHER, default sh).
+# Assignments before the call, such as PEDIT_DOWNLOAD_URL or INSTALL_TEST_GH_*,
+# reach install.sh.
+try_install() {
+  local name=$1
+  shift
+  mkdir -p "$work/$name"
+  INSTALL_TEST_GH_LOG="$work/$name/gh.log" INSTALL_TEST_TAR_LOG="$work/$name/tar.log" \
+    PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="${PEDIT_DOWNLOAD_URL:-file://$release}" \
+    PEDIT_INSTALL_DIR="$work/$name/bin" \
+    "${@:-/bin/sh}" "$script" >"$work/$name/out" 2>"$work/$name/err"
+}
 
-echo "--- installs and verifies a release"
-PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/ok/bin" \
-  sh "$script"
-test "$("$work/ok/bin/pedit" --version)" = "$version"
-test -s "$INSTALL_TEST_GH_LOG"
+run_install() {
+  try_install "$@" || fail "$1: install.sh failed: $(cat "$work/$1/err")"
+}
 
-echo "--- refuses failed provenance verification before extraction or replacement"
-for verifier_exit in 1 2 127; do
-  mkdir -p "$work/rejected-$verifier_exit/bin"
-  echo untouched >"$work/rejected-$verifier_exit/bin/pedit"
-  : >"$INSTALL_TEST_TAR_LOG"
-  if INSTALL_TEST_GH_EXIT="$verifier_exit" PEDIT_VERSION="$version" \
-    PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/rejected-$verifier_exit/bin" \
-    sh "$script" >"$work/rejected.stdout" 2>"$work/rejected.stderr"; then
-    echo "install.sh accepted failed provenance verification" >&2
-    exit 1
-  fi
-  grep -q 'release provenance verification failed' "$work/rejected.stderr"
-  test "$(cat "$work/rejected-$verifier_exit/bin/pedit")" = untouched
-  test ! -s "$INSTALL_TEST_TAR_LOG"
-  test -z "$(find "$work/rejected-$verifier_exit/bin" -name '.pedit.*')"
-  if grep -q Installed "$work/rejected.stdout"; then
-    echo "install.sh reported success after failed verification" >&2
-    exit 1
-  fi
+expect_failure() {
+  if try_install "$@"; then fail "$1: install.sh succeeded"; fi
+}
+
+assert_installed() {
+  [ "$("$work/$1/bin/pedit" --version)" = "$version" ] || fail "$1: pedit $version is not installed"
+}
+
+# assert_contains NAME FILE PATTERN / refute_contains NAME FILE PATTERN, where
+# FILE is out, err, gh.log or tar.log.
+assert_contains() {
+  grep -q "$3" "$work/$1/$2" || fail "$1: $2 does not contain '$3'"
+}
+
+refute_contains() {
+  if grep -q "$3" "$work/$1/$2" 2>/dev/null; then fail "$1: $2 contains '$3'"; fi
+}
+
+assert_no_staging_left() {
+  [ -z "$(find "$work/$1/bin" -name '.pedit.*')" ] || fail "$1: a staging directory was left behind"
+}
+
+# --- Cases -----------------------------------------------------------------
+
+verifies_provenance_when_gh_is_signed_in() {
+  run_install signed-in
+  assert_installed signed-in
+  assert_contains signed-in out 'Verified build provenance'
+  assert_contains signed-in gh.log '^attestation verify '
+}
+
+skips_provenance_when_gh_is_signed_out() {
+  INSTALL_TEST_GH_AUTH_EXIT=1 run_install signed-out
+  assert_installed signed-out
+  assert_contains signed-out out 'Skipped the build provenance check'
+  refute_contains signed-out gh.log '^attestation'
+}
+
+skips_provenance_without_gh() {
+  # A PATH holding only what install.sh needs, so a real gh cannot be found.
+  local path="$work/path-without-gh" cmd
+  mkdir "$path"
+  for cmd in uname curl mktemp grep sha256sum shasum tar gzip cp chmod mkdir mv rm cat; do
+    if command -v "$cmd" >/dev/null; then ln -s "$(command -v "$cmd")" "$path/$cmd"; fi
+  done
+  PATH="$path" run_install no-gh
+  assert_installed no-gh
+  assert_contains no-gh out 'Skipped the build provenance check'
+}
+
+refuses_failed_provenance() {
+  local code name
+  for code in 1 2 127; do
+    name=rejected-$code
+    mkdir -p "$work/$name/bin"
+    echo untouched >"$work/$name/bin/pedit"
+    INSTALL_TEST_GH_EXIT=$code expect_failure "$name"
+    assert_contains "$name" err 'release provenance verification failed'
+    refute_contains "$name" out Installed
+    refute_contains "$name" tar.log invoked
+    [ "$(cat "$work/$name/bin/pedit")" = untouched ] || fail "$name: pedit was replaced"
+    assert_no_staging_left "$name"
+  done
+}
+
+replaces_a_running_pedit() {
+  mkdir -p "$work/running/bin"
+  cp "$(command -v sleep)" "$work/running/bin/pedit"
+  "$work/running/bin/pedit" 60 &
+  local pid=$!
+  run_install running
+  kill "$pid"
+  assert_installed running
+  assert_no_staging_left running
+}
+
+leaves_a_planted_staging_link_alone() {
+  local victim="$work/victim"
+  echo untouched >"$victim"
+  chmod 600 "$victim"
+  mkdir -p "$work/planted/bin"
+  # exec keeps the PID, so .pedit.$$ is the name install.sh would see as $$.
+  # shellcheck disable=SC2016 # expanded by the inner sh
+  run_install planted sh -c 'ln -s "$1" "$2/.pedit.$$" && exec sh "$3"' sh "$victim" "$work/planted/bin"
+  assert_installed planted
+  [ "$(cat "$victim")" = untouched ] || fail "planted: the link target was overwritten"
+  [ -n "$(find "$victim" -perm 600)" ] || fail "planted: the link target's mode changed"
+}
+
+refuses_a_directory_destination() {
+  mkdir -p "$work/directory/bin/pedit"
+  expect_failure directory
+  assert_contains directory err 'is a directory'
+  refute_contains directory out Installed
+  [ -d "$work/directory/bin/pedit" ] && [ -z "$(ls -A "$work/directory/bin/pedit")" ] ||
+    fail "directory: the existing directory was changed"
+}
+
+refuses_a_checksum_mismatch() {
+  local bad="$work/bad-release"
+  mkdir "$bad"
+  cp "$release"/* "$bad/"
+  sed -E 's/^[0-9a-f]{64}/0000000000000000000000000000000000000000000000000000000000000000/' \
+    "$release/checksums.txt" >"$bad/checksums.txt"
+  PEDIT_DOWNLOAD_URL="file://$bad" expect_failure mismatch
+  assert_contains mismatch err 'checksum mismatch'
+  [ ! -e "$work/mismatch/bin/pedit" ] || fail "mismatch: pedit was installed"
+  refute_contains mismatch gh.log .
+  refute_contains mismatch tar.log invoked
+}
+
+# --- Run -------------------------------------------------------------------
+
+setup_mocks
+for case in \
+  verifies_provenance_when_gh_is_signed_in \
+  skips_provenance_when_gh_is_signed_out \
+  skips_provenance_without_gh \
+  refuses_failed_provenance \
+  replaces_a_running_pedit \
+  leaves_a_planted_staging_link_alone \
+  refuses_a_directory_destination \
+  refuses_a_checksum_mismatch; do
+  echo "--- ${case//_/ }"
+  "$case"
 done
-
-echo "--- replaces a pedit that is running"
-mkdir -p "$work/busy/bin"
-cp "$(command -v sleep)" "$work/busy/bin/pedit"
-"$work/busy/bin/pedit" 60 &
-running=$!
-PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/busy/bin" \
-  sh "$script"
-kill "$running"
-test "$("$work/busy/bin/pedit" --version)" = "$version"
-test -z "$(find "$work/busy/bin" -name '.pedit.*')"
-
-echo "--- leaves a file planted under a guessable staging name alone"
-mkdir -p "$work/planted/bin"
-echo untouched >"$work/planted/victim"
-chmod 600 "$work/planted/victim"
-# exec keeps the PID, so .pedit.$$ is the name the installer would see as $$.
-PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/planted/bin" \
-  sh -c 'ln -s "$1" "$2/.pedit.$$" && exec sh "$3"' sh "$work/planted/victim" "$work/planted/bin" "$script"
-test "$(cat "$work/planted/victim")" = untouched
-test -n "$(find "$work/planted/victim" -perm 600)"
-test "$("$work/planted/bin/pedit" --version)" = "$version"
-
-echo "--- fails when the destination is a directory"
-mkdir -p "$work/dir/bin/pedit"
-if PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/dir/bin" \
-  sh "$script" >"$work/dir/stdout" 2>"$work/dir/stderr"; then
-  echo "install.sh succeeded over a directory" >&2
-  exit 1
-fi
-grep -q "is a directory" "$work/dir/stderr"
-if grep -q Installed "$work/dir/stdout"; then
-  echo "install.sh reported success over a directory" >&2
-  exit 1
-fi
-test -d "$work/dir/bin/pedit"
-test -z "$(ls -A "$work/dir/bin/pedit")"
-
-echo "--- refuses an archive that does not match checksums.txt"
-: >"$INSTALL_TEST_GH_LOG"
-: >"$INSTALL_TEST_TAR_LOG"
-mkdir "$work/bad"
-cp "$release"/* "$work/bad/"
-sed -E 's/^[0-9a-f]{64}/0000000000000000000000000000000000000000000000000000000000000000/' \
-  "$release/checksums.txt" >"$work/bad/checksums.txt"
-if PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$work/bad" PEDIT_INSTALL_DIR="$work/bad/bin" \
-  sh "$script" 2>"$work/bad/stderr"; then
-  echo "install.sh accepted a checksum mismatch" >&2
-  exit 1
-fi
-grep -q "checksum mismatch" "$work/bad/stderr"
-test ! -e "$work/bad/bin/pedit"
-test ! -s "$INSTALL_TEST_GH_LOG"
-test ! -s "$INSTALL_TEST_TAR_LOG"
-
 echo "ok"
