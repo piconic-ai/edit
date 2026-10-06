@@ -51,8 +51,17 @@ The wire format (AES-GCM frames, message types, y-protocols sync and awareness)
 is shared by both implementations: change them together.
 
 - A frame is `iv || AES-GCM(room key, type || payload)`. Types: `0` sync, `1`
-  awareness, `2` attachment. Clients skip types they do not know, so newer
-  peers can add more.
+  awareness, `2` attachment, `3` canvas. Clients skip types they do not know,
+  so newer peers can add more.
+- Clients offer the protocol version as the WebSocket subprotocol `pedit-v<N>`
+  (`PROTOCOL_VERSION` in `packages/protocol`, `ProtocolVersion` in
+  `internal/protocol`). The Room turns another version away with close code
+  `4002` (the client is older) or `4003` (the server is older), and clients
+  stop reconnecting and ask to update pedit or reload the page.
+- While pedit is 0.x, patch releases keep the wire format compatible. Additive
+  changes (a new message type or kind that older peers skip) do not change the
+  version. A change older peers cannot skip bumps the version, ships in a minor
+  release and is noted in the CHANGELOG.
 - Attachments (images) are named by content: `hash` is the first 128 bits of
   SHA-256 of the bytes, in hex. Their bytes are encrypted with a key derived
   from the room key (HKDF-SHA256, info `pedit blob enc v1`) and stored under

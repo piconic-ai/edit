@@ -170,6 +170,27 @@ func (u *ui) hostLeft() {
 	u.print("", u.yellow("The host closed the room."))
 }
 
+// outdated explains that the server turned this pedit away for speaking
+// another protocol version, and what to do about it. command upgrades pedit,
+// or is "" when pedit cannot tell how it was installed.
+func (u *ui) outdated(st protocol.Status, command string) {
+	if st == protocol.StatusServerOutdated {
+		u.print(u.yellow("The server is older than this pedit and cannot be used with it."),
+			"Ask whoever runs the server to update it, or use an older pedit.", "")
+		return
+	}
+	lines := []string{u.yellow("This pedit is too old for the server. Update it and run pedit again.")}
+	if command != "" {
+		lines = append(lines, "To upgrade, run: "+u.bold(command))
+	} else {
+		lines = append(lines, u.link(installURL))
+	}
+	u.print(append(lines, "")...)
+}
+
+// installURL explains every way to install, and so to update, pedit.
+const installURL = "https://github.com/piconic-ai/pedit#install"
+
 // left confirms the copy is saved after leaving a room.
 func (u *ui) left(file string) {
 	u.print(u.green("✓")+" Saved "+file+". It no longer syncs with the room.", "")
@@ -269,6 +290,10 @@ func (u *ui) liveLine() string {
 		return u.yellow("○") + " Offline. Reconnecting…"
 	case protocol.StatusClosed:
 		return u.yellow("○") + " Closed."
+	case protocol.StatusClientOutdated:
+		return u.yellow("○") + " This pedit is out of date."
+	case protocol.StatusServerOutdated:
+		return u.yellow("○") + " The server is out of date."
 	default:
 		return u.yellow("○") + " Connecting…"
 	}

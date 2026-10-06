@@ -30,6 +30,17 @@ describe('EndedBanner', () => {
     expect(banner.hidden).toBe(false)
   })
 
+  it('asks to reload a page that is out of date', () => {
+    const { status, banner, reconnect } = mount()
+    status.set('client-outdated')
+    expect(banner.hidden).toBe(false)
+    expect(banner.textContent).toMatch(/out of date/)
+    expect(reconnect.textContent).toBe('Reload')
+    status.set('server-outdated')
+    expect(banner.textContent).toMatch(/server is older/)
+    expect(reconnect.textContent).toBe('Reconnect')
+  })
+
   it('copies the whole text and says so', async () => {
     const writeText = vi.fn(async () => {})
     const { copy } = mount({ clipboard: { writeText } })

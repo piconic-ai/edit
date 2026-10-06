@@ -79,6 +79,10 @@ Each archive carries a build provenance attestation; check that it was built
 by this repository's release workflow with
 `gh attestation verify <archive> --repo piconic-ai/pedit`.
 
+While pedit is 0.x, patch releases keep working with the server, and a minor
+release may change the protocol. The public server follows the latest release;
+an older pedit is told to update when it connects.
+
 ## Configuration and templates
 
 Run `pedit` at a Git repository root to create `.pedit/config.yaml` and
@@ -164,6 +168,9 @@ Deploy the relay and browser editor to your Cloudflare account, then:
 # Set server: https://<worker>.<subdomain>.workers.dev in .pedit/config.yaml
 pedit notes.md
 ```
+
+Update the server along with your CLIs: a pedit from a newer minor release
+may not be able to use an older server, and says so.
 
 See [self-hosting notes](docs/self-hosting.md) for requirements and Access setup.
 

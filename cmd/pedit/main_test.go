@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/piconic-ai/pedit/internal/access"
+	"github.com/piconic-ai/pedit/internal/protocol"
 	"github.com/piconic-ai/pedit/internal/session"
 )
 
@@ -133,7 +134,7 @@ func TestFinishJoin(t *testing.T) {
 	tests := []struct {
 		name      string
 		temporary bool
-		hostLeft  bool
+		ended     protocol.Status
 		stopErr   error
 		code      int
 		stdout    []string
@@ -141,16 +142,19 @@ func TestFinishJoin(t *testing.T) {
 		stderr    string
 	}{
 		{name: "left", code: 0, stdout: []string{"✓ Saved notes.md. It no longer syncs"}, not: []string{"host closed"}},
-		{name: "host left", hostLeft: true, code: 0, stdout: []string{"The host closed the room.", "✓ Saved notes.md"}},
+		{name: "host left", ended: protocol.StatusClosed, code: 0, stdout: []string{"The host closed the room.", "✓ Saved notes.md"}},
 		{name: "not saved", stopErr: errors.New("disk full"), code: 1, not: []string{"Saved"}, stderr: "could not save notes.md: disk full"},
 		{name: "temporary", temporary: true, code: 0, stdout: []string{"✓ Left the room. The temporary copy was removed."}, not: []string{"Saving", "Saved"}},
-		{name: "temporary, host left", temporary: true, hostLeft: true, code: 0, stdout: []string{"The host closed the room.", "The temporary copy was removed."}},
+		{name: "temporary, host left", temporary: true, ended: protocol.StatusClosed, code: 0, stdout: []string{"The host closed the room.", "The temporary copy was removed."}},
+		{name: "pedit outdated", ended: protocol.StatusClientOutdated, code: 1, stdout: []string{"✓ Saved notes.md", "This pedit is too old for the server", "To upgrade, run: brew upgrade piconic-ai/tap/pedit"}, not: []string{"host closed"}},
+		{name: "temporary, pedit outdated", temporary: true, ended: protocol.StatusClientOutdated, code: 1, stdout: []string{"The temporary copy was removed.", "This pedit is too old"}},
+		{name: "server outdated", ended: protocol.StatusServerOutdated, code: 1, stdout: []string{"✓ Saved notes.md", "The server is older than this pedit", "Ask whoever runs the server"}, not: []string{"To upgrade"}},
 		{name: "temporary not removed", temporary: true, stopErr: errors.New("busy"), code: 1, not: []string{"removed"}, stderr: "could not remove the temporary copy notes.md: busy"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr strings.Builder
-			code := finishJoin(newUI(&stdout, false, false), &stderr, "notes.md", tt.temporary, tt.hostLeft, func() error { return tt.stopErr })
+			code := finishJoin(newUI(&stdout, false, false), &stderr, "notes.md", tt.temporary, tt.ended, func() error { return tt.stopErr }, func() string { return "brew upgrade piconic-ai/tap/pedit" })
 			if code != tt.code {
 				t.Errorf("code = %d", code)
 			}

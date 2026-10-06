@@ -2,10 +2,11 @@ import { DurableObject } from 'cloudflare:workers'
 import {
   ADMISSION_HEADER,
   ADMISSION_PATTERN,
+  checkProtocolVersion,
   readAdmissionProtocol,
   SOCKET_PROTOCOL,
 } from '@pedit/protocol/admission'
-import { ROOM_CLOSED } from '@pedit/protocol/close'
+import { CLIENT_OUTDATED, ROOM_CLOSED, SERVER_OUTDATED } from '@pedit/protocol/close'
 
 // Shared browser code brings DOM's SubtleCrypto into this program. Augment it
 // with the documented Workers extension also present in our generated types.
@@ -67,21 +68,20 @@ export class Room extends DurableObject<Env> {
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
       return new Response('expected a WebSocket upgrade', { status: 426 })
     }
-    const token = readAdmissionProtocol(request.headers.get('Sec-WebSocket-Protocol'))
+    const protocols = request.headers.get('Sec-WebSocket-Protocol')
+    // Checked first, so a client too old or too new is told so instead of
+    // retrying an admission it cannot pass.
+    const version = checkProtocolVersion(protocols)
+    if (version.result === 'client-outdated') {
+      return refuse(CLIENT_OUTDATED, 'pedit is outdated; update it', version.offered)
+    }
+    if (version.result === 'server-outdated') {
+      return refuse(SERVER_OUTDATED, 'the server is older than this pedit', version.offered)
+    }
+    const token = readAdmissionProtocol(protocols)
     if (!token) return new Response('room admission required; update your client', { status: 403 })
     const isHost = request.headers.get(HOST_HEADER) === '1'
-    if (!isHost && this.hosts().length === 0) {
-      // Accept only to tell the client why: browsers cannot read HTTP errors of
-      // a failed upgrade, but they do see close codes.
-      const { 0: client, 1: server } = new WebSocketPair()
-      server.accept()
-      server.close(ROOM_CLOSED, 'room is closed')
-      return new Response(null, {
-        status: 101,
-        webSocket: client,
-        headers: { 'Sec-WebSocket-Protocol': SOCKET_PROTOCOL },
-      })
-    }
+    if (!isHost && this.hosts().length === 0) return refuse(ROOM_CLOSED, 'room is closed')
     // Authenticate before taking a peer slot. Only the authenticated host may
     // register the verifier; a guest cannot claim an unopened room's token.
     if (!(await this.authorize(token, isHost)))
@@ -281,4 +281,20 @@ function safeClose(ws: WebSocket, code: number, reason: string): void {
   } catch {
     // Already closed.
   }
+}
+
+/**
+ * Accepts an upgrade only to close it with a reason: browsers cannot read
+ * HTTP errors of a failed upgrade, but they do see close codes. `protocol` is
+ * one the client offered, or the handshake would fail before the close.
+ */
+function refuse(code: number, reason: string, protocol = SOCKET_PROTOCOL): Response {
+  const { 0: client, 1: server } = new WebSocketPair()
+  server.accept()
+  server.close(code, reason)
+  return new Response(null, {
+    status: 101,
+    webSocket: client,
+    headers: { 'Sec-WebSocket-Protocol': protocol },
+  })
 }

@@ -306,6 +306,28 @@ func TestJoinFailsWhenNobodyHosts(t *testing.T) {
 	}
 }
 
+func TestJoinSaysWhichSideIsOutdated(t *testing.T) {
+	for code, want := range map[int]error{
+		protocol.ClientOutdated: ErrClientOutdated,
+		protocol.ServerOutdated: ErrServerOutdated,
+	} {
+		relay := prototest.NewRelay(false)
+		relay.Refuse = code
+		dir := t.TempDir()
+		_, err := Join(context.Background(), JoinOptions{
+			URL:       "https://edit.example/r/AAAAAAAAAAAAAAAAAAAAAA#" + protocol.GenerateKey(),
+			Directory: dir,
+			Dial:      relay.Dial,
+		})
+		if !errors.Is(err, want) {
+			t.Fatalf("err = %v, want %v", err, want)
+		}
+		if n := len(relay.URLs()); n != 1 {
+			t.Fatalf("dialed %d times", n)
+		}
+	}
+}
+
 func TestJoinGivesUpWhenTheHostStaysSilent(t *testing.T) {
 	// An unhosted relay lets a guest in, but nobody answers.
 	relay := prototest.NewRelay(false)

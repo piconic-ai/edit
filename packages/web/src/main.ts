@@ -2,7 +2,13 @@ import { render } from '@barefootjs/client/runtime'
 import { markdown } from '@codemirror/lang-markdown'
 import { Compartment, EditorState, type Extension, Prec } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
-import { deriveBlobKeys, importKey, RoomClient, type RoomStatus } from '@pedit/protocol'
+import {
+  deriveBlobKeys,
+  importKey,
+  isFinalStatus,
+  RoomClient,
+  type RoomStatus,
+} from '@pedit/protocol'
 import { basicSetup } from 'codemirror'
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
 import { Awareness } from 'y-protocols/awareness'
@@ -359,7 +365,7 @@ async function joinRoom(
 
   const setStatus = (s: RoomStatus) => {
     roomStatus.set(s)
-    if (s === 'closed') {
+    if (isFinalStatus(s)) {
       editor.dispatch({ effects: editable.reconfigure(readOnly) })
       board.readOnly = true
     }

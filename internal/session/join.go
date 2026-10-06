@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -48,6 +49,25 @@ type JoinOptions struct {
 // ErrRoomClosed means the room could not be joined because nobody hosts it:
 // the host left, or the link is wrong.
 var ErrRoomClosed = errors.New("the room is closed: the host left, or the link is wrong")
+
+// ErrClientOutdated means the server speaks a newer protocol version than this
+// pedit, which has to be updated.
+var ErrClientOutdated = errors.New("this pedit is too old for the server; update it")
+
+// ErrServerOutdated means the server speaks an older protocol version than
+// this pedit; whoever runs it has to update it.
+var ErrServerOutdated = errors.New("the server is older than this pedit; ask whoever runs it to update it")
+
+// endedErr says why a Client ended in the final status st.
+func endedErr(st protocol.Status) error {
+	switch st {
+	case protocol.StatusClientOutdated:
+		return ErrClientOutdated
+	case protocol.StatusServerOutdated:
+		return ErrServerOutdated
+	}
+	return ErrRoomClosed
+}
 
 // ErrFileExists means the copy was not written because a file of that name is
 // already in Directory.
@@ -111,6 +131,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	}
 	synced := make(chan struct{})
 	closed := make(chan struct{})
+	var ended atomic.Value // the final protocol.Status, set before closed is
 	s.Client, err = protocol.NewClient(protocol.ClientOptions{
 		URL:       wsURL,
 		Key:       rawKey,
@@ -119,10 +140,11 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		Header:    opts.Header,
 		Dial:      opts.Dial,
 		OnStatus: func(st protocol.Status) {
-			if st == protocol.StatusClosed {
+			if st.Final() {
 				select {
 				case <-closed:
 				default:
+					ended.Store(st)
 					close(closed)
 				}
 			}
@@ -180,7 +202,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		case <-hostSeen:
 			host, _ = hostState(aw)
 		case <-closed:
-			return fail(ErrRoomClosed)
+			return fail(endedErr(ended.Load().(protocol.Status)))
 		case <-deadline.C:
 			return fail(fmt.Errorf("no host answered within %s", opts.Timeout))
 		case <-ctx.Done():
@@ -190,7 +212,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	select {
 	case <-synced:
 	case <-closed:
-		return fail(ErrRoomClosed)
+		return fail(endedErr(ended.Load().(protocol.Status)))
 	case <-deadline.C:
 		return fail(fmt.Errorf("the room did not send its content within %s", opts.Timeout))
 	case <-ctx.Done():

@@ -169,12 +169,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return token, err
 	}
+	var ended atomic.Value // the final protocol.Status, once the server turned us away
 	s, err := start(ctx, signIn, session.Options{
-		File:     file,
-		Server:   server,
-		Name:     username(),
-		Watch:    true,
-		OnStatus: out.setStatus,
+		File:   file,
+		Server: server,
+		Name:   username(),
+		Watch:  true,
+		OnStatus: func(st protocol.Status) {
+			out.setStatus(st)
+			if st.Final() {
+				ended.Store(st)
+				cancel()
+			}
+		},
 		OnPeople: out.setPeople,
 		OnSaved: func(path string) {
 			out.imageSaved(filepath.Join(filepath.Dir(arg), filepath.FromSlash(path)))
@@ -207,6 +214,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		os.Exit(130)
 	}()
 	code := finish(out, stderr, arg, scratch, s.Stop)
+	if st, ok := ended.Load().(protocol.Status); ok && st != protocol.StatusClosed {
+		out.outdated(st, selfUpgradeCommand())
+		code = max(code, 1)
+	}
 	notifyUpdate(out, latest)
 	return code
 }
@@ -223,7 +234,7 @@ func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
 		cancel()
 	}()
 
-	var closed atomic.Bool
+	var ended atomic.Value // the final protocol.Status, once the room ended for us
 	s, err := session.Join(ctx, session.JoinOptions{
 		URL:       opts.Room,
 		Directory: opts.Directory,
@@ -231,8 +242,8 @@ func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
 		Watch:     true,
 		OnStatus: func(st protocol.Status) {
 			out.setStatus(st)
-			if st == protocol.StatusClosed {
-				closed.Store(true)
+			if st.Final() {
+				ended.Store(st)
 				cancel()
 			}
 		},
@@ -246,6 +257,12 @@ func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
 	switch {
 	case errors.Is(err, context.Canceled):
 		return 130
+	case errors.Is(err, session.ErrClientOutdated):
+		out.outdated(protocol.StatusClientOutdated, selfUpgradeCommand())
+		return 1
+	case errors.Is(err, session.ErrServerOutdated):
+		out.outdated(protocol.StatusServerOutdated, "")
+		return 1
 	case err != nil:
 		fmt.Fprintln(stderr, "pedit:", err)
 		return 1
@@ -259,16 +276,27 @@ func runJoin(opts commandArgs, out *ui, stderr io.Writer) int {
 		<-signals
 		os.Exit(130)
 	}()
-	return finishJoin(out, stderr, file, s.Temporary(), closed.Load(), s.Stop)
+	st, _ := ended.Load().(protocol.Status)
+	return finishJoin(out, stderr, file, s.Temporary(), st, s.Stop, selfUpgradeCommand)
 }
 
 // finishJoin leaves the room, saving the copy or removing a temporary one,
-// and says why when the host ended the session.
-func finishJoin(out *ui, stderr io.Writer, file string, temporary, hostLeft bool, stop func() error) int {
+// and says why when the session ended on its own: ended is the final status
+// the client reached, or "" when the user left.
+func finishJoin(out *ui, stderr io.Writer, file string, temporary bool, ended protocol.Status, stop func() error, upgrade func() string) int {
 	out.stopLive()
-	if hostLeft {
+	if ended == protocol.StatusClosed {
 		out.hostLeft()
 	}
+	code := leaveJoined(out, stderr, file, temporary, stop)
+	if ended == protocol.StatusClientOutdated || ended == protocol.StatusServerOutdated {
+		out.outdated(ended, upgrade())
+		code = max(code, 1)
+	}
+	return code
+}
+
+func leaveJoined(out *ui, stderr io.Writer, file string, temporary bool, stop func() error) int {
 	if temporary {
 		if err := stop(); err != nil {
 			fmt.Fprintf(stderr, "pedit: could not remove the temporary copy %s: %v\n", file, err)

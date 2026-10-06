@@ -18,8 +18,18 @@ export interface EndedBannerProps {
 
 const LABELS = { idle: 'Copy text', copied: 'Copied', failed: 'Could not copy' } as const
 
+/** Why the room will not come back, for each status that says so. */
+const MESSAGES: Partial<Record<RoomStatus, string>> = {
+  closed: 'This session has ended: the host is not connected. You can still copy the text.',
+  'client-outdated':
+    'This page is out of date: reload it to keep editing. You can still copy the text.',
+  'server-outdated':
+    'The server is older than this page and cannot connect it. You can still copy the text.',
+}
+
 /**
- * Shown once the room closes, which it does as soon as the host leaves.
+ * Shown once the room closes, which it does as soon as the host leaves, or
+ * when the server speaks another protocol version than this page.
  * Copy text matters on phones, where selecting the whole document by hand
  * does not work: the editor only draws the lines on screen.
  */
@@ -37,13 +47,13 @@ export function EndedBanner(props: EndedBannerProps) {
   }
 
   return (
-    <div className="banner" role="status" hidden={status() !== 'closed'}>
-      <span>This session has ended: the host is not connected. You can still copy the text.</span>
+    <div className="banner" role="status" hidden={!MESSAGES[status()]}>
+      <span>{MESSAGES[status()] ?? ''}</span>
       <button type="button" onClick={copyAll}>
         {LABELS[copy()]}
       </button>
       <button type="button" onClick={() => props.onReconnect()}>
-        Reconnect
+        {status() === 'client-outdated' ? 'Reload' : 'Reconnect'}
       </button>
     </div>
   )
