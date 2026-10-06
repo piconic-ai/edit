@@ -3,7 +3,7 @@
 import { createSignal, onCleanup, onMount } from '@barefootjs/client'
 import { prefersStill, TITLE, type TypingFrame, typingScript, WORD_AFTER } from '../landing.ts'
 
-/** The page at `/`, for someone who opened piconic edit without a room link. */
+/** The page at `/`, for someone who opened pedit without a room link. */
 export function Landing() {
   // Two peers edit the page at once (landing.ts); screen readers get the finished text.
   const frames = typingScript()

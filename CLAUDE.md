@@ -1,8 +1,8 @@
-# piconic edit
+# pedit
 
 A CLI that lets you co-edit a local text file with other people, right now.
 `pedit <file>` prints a URL; others join from their browser.
-The service is named piconic edit; its CLI is `pedit`.
+The service and its CLI are both named `pedit`; it is served at edit.piconic.ai.
 
 ## Principles
 - The host's local file is the source of truth. The server never sees plaintext. The only content it keeps is encrypted attachments (R2), and only while the room's host is connected; the room deletes them when the host leaves. No permanent storage, no public URLs.

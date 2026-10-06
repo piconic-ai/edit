@@ -10,7 +10,7 @@ deploys `release`. Every other branch gets its own
 [Worker Preview](https://developers.cloudflare.com/workers/previews/) on push, at
 `https://<branch-name>-edit.<subdomain>.workers.dev`, with its own Durable Object
 namespace and its own logs under the Preview's Observability tab (Cloudflare
-dashboard → piconic edit Worker → Previews). Previews are configured by the `previews`
+dashboard → `edit` Worker → Previews). Previews are configured by the `previews`
 block in `packages/worker/wrangler.jsonc`.
 
 Maintainer scripts explicitly pass `--config wrangler.jsonc` from `packages/worker`.
@@ -28,23 +28,31 @@ To try a Preview with the CLI:
 go run ./cmd/pedit notes.md
 ```
 
-Workers Builds settings (Cloudflare dashboard → piconic edit Worker → Settings → Build):
+Workers Builds settings (Cloudflare dashboard → `edit` Worker → Settings → Build).
+They live only in the dashboard, not in Git, and are lost when the repository
+is disconnected, so keep this table in sync with them:
 
-| Setting | Value |
-| --- | --- |
-| Git repository | `piconic-ai/edit` |
-| Root directory | `/` |
-| Production branch | `release` |
-| Build command | *(empty)* |
-| Deploy command | `pnpm run deploy:production` |
-| Non-production branch builds | enabled |
-| Preview command | `pnpm run preview` |
+| Setting | Production | Previews Base |
+| --- | --- | --- |
+| Git repository | `piconic-ai/edit` | *(shared)* |
+| Branch control | `release` | Builds for Preview branches enabled |
+| Build command | *(empty)* | *(empty)* |
+| Deploy / Preview command | `pnpm run deploy:production` | `pnpm run preview` |
+| Root directory | `/` | `/` |
+| Build watch paths | include `*`, exclude *(empty)* | include `*`, exclude *(empty)* |
+| Build token | `edit build token` | *(shared)* |
+| Build variables | *(none)* | *(none)* |
 
-When adopting the root self-hosting configuration, change the production
-Workers Builds deploy command to `pnpm run deploy:production` **before** building
-the release with these changes. `pnpm run deploy` now deploys `packages/wrangler.json`
-for self-hosting; production, previews and the lab still use
-`packages/worker/wrangler.jsonc`. This dashboard setting is not changed by Git.
+> [!WARNING]
+> The production deploy command must be `pnpm run deploy:production`, not
+> `pnpm run deploy`. `pnpm run deploy` deploys `packages/wrangler.json`, the
+> self-hosting configuration. Workers Builds then only warns that the Worker
+> name `pedit` does not match and deploys it as `edit` anyway, so production
+> keeps serving but loses its own settings: `edit.<subdomain>.workers.dev`
+> serves production, branch Previews get no URL, Workers Logs stop, and
+> attachments go to the `pedit-blobs` bucket. Workers Builds may also open a
+> pull request renaming the Worker in `packages/wrangler.json`; close it, as
+> self-hosted deployments rely on that name.
 
 ### Attachment buckets
 
