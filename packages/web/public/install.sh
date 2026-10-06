@@ -96,6 +96,16 @@ verify_checksum() {
   (cd "$1" && $sum -c expected.txt >/dev/null 2>&1) || fail "checksum mismatch for $2"
 }
 
+# signer VERSION: the repository whose workflow signed that release. Releases
+# up to v0.0.12 were built before the repository was renamed from
+# piconic-ai/edit, and the signature keeps the name it was made under.
+signer() {
+  case $1 in
+    v0.0.[0-9] | v0.0.1[0-2]) echo piconic-ai/edit ;;
+    *) echo "$repo" ;;
+  esac
+}
+
 verify_provenance() {
   # Optional: gh fetches attestations from the GitHub API, which needs a sign-in.
   # --active: without it, any other stored account with an expired token fails.
@@ -104,9 +114,10 @@ verify_provenance() {
     return
   fi
   step_start "Verifying build provenance"
+  signed_by=$(signer "$version")
   if ! gh attestation verify "$1" \
-    --repo "$repo" \
-    --signer-workflow "$repo/.github/workflows/tagpr.yml" \
+    --repo "$signed_by" \
+    --signer-workflow "$signed_by/.github/workflows/tagpr.yml" \
     --deny-self-hosted-runners >/dev/null 2>"$tmp/gh.err"; then
     step_end FAILED
     cat "$tmp/gh.err" >&2
