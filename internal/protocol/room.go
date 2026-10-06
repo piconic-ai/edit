@@ -15,7 +15,8 @@ import (
 )
 
 // Status is the connection state of a Client. StatusClosed is final: the host
-// ended the session.
+// ended the session. So are StatusClientOutdated and StatusServerOutdated: the
+// server speaks an older or newer protocol version.
 type Status string
 
 // errDestroyed ends the connection loop when the Client was destroyed mid-dial.
@@ -26,7 +27,22 @@ const (
 	StatusConnected    Status = "connected"
 	StatusDisconnected Status = "disconnected"
 	StatusClosed       Status = "closed"
+
+	StatusClientOutdated Status = "client-outdated"
+	StatusServerOutdated Status = "server-outdated"
 )
+
+// finalStatus maps the close codes that end a Client for good to its status.
+var finalStatus = map[int]Status{
+	RoomClosed:     StatusClosed,
+	ClientOutdated: StatusClientOutdated,
+	ServerOutdated: StatusServerOutdated,
+}
+
+// Final reports whether a Client stays in s for good and no longer reconnects.
+func (s Status) Final() bool {
+	return s == StatusClosed || s == StatusClientOutdated || s == StatusServerOutdated
+}
 
 type ClientOptions struct {
 	// URL is the WebSocket URL of the room. It must never contain the key.
@@ -200,8 +216,8 @@ func (c *Client) run() {
 			return
 		}
 		c.dropRemoteAwareness()
-		if closeCode(err) == RoomClosed {
-			c.setStatus(StatusClosed)
+		if st, ok := finalStatus[closeCode(err)]; ok {
+			c.setStatus(st)
 			return
 		}
 		c.onError(err)

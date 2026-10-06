@@ -2,14 +2,19 @@ package protocol_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/coder/websocket"
 	"github.com/piconic-ai/pedit/internal/protocol"
 	"github.com/piconic-ai/pedit/internal/protocol/prototest"
+	"github.com/reearth/ygo/awareness"
+	"github.com/reearth/ygo/crdt"
 )
 
 func TestDialDoesNotForwardAdmissionToRedirect(t *testing.T) {
@@ -61,5 +66,53 @@ func TestAdmissionToken(t *testing.T) {
 	}
 	if strings.Contains(got.Get("Sec-WebSocket-Protocol"), key) || strings.Contains(strings.Join(relay.URLs(), ""), token) {
 		t.Fatal("secret in wrong transport")
+	}
+}
+
+func TestSocketProtocolNamesProtocolVersion(t *testing.T) {
+	if want := fmt.Sprintf("pedit-v%d", protocol.ProtocolVersion); protocol.SocketProtocol != want {
+		t.Fatalf("SocketProtocol = %q, want %q", protocol.SocketProtocol, want)
+	}
+}
+
+// The Room accepts an upgrade of another protocol version only to close it,
+// so the close code must reach the client over a real WebSocket.
+func TestOutdatedClientStopsOverWebSocket(t *testing.T) {
+	var dials atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dials.Add(1)
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{protocol.SocketProtocol}})
+		if err != nil {
+			return
+		}
+		c.Close(websocket.StatusCode(protocol.ClientOutdated), "pedit is outdated; update it")
+	}))
+	defer srv.Close()
+	statuses := make(chan protocol.Status, 16)
+	doc := crdt.New()
+	client, err := protocol.NewClient(protocol.ClientOptions{
+		URL:        "ws" + strings.TrimPrefix(srv.URL, "http"),
+		Key:        make([]byte, protocol.KeyBytes),
+		Doc:        doc,
+		Awareness:  awareness.New(uint64(doc.ClientID())),
+		MinBackoff: 10 * time.Millisecond,
+		OnStatus:   func(s protocol.Status) { statuses <- s },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Destroy()
+	client.Connect()
+	timeout := time.After(5 * time.Second)
+	for s := protocol.Status(""); s != protocol.StatusClientOutdated; {
+		select {
+		case s = <-statuses:
+		case <-timeout:
+			t.Fatalf("status = %v", client.Status())
+		}
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := dials.Load(); n != 1 {
+		t.Fatalf("dialed %d times", n)
 	}
 }

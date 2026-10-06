@@ -315,3 +315,19 @@ func TestTurnedAwayWithoutHost(t *testing.T) {
 	guest := join(t, relay, protocol.GenerateKey(), joinOpts{})
 	prototest.WaitFor(t, wait, func() bool { return guest.Status() == protocol.StatusClosed }, "guest closed")
 }
+
+func TestStopsForGoodOnProtocolVersionMismatch(t *testing.T) {
+	for code, want := range map[int]protocol.Status{
+		protocol.ClientOutdated: protocol.StatusClientOutdated,
+		protocol.ServerOutdated: protocol.StatusServerOutdated,
+	} {
+		relay := prototest.NewRelay(false)
+		relay.Refuse = code
+		c := join(t, relay, protocol.GenerateKey(), joinOpts{})
+		prototest.WaitFor(t, wait, func() bool { return c.Status() == want }, string(want))
+		time.Sleep(200 * time.Millisecond)
+		if c.Status() != want || len(relay.URLs()) != 1 || !want.Final() {
+			t.Fatalf("status=%v dials=%d", c.Status(), len(relay.URLs()))
+		}
+	}
+}

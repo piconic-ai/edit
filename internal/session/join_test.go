@@ -306,6 +306,52 @@ func TestJoinFailsWhenNobodyHosts(t *testing.T) {
 	}
 }
 
+func TestJoinSaysWhichSideIsOutdated(t *testing.T) {
+	for code, want := range map[int]error{
+		protocol.ClientOutdated: ErrClientOutdated,
+		protocol.ServerOutdated: ErrServerOutdated,
+	} {
+		relay := prototest.NewRelay(false)
+		relay.Refuse = code
+		dir := t.TempDir()
+		_, err := Join(context.Background(), JoinOptions{
+			URL:       "https://edit.example/r/AAAAAAAAAAAAAAAAAAAAAA#" + protocol.GenerateKey(),
+			Directory: dir,
+			Dial:      relay.Dial,
+		})
+		if !errors.Is(err, want) {
+			t.Fatalf("err = %v, want %v", err, want)
+		}
+		if n := len(relay.URLs()); n != 1 {
+			t.Fatalf("dialed %d times", n)
+		}
+	}
+}
+
+// The CLI cancels the join on a final status, so cancellation and the closed
+// room arrive together; the reason must not be lost to the cancellation.
+func TestJoinReportsWhyEvenWhenOnStatusCancels(t *testing.T) {
+	for i := 0; i < 5000; i++ {
+		relay := prototest.NewRelay(false)
+		relay.Refuse = protocol.ClientOutdated
+		ctx, cancel := context.WithCancel(context.Background())
+		_, err := Join(ctx, JoinOptions{
+			URL:       "https://edit.example/r/AAAAAAAAAAAAAAAAAAAAAA#" + protocol.GenerateKey(),
+			Directory: t.TempDir(),
+			Dial:      relay.Dial,
+			OnStatus: func(st protocol.Status) {
+				if st.Final() {
+					cancel()
+				}
+			},
+		})
+		cancel()
+		if !errors.Is(err, ErrClientOutdated) {
+			t.Fatalf("attempt %d: err = %v", i, err)
+		}
+	}
+}
+
 func TestJoinGivesUpWhenTheHostStaysSilent(t *testing.T) {
 	// An unhosted relay lets a guest in, but nobody answers.
 	relay := prototest.NewRelay(false)

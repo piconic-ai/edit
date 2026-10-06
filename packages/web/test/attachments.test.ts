@@ -181,6 +181,8 @@ describe('whyNoImages', () => {
   it('lets images in only with a host that saves them, in an open room', () => {
     expect(whyNoImages('connected', true, host)).toBeNull()
     expect(whyNoImages('closed', true, host)).toMatch(/ended/)
+    expect(whyNoImages('client-outdated', true, host)).toMatch(/Reload/)
+    expect(whyNoImages('server-outdated', true, host)).toMatch(/server is older/)
     expect(whyNoImages('connected', true, null)).toMatch(/too old/)
   })
 

@@ -47,6 +47,14 @@ The CLI reads its token once at startup and does not refresh it during a
 session. If it expires, finish with Ctrl+C, restart pedit and share the new
 session link.
 
+## Keeping the server and CLIs in step
+
+Clients and the server check that they speak the same protocol version when
+they connect. Patch releases never change it; a minor release may. When it
+changes, a CLI older than the server is told to update pedit, and a CLI newer
+than the server says the server is older. Update the server when your CLIs
+move to a new minor release.
+
 ## Updating to room admission
 
 The relay now requires a room admission token on WebSocket and attachment

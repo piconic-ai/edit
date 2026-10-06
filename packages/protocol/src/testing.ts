@@ -8,6 +8,8 @@ export interface RelayOptions {
    * disconnected with ROOM_CLOSED when the last host leaves.
    */
   hosted?: boolean
+  /** Turn every socket away with this close code, as the Room does on a protocol version mismatch. */
+  refuse?: number
 }
 
 /** An in-memory stand-in for the Worker: relays every frame to all other sockets. */
@@ -27,6 +29,10 @@ export class Relay {
     const socket = new FakeSocket(this, Boolean(headers?.Authorization))
     this.sockets.add(socket)
     queueMicrotask(() => {
+      if (this.opts.refuse !== undefined) {
+        socket.close(this.opts.refuse)
+        return
+      }
       if (this.opts.hosted && !socket.isHost && !this.hasHost()) {
         socket.close(ROOM_CLOSED)
         return

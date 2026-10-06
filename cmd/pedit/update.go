@@ -216,6 +216,11 @@ func notifyUpdate(out *ui, latest func() *release) {
 	if r == nil {
 		return
 	}
+	out.updateAvailable(getVersion(), *r, selfUpgradeCommand())
+}
+
+// selfUpgradeCommand is upgradeCommand for the running pedit.
+func selfUpgradeCommand() string {
 	exe, err := os.Executable()
 	if err == nil {
 		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
@@ -224,5 +229,5 @@ func notifyUpdate(out *ui, latest func() *release) {
 	}
 	home, _ := os.UserHomeDir()
 	// version is set on release builds; go install leaves it empty.
-	out.updateAvailable(getVersion(), *r, upgradeCommand(exe, runtime.GOOS, home, version == ""))
+	return upgradeCommand(exe, runtime.GOOS, home, version == "")
 }
