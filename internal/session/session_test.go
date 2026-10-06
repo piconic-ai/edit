@@ -268,8 +268,8 @@ func TestExplainsWhyRoomCannotBeCreated(t *testing.T) {
 		want   string
 	}{
 		{"server error", http.StatusServiceUnavailable, "nope", "503 Service Unavailable"},
-		{"not JSON", http.StatusOK, "<html>", "did not answer like a piconic edit server (check server in .pedit/config.yaml)"},
-		{"no room id", http.StatusCreated, `{"hostToken":"t"}`, "did not answer like a piconic edit server"},
+		{"not JSON", http.StatusOK, "<html>", "did not answer like a pedit server (check server in .pedit/config.yaml)"},
+		{"no room id", http.StatusCreated, `{"hostToken":"t"}`, "did not answer like a pedit server"},
 		{"no host token", http.StatusCreated, `{"id":"AAAAAAAAAAAAAAAAAAAAAA"}`, "did not return a host token; the server is older than this pedit"},
 	}
 	for _, tt := range tests {

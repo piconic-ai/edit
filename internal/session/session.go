@@ -1,4 +1,4 @@
-// Package session shares a local file in a piconic edit room.
+// Package session shares a local file in a pedit room.
 package session
 
 import (
@@ -25,7 +25,7 @@ import (
 
 type Options struct {
 	File string
-	// Server is the base URL of the piconic edit server, e.g. https://edit.piconic.ai
+	// Server is the base URL of the pedit server, e.g. https://edit.piconic.ai
 	Server string
 	Name   string
 	// Avatar is the URL of the host's picture, shown to the others.
@@ -318,7 +318,7 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 	}
 	var r room
 	if err := json.NewDecoder(res.Body).Decode(&r); err != nil || r.ID == "" {
-		return nil, fmt.Errorf("failed to create a room: %s did not answer like a piconic edit server (check server in .pedit/config.yaml)", server)
+		return nil, fmt.Errorf("failed to create a room: %s did not answer like a pedit server (check server in .pedit/config.yaml)", server)
 	}
 	if r.HostToken == "" {
 		// Servers before host tokens cannot close a room when its host leaves.

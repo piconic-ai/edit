@@ -20,7 +20,7 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
-  // Keep invocation logs in Workers Logs (Cloudflare dashboard → piconic edit Worker →
+  // Keep invocation logs in Workers Logs (Cloudflare dashboard → `edit` Worker →
   // Observability). Only paths and status codes are logged; the key lives in
   // the URL fragment and never reaches the Worker.
   "observability": { "enabled": true },
@@ -44,7 +44,7 @@
       "bindings": [{ "name": "ROOM", "class_name": "Room" }]
     },
     "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "edit-blobs-preview" }],
-    // Per-Preview logs and traces: Cloudflare dashboard → piconic edit Worker →
+    // Per-Preview logs and traces: Cloudflare dashboard → `edit` Worker →
     // Previews → <branch> → Observability. (`wrangler tail` can't target
     // Previews.)
     "observability": {

@@ -77,7 +77,7 @@ type Options struct {
 	File string
 	// InitialDocument is the host's local file before peers can edit the room.
 	InitialDocument string
-	// Server is the base URL of the piconic edit server, and Room the room id.
+	// Server is the base URL of the pedit server, and Room the room id.
 	Server string
 	Room   string
 	// Header is sent with every request to the server, such as the Cloudflare

@@ -200,7 +200,7 @@ func readOnlyDir(t *testing.T) string {
 	return dir
 }
 
-// accessServer stands in for a piconic edit server behind Cloudflare Access: without
+// accessServer stands in for a pedit server behind Cloudflare Access: without
 // a valid token, Access sends requests to its login page.
 func accessServer(t *testing.T, valid string) *httptest.Server {
 	t.Helper()

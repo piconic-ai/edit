@@ -1,4 +1,4 @@
-// Package access signs in to a piconic edit server behind Cloudflare Access with
+// Package access signs in to a pedit server behind Cloudflare Access with
 // cloudflared, so that sharing a file stays a single command.
 package access
 

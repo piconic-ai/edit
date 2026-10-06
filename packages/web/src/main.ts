@@ -403,7 +403,7 @@ async function joinRoom(
     // Keep showing the file name after the host has gone.
     if (typeof host?.file === 'string') {
       fileName.set(host.file)
-      document.title = `${host.file} · piconic edit`
+      document.title = `${host.file} · pedit`
       void applyLanguage(host.file)
     }
   }
