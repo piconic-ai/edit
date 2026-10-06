@@ -1,6 +1,6 @@
 # pedit — Pair edit your local files.
 
-[![Your file stays on your machine. People come over to edit it with you, then leave. It stays yours.](docs/assets/come-over.webp)](docs/assets/come-over.mp4)
+https://github.com/user-attachments/assets/14bec9ab-8c14-495c-8faf-9cdd98d8fd5b
 
 `pedit` is a CLI that lets people edit your local files together in their
 browsers. Edits are saved back to your file:
