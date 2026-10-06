@@ -194,6 +194,16 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		_ = removeTemp(temp)
 		return nil, err
 	}
+	// OnStatus may cancel ctx on the very status that ended the room, so both
+	// are ready at once; the reason the room ended wins.
+	canceled := func() (*Session, error) {
+		select {
+		case <-closed:
+			return fail(endedErr(ended.Load().(protocol.Status)))
+		default:
+			return fail(ctx.Err())
+		}
+	}
 	deadline := time.NewTimer(opts.Timeout)
 	defer deadline.Stop()
 	var host map[string]any
@@ -206,7 +216,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 		case <-deadline.C:
 			return fail(fmt.Errorf("no host answered within %s", opts.Timeout))
 		case <-ctx.Done():
-			return fail(ctx.Err())
+			return canceled()
 		}
 	}
 	select {
@@ -216,7 +226,7 @@ func Join(ctx context.Context, opts JoinOptions) (*Session, error) {
 	case <-deadline.C:
 		return fail(fmt.Errorf("the room did not send its content within %s", opts.Timeout))
 	case <-ctx.Done():
-		return fail(ctx.Err())
+		return canceled()
 	}
 	if format, _ := host["format"].(string); format == formatCanvas {
 		return fail(errors.New("this room shares a canvas as nodes and edges, which pedit cannot join from the command line yet; open the link in a browser"))
