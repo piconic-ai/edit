@@ -91,6 +91,15 @@ refute_contains() {
   if grep -q "$3" "$work/$1/$2" 2>/dev/null; then fail "$1: $2 contains '$3'"; fi
 }
 
+# on_terminal CMD...: run CMD with a pseudo-terminal as its output.
+on_terminal() {
+  if script --version >/dev/null 2>&1; then
+    script -qec "$(printf '%q ' "$@")" /dev/null </dev/null # util-linux
+  else
+    script -q /dev/null "$@" </dev/null # BSD, macOS
+  fi
+}
+
 assert_no_staging_left() {
   [ -z "$(find "$work/$1/bin" -name '.pedit.*')" ] || fail "$1: a staging directory was left behind"
 }
@@ -100,14 +109,15 @@ assert_no_staging_left() {
 verifies_provenance_when_gh_is_signed_in() {
   run_install signed-in
   assert_installed signed-in
-  assert_contains signed-in out 'Verified build provenance'
+  assert_contains signed-in out 'Downloading pedit .*\.\.\. DONE'
+  assert_contains signed-in out 'Verifying build provenance\.\.\. DONE'
   assert_contains signed-in gh.log '^attestation verify '
 }
 
 verifies_provenance_despite_an_expired_inactive_account() {
   INSTALL_TEST_GH_INACTIVE_EXPIRED=1 run_install inactive-expired
   assert_installed inactive-expired
-  assert_contains inactive-expired out 'Verified build provenance'
+  assert_contains inactive-expired out 'Verifying build provenance\.\.\. DONE'
   assert_contains inactive-expired gh.log '^attestation verify '
 }
 
@@ -137,12 +147,22 @@ refuses_failed_provenance() {
     mkdir -p "$work/$name/bin"
     echo untouched >"$work/$name/bin/pedit"
     INSTALL_TEST_GH_EXIT=$code expect_failure "$name"
+    assert_contains "$name" out 'Verifying build provenance\.\.\. FAILED'
     assert_contains "$name" err 'release provenance verification failed'
     refute_contains "$name" out Installed
     refute_contains "$name" tar.log invoked
     [ "$(cat "$work/$name/bin/pedit")" = untouched ] || fail "$name: pedit was replaced"
     assert_no_staging_left "$name"
   done
+}
+
+cycles_dots_on_a_terminal() {
+  run_install terminal on_terminal /bin/sh
+  assert_installed terminal
+  # The dots are redrawn with a carriage return; the line still ends in DONE.
+  assert_contains terminal out $'\rDownloading pedit'
+  assert_contains terminal out 'Downloading pedit .*\.\.\. DONE'
+  assert_contains terminal out 'Verifying build provenance\.\.\. DONE'
 }
 
 replaces_a_running_pedit() {
@@ -200,6 +220,7 @@ for case in \
   skips_provenance_when_gh_is_signed_out \
   skips_provenance_without_gh \
   refuses_failed_provenance \
+  cycles_dots_on_a_terminal \
   replaces_a_running_pedit \
   leaves_a_planted_staging_link_alone \
   refuses_a_directory_destination \
