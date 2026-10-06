@@ -57,7 +57,8 @@ async function connect(id: string, headers: Record<string, string> = {}): Promis
   return { ws, received, closed }
 }
 
-const host = (room: Room) => connect(room.id, { Authorization: `Bearer ${room.hostToken}` })
+const host = (room: Room, headers: Record<string, string> = {}) =>
+  connect(room.id, { Authorization: `Bearer ${room.hostToken}`, ...headers })
 
 const until = async (check: () => boolean) => {
   for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 10))
@@ -81,6 +82,18 @@ describe('rooms', () => {
     expect(valid.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v1')
     valid.webSocket?.accept()
     valid.webSocket?.close()
+  })
+
+  it('lets in browsers of its own origin and clients without one, and no other', async () => {
+    const room = await createRoom()
+    await host(room, { Origin: 'https://pedit.test' })
+    const guest = await connect(room.id, { Origin: 'https://pedit.test' })
+    guest.ws.close()
+    for (const origin of ['https://evil.example', 'http://pedit.test', 'null']) {
+      const res = await upgrade(room.id, { Origin: origin })
+      expect(res.status).toBe(403)
+      expect(await res.text()).toBe('cross-origin WebSocket not allowed')
+    }
   })
 
   it('tells clients of another protocol version to update, before admission', async () => {

@@ -25,6 +25,17 @@ export async function roomIdFor(hostToken: string): Promise<string> {
   return base64url(new Uint8Array(digest)).slice(0, 22)
 }
 
+/**
+ * Whether a request may open a room's WebSocket. WebSockets are exempt from
+ * the same-origin policy, so without this any website could have its
+ * visitors' browsers use the relay. Browsers always send Origin and pages
+ * cannot forge it; the CLI sends none and is let in.
+ */
+export function allowedOrigin(request: Request): boolean {
+  const origin = request.headers.get('Origin')
+  return origin === null || origin === new URL(request.url).origin
+}
+
 const app = new Hono<{ Bindings: Env }>()
 
 app.post('/api/rooms', async (c) => {
@@ -38,6 +49,7 @@ app.get('/api/rooms/:id/ws', async (c) => {
   if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
     return c.text('expected a WebSocket upgrade', 426)
   }
+  if (!allowedOrigin(c.req.raw)) return c.text('cross-origin WebSocket not allowed', 403)
 
   // Never trust a role header coming from outside.
   const headers = new Headers(c.req.raw.headers)
