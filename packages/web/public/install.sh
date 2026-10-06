@@ -73,14 +73,17 @@ main() {
 
   tar -xzf "$tmp/$archive" -C "$tmp" pedit
   mkdir -p "$install_dir"
+  # mv would move the binary into a directory instead of replacing it.
+  [ ! -d "$install_dir/pedit" ] || fail "$install_dir/pedit is a directory"
   # Stage next to the destination and rename over it: overwriting a running
   # pedit in place fails on Linux (Text file busy), and a rename never leaves
-  # a half-written binary behind.
-  staged="$install_dir/.pedit.$$"
-  trap 'rm -rf "$tmp" "$staged"' EXIT
-  cp "$tmp/pedit" "$staged"
-  chmod 755 "$staged"
-  mv -f "$staged" "$install_dir/pedit"
+  # a half-written binary behind. mktemp creates the staging directory
+  # exclusively, so nothing planted under a guessable name gets written to.
+  stage=$(mktemp -d "$install_dir/.pedit.XXXXXXXX")
+  trap 'rm -rf "$tmp" "$stage"' EXIT
+  cp "$tmp/pedit" "$stage/pedit"
+  chmod 755 "$stage/pedit"
+  mv -f "$stage/pedit" "$install_dir/pedit"
   echo "Installed pedit $version to $install_dir/pedit"
 
   case ":$PATH:" in
