@@ -49,8 +49,8 @@ func TestUpgradeCommand(t *testing.T) {
 		goInstalled bool
 		want        string
 	}{
-		{"/opt/homebrew/Cellar/pedit/0.0.11/bin/pedit", "darwin", false, "brew upgrade pedit"},
-		{"/home/linuxbrew/.linuxbrew/Cellar/pedit/0.0.11/bin/pedit", "linux", false, "brew upgrade pedit"},
+		{"/opt/homebrew/Cellar/pedit/0.0.11/bin/pedit", "darwin", false, "brew upgrade piconic-ai/tap/pedit"},
+		{"/home/linuxbrew/.linuxbrew/Cellar/pedit/0.0.11/bin/pedit", "linux", false, "brew upgrade piconic-ai/tap/pedit"},
 		{"/Users/me/.local/share/mise/installs/github-piconic-ai-edit/0.0.11/pedit", "darwin", false, "mise upgrade --bump github:piconic-ai/edit"},
 		// MISE_DATA_DIR moves the installs elsewhere.
 		{"/data/mise/installs/github-piconic-ai-edit/0.0.11/pedit", "linux", false, "mise upgrade --bump github:piconic-ai/edit"},
@@ -171,9 +171,9 @@ func TestStartUpdateCheckSkipped(t *testing.T) {
 func TestUpdateAvailable(t *testing.T) {
 	r := release{Version: "v0.0.12", URL: "https://github.com/piconic-ai/edit/releases/tag/v0.0.12"}
 	var out bytes.Buffer
-	newUI(&out, false, false).updateAvailable("v0.0.11", r, "brew upgrade pedit")
+	newUI(&out, false, false).updateAvailable("v0.0.11", r, "brew upgrade piconic-ai/tap/pedit")
 	want := `  A new release of pedit is available: v0.0.11 → v0.0.12
-  To upgrade, run: brew upgrade pedit
+  To upgrade, run: brew upgrade piconic-ai/tap/pedit
   https://github.com/piconic-ai/edit/releases/tag/v0.0.12
 
 `

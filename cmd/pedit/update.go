@@ -189,7 +189,7 @@ func upgradeCommand(exe, goos, home string, goInstalled bool) string {
 	case goInstalled:
 		return "go install github.com/piconic-ai/edit/cmd/pedit@latest"
 	case strings.Contains(slashed, "/Cellar/"):
-		return "brew upgrade pedit"
+		return "brew upgrade piconic-ai/tap/pedit"
 	case strings.Contains(slashed, "/installs/github-piconic-ai-edit/"):
 		// --bump also moves a version pinned in mise.toml, wherever it is.
 		return "mise upgrade --bump github:piconic-ai/edit"
