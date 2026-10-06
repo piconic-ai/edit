@@ -56,10 +56,6 @@ macOS / Linux:
 curl -fsSL https://edit.piconic.ai/install.sh | sh
 ```
 
-It installs the latest release to `~/.local/bin` after checking it against
-`checksums.txt`. Set `PEDIT_INSTALL_DIR` to install elsewhere, or
-`PEDIT_VERSION` to pick a release.
-
 Homebrew (macOS / Linux):
 
 ```sh
