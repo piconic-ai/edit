@@ -73,8 +73,14 @@ main() {
 
   tar -xzf "$tmp/$archive" -C "$tmp" pedit
   mkdir -p "$install_dir"
-  cp "$tmp/pedit" "$install_dir/pedit"
-  chmod 755 "$install_dir/pedit"
+  # Stage next to the destination and rename over it: overwriting a running
+  # pedit in place fails on Linux (Text file busy), and a rename never leaves
+  # a half-written binary behind.
+  staged="$install_dir/.pedit.$$"
+  trap 'rm -rf "$tmp" "$staged"' EXIT
+  cp "$tmp/pedit" "$staged"
+  chmod 755 "$staged"
+  mv -f "$staged" "$install_dir/pedit"
   echo "Installed pedit $version to $install_dir/pedit"
 
   case ":$PATH:" in

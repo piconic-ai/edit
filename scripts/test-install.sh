@@ -15,6 +15,17 @@ PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR=
   sh "$script"
 test "$("$work/ok/bin/pedit" --version)" = "$version"
 
+echo "--- replaces a pedit that is running"
+mkdir -p "$work/busy/bin"
+cp "$(command -v sleep)" "$work/busy/bin/pedit"
+"$work/busy/bin/pedit" 60 &
+running=$!
+PEDIT_VERSION="$version" PEDIT_DOWNLOAD_URL="file://$release" PEDIT_INSTALL_DIR="$work/busy/bin" \
+  sh "$script"
+kill "$running"
+test "$("$work/busy/bin/pedit" --version)" = "$version"
+test -z "$(find "$work/busy/bin" -name '.pedit.*')"
+
 echo "--- refuses an archive that does not match checksums.txt"
 mkdir "$work/bad"
 cp "$release"/* "$work/bad/"
