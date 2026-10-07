@@ -18,9 +18,9 @@
   "ratelimits": [
     {
       "name": "ROOM_CREATION_LIMIT",
-      "namespace_id": "1001",
+      "namespace_id": "1031",
       "simple": { "limit": 20, "period": 60 }
     },
-    { "name": "CONNECTION_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+    { "name": "CONNECTION_LIMIT", "namespace_id": "1032", "simple": { "limit": 60, "period": 60 } }
   ]
 }

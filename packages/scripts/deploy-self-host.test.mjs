@@ -109,3 +109,31 @@ test('button configuration publishes the isolated server without production doma
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.scripts['deploy:production'], 'pnpm --filter @pedit/worker run deploy')
 })
+
+test('every deployment counts its rate limits apart', () => {
+  // Workers in one account that share a namespace_id share its counters, so
+  // a self-hosted relay deployed beside production must not reuse its ids.
+  const workerPackage = new URL('../worker/package.json', import.meta.url)
+  const { unstable_readConfig: readConfig } = createRequire(workerPackage)('wrangler')
+  const maintainer = fileURLToPath(new URL('../worker/wrangler.jsonc', import.meta.url))
+  const selfHost = fileURLToPath(new URL('../wrangler.json', import.meta.url))
+  const production = readConfig({ config: maintainer })
+  const deployments = {
+    production: production.ratelimits,
+    previews: production.previews.ratelimits,
+    lab: readConfig({ config: maintainer, env: 'lab' }).ratelimits,
+    'self-host': readConfig({ config: selfHost }).ratelimits,
+  }
+  const seen = new Map()
+  for (const [deployment, limits] of Object.entries(deployments)) {
+    assert.deepEqual(
+      limits.map((l) => l.name).sort(),
+      ['CONNECTION_LIMIT', 'ROOM_CREATION_LIMIT'],
+      deployment,
+    )
+    for (const { namespace_id: id } of limits) {
+      assert.ok(!seen.has(id), `${deployment} reuses namespace ${id} of ${seen.get(id)}`)
+      seen.set(id, deployment)
+    }
+  }
+})
