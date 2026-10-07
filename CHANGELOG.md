@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.1.0](https://github.com/piconic-ai/pedit/compare/v0.0.13...v0.1.0) - 2026-10-07
+
+- Add a security policy by @kfly8 in https://github.com/piconic-ai/pedit/pull/95
+- Check the protocol version on connect and ask outdated clients to update by @kfly8 in https://github.com/piconic-ai/pedit/pull/103
+- Reject browser WebSockets from other origins by @kfly8 in https://github.com/piconic-ai/pedit/pull/105
+- Bound what one room can cost on the public relay by @kfly8 in https://github.com/piconic-ai/pedit/pull/104
+- Rate limit new rooms and connections per network by @kfly8 in https://github.com/piconic-ai/pedit/pull/106
+- Add a maintenance mode in two levels by @kfly8 in https://github.com/piconic-ai/pedit/pull/107
+
 ## [v0.0.13](https://github.com/piconic-ai/pedit/compare/v0.0.12...v0.0.13) - 2026-10-06
 
 - Show install progress with cycling dots by @kfly8 in https://github.com/piconic-ai/pedit/pull/90
