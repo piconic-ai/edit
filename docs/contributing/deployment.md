@@ -70,10 +70,11 @@ Use `no-new-rooms` to stop growth while sessions in progress finish, and
 `closed` to stop everything.
 
 To set it: Cloudflare dashboard → `edit` Worker → Settings → Variables and
-Secrets → add `MAINTENANCE` as text and deploy. It takes effect within
-seconds. With `closed`, open rooms close too: when the new version restarts
-them, or else at their next message, which every client sends at least every
-15 seconds; their reconnects are turned away. `keep_vars` in
+Secrets → add `MAINTENANCE` as text and deploy. New requests see it within
+about 20 seconds; until then some still get the old answer. A deploy that only
+changes variables keeps running rooms running, so with `closed` an open room
+closes at its next message instead, which every client sends at least every
+15 seconds, and its reconnects are turned away. `keep_vars` in
 `wrangler.jsonc` keeps the variable across release deploys, so it stays until
 someone removes it.
 
