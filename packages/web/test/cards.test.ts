@@ -36,6 +36,31 @@ describe('Landing', () => {
     expect(link?.querySelector('svg')).not.toBeNull()
   })
 
+  it('shows how to install pedit from the relay it is served by', () => {
+    const el = mount('Landing')
+    expect(el.querySelector('.install code')?.textContent).toBe(
+      `curl -fsSL ${location.origin}/install.sh | sh`,
+    )
+  })
+
+  it('copies the install command and says so', async () => {
+    const writeText = vi.fn(async () => {})
+    const el = mount('InstallCommand', { clipboard: { writeText }, resetMs: 300 })
+    const button = el.querySelector('.install button') as HTMLButtonElement
+    expect(button.textContent).toBe('Copy')
+    button.click()
+    await vi.waitFor(() => expect(button.textContent).toBe('Copied'))
+    expect(writeText).toHaveBeenCalledWith(`curl -fsSL ${location.origin}/install.sh | sh`)
+    await vi.waitFor(() => expect(button.textContent).toBe('Copy'))
+  })
+
+  it('says when the command could not be copied', async () => {
+    const el = mount('InstallCommand', { clipboard: undefined })
+    const button = el.querySelector('.install button') as HTMLButtonElement
+    button.click()
+    await vi.waitFor(() => expect(button.textContent).toBe('Could not copy'))
+  })
+
   it('types the name and corrects the tagline, one caret each', () => {
     vi.useFakeTimers()
     const el = mount('Landing')

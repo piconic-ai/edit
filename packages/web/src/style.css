@@ -1225,6 +1225,52 @@ main.editor .cm-vim-panel {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.landing .install {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  margin-top: 28px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 8px;
+  background: var(--code-bg);
+  text-align: left;
+}
+.landing .install code {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  overflow-wrap: break-word;
+  user-select: all;
+}
+/* On a phone the command takes the whole width, the button goes below it. */
+@media (max-width: 480px) {
+  .landing .install {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px 12px;
+  }
+  .landing .install code {
+    font-size: 0.78rem;
+  }
+  .landing .install button {
+    align-self: flex-end;
+  }
+}
+.landing .install button {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.landing .install button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .landing a {
   display: inline-flex;
   margin-top: 32px;
