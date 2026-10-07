@@ -74,7 +74,9 @@ Treat `X-Pedit-Admission` and the credential-bearing `Sec-WebSocket-Protocol`
 request header as secrets in custom proxy, tracing, and logging configuration.
 Do not put the token in URLs or query parameters. HTTP attachment requests
 and CLI WebSocket handshakes reject redirects to avoid forwarding credentials.
-Configure the CLI with the final service URL.
+Configure the CLI with the final service URL. The relay also refuses
+browser WebSockets whose `Origin` differs from the URL it is served at, so a
+proxy in front of it must keep the `Host` header.
 
 See [room admission protocol](contributing/room-admission.md) for the wire
 format and compatibility requirements.
