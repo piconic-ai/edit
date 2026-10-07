@@ -15,6 +15,7 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "pedit-blobs" }],
+  "keep_vars": true,
   "ratelimits": [
     {
       "name": "ROOM_CREATION_LIMIT",

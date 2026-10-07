@@ -12,7 +12,14 @@ import {
 } from './attachment.ts'
 import { type CanvasMessage, decodeCanvas, encodeCanvas, UnknownCanvasKindError } from './canvas.ts'
 import { decrypt, encrypt } from './cipher.ts'
-import { CLIENT_OUTDATED, RELAY_BUSY, ROOM_CLOSED, ROOM_FULL, SERVER_OUTDATED } from './close.ts'
+import {
+  CLIENT_OUTDATED,
+  RELAY_BUSY,
+  RELAY_MAINTENANCE,
+  ROOM_CLOSED,
+  ROOM_FULL,
+  SERVER_OUTDATED,
+} from './close.ts'
 import {
   decodeMessage,
   encodeMessage,
@@ -23,8 +30,9 @@ import {
 
 /**
  * `closed` is final: the host ended the session. So is `full`: the room had no
- * place for us. So are `client-outdated` and `server-outdated`: the server
- * speaks an older or newer protocol version. `busy` is not: the relay turned
+ * place for us. So is `maintenance`: the relay closed, and whether to come
+ * back is up to the person. So are `client-outdated` and `server-outdated`:
+ * the server speaks an older or newer protocol version. `busy` is not: the relay turned
  * us away for now, and the client tries again later than after a drop.
  */
 export type RoomStatus =
@@ -34,6 +42,7 @@ export type RoomStatus =
   | 'busy'
   | 'closed'
   | 'full'
+  | 'maintenance'
   | 'client-outdated'
   | 'server-outdated'
 
@@ -42,6 +51,7 @@ export function isFinalStatus(status: RoomStatus): boolean {
   return (
     status === 'closed' ||
     status === 'full' ||
+    status === 'maintenance' ||
     status === 'client-outdated' ||
     status === 'server-outdated'
   )
@@ -51,6 +61,7 @@ export function isFinalStatus(status: RoomStatus): boolean {
 const FINAL_CLOSE: ReadonlyMap<number, RoomStatus> = new Map([
   [ROOM_CLOSED, 'closed'],
   [ROOM_FULL, 'full'],
+  [RELAY_MAINTENANCE, 'maintenance'],
   [CLIENT_OUTDATED, 'client-outdated'],
   [SERVER_OUTDATED, 'server-outdated'],
 ])

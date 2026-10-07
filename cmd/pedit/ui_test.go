@@ -240,6 +240,18 @@ func TestHostOf(t *testing.T) {
 	}
 }
 
+func TestUILiveLineUnderMaintenance(t *testing.T) {
+	u := newUI(&strings.Builder{}, false, false)
+	u.status = protocol.StatusMaintenance
+	if got, want := u.liveLine(), "○ The relay is closed for maintenance."; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	u.resumable = true
+	if got, want := u.liveLine(), "○ The relay is closed for maintenance. Press Enter to reconnect, Ctrl+C to quit."; got != want {
+		t.Errorf("resumable: got %q, want %q", got, want)
+	}
+}
+
 func TestUILiveLineWhenOutdated(t *testing.T) {
 	for st, want := range map[protocol.Status]string{
 		protocol.StatusClientOutdated: "○ This pedit is out of date.",

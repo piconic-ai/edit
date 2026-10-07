@@ -17,6 +17,7 @@ const STATUS_LABELS: Record<RoomStatus, string> = {
   connecting: 'Connecting…',
   closed: 'Ended',
   full: 'Room full',
+  maintenance: 'Maintenance',
   'client-outdated': 'Outdated',
   'server-outdated': 'Server outdated',
   disconnected: 'Offline',

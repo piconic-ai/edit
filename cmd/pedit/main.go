@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -169,6 +170,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return token, err
 	}
+	// With a terminal, a relay closed for maintenance does not end the session:
+	// Enter picks it up again in the same room, once the relay is back.
+	resumable := isTerminal(os.Stdin)
+	out.resumable = resumable
 	var ended atomic.Value // the final protocol.Status, once the server turned us away
 	s, err := start(ctx, signIn, session.Options{
 		File:   file,
@@ -177,6 +182,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Watch:  true,
 		OnStatus: func(st protocol.Status) {
 			out.setStatus(st)
+			if st == protocol.StatusMaintenance && resumable {
+				return
+			}
 			if st.Final() {
 				ended.Store(st)
 				cancel()
@@ -206,6 +214,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	out.sharing(arg, s.URL, clipboard.Copy(s.URL), scratch)
 	shared = true
+	if resumable {
+		go resumeOnEnter(os.Stdin, s.Client.Resume)
+	}
 
 	<-ctx.Done()
 	// A second signal gives up on saving.
@@ -214,7 +225,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		os.Exit(130)
 	}()
 	code := finish(out, stderr, arg, scratch, s.Stop)
-	if st, ok := ended.Load().(protocol.Status); ok && st != protocol.StatusClosed {
+	switch st, _ := ended.Load().(protocol.Status); st {
+	case protocol.StatusMaintenance:
+		out.maintenance()
+		code = max(code, 1)
+	case protocol.StatusClientOutdated, protocol.StatusServerOutdated:
 		out.outdated(st, selfUpgradeCommand())
 		code = max(code, 1)
 	}
@@ -289,6 +304,10 @@ func finishJoin(out *ui, stderr io.Writer, file string, temporary bool, ended pr
 		out.hostLeft()
 	}
 	code := leaveJoined(out, stderr, file, temporary, stop)
+	if ended == protocol.StatusMaintenance {
+		out.maintenance()
+		code = max(code, 1)
+	}
 	if ended == protocol.StatusClientOutdated || ended == protocol.StatusServerOutdated {
 		out.outdated(ended, upgrade())
 		code = max(code, 1)
@@ -342,6 +361,19 @@ func finish(out *ui, stderr io.Writer, arg string, scratch bool, stop func() err
 		out.scratch(arg)
 	}
 	return 0
+}
+
+// resumeOnEnter calls resume for each line read from in, until in ends.
+// Resume does nothing unless the session stopped, so an Enter at any other
+// time is harmless.
+func resumeOnEnter(in io.Reader, resume func()) {
+	r := bufio.NewReader(in)
+	for {
+		if _, err := r.ReadString('\n'); err != nil {
+			return
+		}
+		resume()
+	}
 }
 
 func isTerminal(w io.Writer) bool {

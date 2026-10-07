@@ -9,6 +9,7 @@ import {
   generateKey,
   importKey,
   MessageType,
+  RELAY_MAINTENANCE,
   RoomClient,
   SERVER_OUTDATED,
 } from '../src/index.ts'
@@ -291,8 +292,9 @@ describe('RoomClient', () => {
   it.each([
     [CLIENT_OUTDATED, 'client-outdated'],
     [SERVER_OUTDATED, 'server-outdated'],
+    [RELAY_MAINTENANCE, 'maintenance'],
   ] as const)(
-    'stops for good when the server turns its protocol version away (%i)',
+    'stops for good when the server turns it away for its version or maintenance (%i)',
     async (code, status) => {
       const relay = new Relay({ refuse: code })
       const client = await join(relay, await importKey(generateKey()))

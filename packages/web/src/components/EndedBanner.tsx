@@ -21,6 +21,8 @@ const LABELS = { idle: 'Copy text', copied: 'Copied', failed: 'Could not copy' }
 /** Why the room will not come back, for each status that says so. */
 const MESSAGES: Partial<Record<RoomStatus, string>> = {
   closed: 'This session has ended: the host is not connected. You can still copy the text.',
+  maintenance:
+    'The relay is closed for maintenance. Once it is back and the host has reconnected, Reconnect brings you back. You can still copy the text.',
   full: 'This room is full: its relay takes only so many people at once. Try again when someone leaves, or ask the host to run their own relay, which can take more.',
   'client-outdated':
     'This page is out of date: reload it to keep editing. You can still copy the text.',

@@ -30,3 +30,10 @@ export const ROOM_FULL = 4004
  * than after a dropped connection.
  */
 export const RELAY_BUSY = 4005
+
+/**
+ * WebSocket close code for a connection to a relay closed for maintenance.
+ * Clients must not reconnect on it by themselves: whoever was editing decides
+ * whether to pick the session up again once the relay is back.
+ */
+export const RELAY_MAINTENANCE = 4006

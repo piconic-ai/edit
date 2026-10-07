@@ -359,6 +359,44 @@ func TestWaitsOutABusyRelayLongerThanADrop(t *testing.T) {
 	}
 }
 
+func TestResumesTheSameRoomAfterMaintenance(t *testing.T) {
+	relay := prototest.NewRelay(false)
+	key := protocol.GenerateKey()
+	host := join(t, relay, key, joinOpts{init: "x"})
+	prototest.WaitFor(t, wait, func() bool { return host.Status() == protocol.StatusConnected }, "host connected")
+	host.Resume() // still connected: nothing to resume
+	relay.SetRefuse(protocol.RelayMaintenance)
+	relay.DropAll()
+	prototest.WaitFor(t, wait, func() bool { return host.Status() == protocol.StatusMaintenance }, "maintenance")
+	time.Sleep(100 * time.Millisecond)
+	dials := len(relay.URLs())
+	if host.Status() != protocol.StatusMaintenance || dials != 2 {
+		t.Fatalf("status=%v dials=%d: reconnected on its own", host.Status(), dials)
+	}
+	relay.SetRefuse(0)
+	host.Resume()
+	prototest.WaitFor(t, wait, func() bool { return host.Status() == protocol.StatusConnected }, "resumed")
+	if got := relay.URLs()[dials]; got != relay.URLs()[0] {
+		t.Fatalf("resumed into %q, not %q", got, relay.URLs()[0])
+	}
+	guest := join(t, relay, key, joinOpts{})
+	prototest.WaitFor(t, wait, func() bool { return guest.String() == "x" }, "guest to sync after resuming")
+}
+
+func TestResumeDoesNothingOnceDestroyed(t *testing.T) {
+	relay := prototest.NewRelay(false)
+	relay.Refuse = protocol.RelayMaintenance
+	p := join(t, relay, protocol.GenerateKey(), joinOpts{})
+	prototest.WaitFor(t, wait, func() bool { return p.Status() == protocol.StatusMaintenance }, "maintenance")
+	p.Destroy()
+	relay.SetRefuse(0)
+	p.Resume()
+	time.Sleep(100 * time.Millisecond)
+	if n := len(relay.URLs()); n != 1 {
+		t.Fatalf("dialed %d times after Destroy", n)
+	}
+}
+
 func TestTurnedAwayWithoutHost(t *testing.T) {
 	relay := prototest.NewRelay(true)
 	guest := join(t, relay, protocol.GenerateKey(), joinOpts{})

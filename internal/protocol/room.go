@@ -15,7 +15,9 @@ import (
 )
 
 // Status is the connection state of a Client. StatusClosed is final: the host
-// ended the session. So is StatusFull: the room had no place for us. So are
+// ended the session. So is StatusFull: the room had no place for us. So is
+// StatusMaintenance: the relay closed, and Resume picks the session up again
+// once it is back. So are
 // StatusClientOutdated and StatusServerOutdated: the server speaks an older or
 // newer protocol version. StatusBusy is not: the relay turned us away for now,
 // and the Client tries again later than after a drop.
@@ -31,6 +33,7 @@ const (
 	StatusBusy         Status = "busy"
 	StatusClosed       Status = "closed"
 	StatusFull         Status = "full"
+	StatusMaintenance  Status = "maintenance"
 
 	StatusClientOutdated Status = "client-outdated"
 	StatusServerOutdated Status = "server-outdated"
@@ -38,15 +41,20 @@ const (
 
 // finalStatus maps the close codes that end a Client for good to its status.
 var finalStatus = map[int]Status{
-	RoomClosed:     StatusClosed,
-	RoomFull:       StatusFull,
-	ClientOutdated: StatusClientOutdated,
-	ServerOutdated: StatusServerOutdated,
+	RoomClosed:       StatusClosed,
+	RoomFull:         StatusFull,
+	RelayMaintenance: StatusMaintenance,
+	ClientOutdated:   StatusClientOutdated,
+	ServerOutdated:   StatusServerOutdated,
 }
 
 // Final reports whether a Client stays in s for good and no longer reconnects.
 func (s Status) Final() bool {
-	return s == StatusClosed || s == StatusFull || s == StatusClientOutdated || s == StatusServerOutdated
+	switch s {
+	case StatusClosed, StatusFull, StatusMaintenance, StatusClientOutdated, StatusServerOutdated:
+		return true
+	}
+	return false
 }
 
 type ClientOptions struct {
@@ -166,7 +174,25 @@ func (c *Client) Connect() {
 		return
 	}
 	c.started = true
-	go c.run()
+	go c.run(c.done)
+}
+
+// Resume connects again after the Client stopped on a final status, such as a
+// relay closed for maintenance, into the same room. It does nothing while the
+// Client is still running, before Connect, or once destroyed.
+func (c *Client) Resume() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.started || c.destroyed {
+		return
+	}
+	select {
+	case <-c.done:
+	default:
+		return
+	}
+	c.done = make(chan struct{})
+	go c.run(c.done)
 }
 
 // Do runs fn while no remote update is being applied, so fn can read the
@@ -194,6 +220,7 @@ func (c *Client) Destroy() {
 	out := c.out
 	c.out = nil
 	started := c.started
+	done := c.done
 	c.mu.Unlock()
 
 	for _, unsub := range c.unsubs {
@@ -207,13 +234,13 @@ func (c *Client) Destroy() {
 		_ = out.conn.Close()
 	}
 	if started {
-		<-c.done
+		<-done
 	}
 	c.setStatus(StatusDisconnected)
 }
 
-func (c *Client) run() {
-	defer close(c.done)
+func (c *Client) run(done chan struct{}) {
+	defer close(done)
 	attempts := 0
 	for {
 		c.setStatus(StatusConnecting)

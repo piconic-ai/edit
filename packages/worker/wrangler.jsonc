@@ -35,6 +35,10 @@
   // The public relay is a demo: the host and 4 guests per room, images up to
   // 5 MiB each and 50 MiB per session. Self-hosted relays (packages/wrangler.json
   // and the lab) keep the defaults in Limits (packages/worker/src/room.ts).
+  // MAINTENANCE (no-new-rooms or closed) is set in the dashboard when the relay
+  // has to stop (docs/contributing/deployment.md); keep_vars keeps it across
+  // deploys.
+  "keep_vars": true,
   "vars": {
     "ROOM_GUESTS": "4",
     "BLOB_MAX_BYTES": "5242880",

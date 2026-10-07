@@ -54,6 +54,43 @@ is disconnected, so keep this table in sync with them:
 > pull request renaming the Worker in `packages/wrangler.json`; close it, as
 > self-hosted deployments rely on that name.
 
+### Maintenance mode
+
+When the public relay has to stop (a traffic spike, abuse the rate limits do
+not stop, a serious bug), set the `MAINTENANCE` variable, like a shop that
+either turns away new customers or closes:
+
+| `MAINTENANCE` | New rooms | Open rooms and reconnects | Images |
+| --- | --- | --- | --- |
+| *(unset)* | as usual | as usual | as usual |
+| `no-new-rooms` | 503, saying the relay takes no new rooms and pointing to self-hosting | as usual | as usual |
+| `closed` | 503, saying the relay is closed for maintenance | closed with `4006` | 503 |
+
+Use `no-new-rooms` to stop growth while sessions in progress finish, and
+`closed` to stop everything.
+
+To set it: Cloudflare dashboard → `edit` Worker → Settings → Variables and
+Secrets → add `MAINTENANCE` as text and deploy. Like any change of variables,
+it deploys a new version within seconds, which drops every open WebSocket;
+with `closed`, their reconnects are turned away. `keep_vars` in
+`wrangler.jsonc` keeps the variable across release deploys, so it stays until
+someone removes it.
+
+To end it, delete the variable and deploy. Nothing reconnects on its own: a
+host whose `pedit` is still running presses Enter to reconnect to the same
+room, then guests press Reconnect in the editor. Guests who press it before
+their host is back find the session ended.
+
+To stop faster, without a deploy, add a WAF custom rule (Cloudflare dashboard
+→ piconic.ai → Security → WAF → Custom rules) with the action Block:
+
+- no new rooms: `http.host eq "edit.piconic.ai" and http.request.method eq "POST" and http.request.uri.path eq "/api/rooms"`
+- everything: `http.host eq "edit.piconic.ai" and starts_with(http.request.uri.path, "/api/")`
+
+Blocked requests never reach the Worker and are not billed, but clients only
+see a 403: the CLI cannot say why, and browsers keep reconnecting. Disable
+the rule to end it.
+
 ### Attachment buckets
 
 Pasted images are stored in R2 as ciphertext while their room's host is

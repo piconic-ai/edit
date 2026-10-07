@@ -118,6 +118,15 @@ If applying the cleanup rules fails, deployment reports an error even if the
 Worker was already published. Fix the bucket or permission issue and rerun
 `pnpm run deploy` to apply the rules.
 
+## Maintenance
+
+To stop your relay for a while, set the Worker variable `MAINTENANCE` (in the
+Cloudflare dashboard → your Worker → Settings → Variables and Secrets):
+`no-new-rooms` turns away new rooms and keeps open ones going, `closed` turns
+away every connection. Changing it redeploys the Worker, which drops open
+connections; nothing reconnects on its own. Delete the variable to end it.
+`keep_vars` in `wrangler.json` keeps it across deploys.
+
 ## Room limits
 
 A self-hosted relay lets each room take the host and up to 31 guests, images

@@ -62,6 +62,14 @@ func (r *Relay) Dial(_ context.Context, url string, header http.Header) (protoco
 	return c, nil
 }
 
+// SetRefuse changes Refuse while connections may be dialing, as a relay
+// closing for maintenance and opening again would.
+func (r *Relay) SetRefuse(code int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Refuse = code
+}
+
 // URLs returns the URLs dialed so far.
 func (r *Relay) URLs() []string {
 	r.mu.Lock()

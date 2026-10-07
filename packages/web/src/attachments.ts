@@ -51,6 +51,7 @@ export function whyNoImages(
 ): string | null {
   if (status === 'closed') return 'The session has ended.'
   if (status === 'full') return 'This room is full.'
+  if (status === 'maintenance') return 'The relay is closed for maintenance.'
   if (status === 'client-outdated') return 'This page is out of date. Reload it first.'
   if (status === 'server-outdated') return 'The server is older than this page.'
   if (status !== 'connected' || !hostHere) return 'Connecting to the host. Try again in a moment.'

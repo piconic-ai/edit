@@ -27,6 +27,8 @@ type ui struct {
 	lastLine string
 	// signingIn is set while the sign-in block is on the alternate screen.
 	signingIn bool
+	// resumable is set when Enter picks a session up again after maintenance.
+	resumable bool
 }
 
 func newUI(out io.Writer, tty, noColor bool) *ui {
@@ -188,6 +190,11 @@ func (u *ui) outdated(st protocol.Status, command string) {
 	u.print(append(lines, "")...)
 }
 
+// maintenance says the session ended because the relay closed for maintenance.
+func (u *ui) maintenance() {
+	u.print(u.yellow("The relay was closed for maintenance. Run pedit again once it is back."), "")
+}
+
 // installURL explains every way to install, and so to update, pedit.
 const installURL = "https://github.com/piconic-ai/pedit#install"
 
@@ -294,6 +301,11 @@ func (u *ui) liveLine() string {
 		return u.yellow("○") + " Closed."
 	case protocol.StatusFull:
 		return u.yellow("○") + " The room is full."
+	case protocol.StatusMaintenance:
+		if u.resumable {
+			return u.yellow("○") + " The relay is closed for maintenance. Press Enter to reconnect, Ctrl+C to quit."
+		}
+		return u.yellow("○") + " The relay is closed for maintenance."
 	case protocol.StatusClientOutdated:
 		return u.yellow("○") + " This pedit is out of date."
 	case protocol.StatusServerOutdated:
