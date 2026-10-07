@@ -40,6 +40,15 @@
     "BLOB_MAX_BYTES": "5242880",
     "BLOB_QUOTA_BYTES": "52428800"
   },
+  // Per client IP (an IPv6 /64) and Cloudflare location; see docs/self-hosting.md.
+  "ratelimits": [
+    {
+      "name": "ROOM_CREATION_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    { "name": "CONNECTION_LIMIT", "namespace_id": "1002", "simple": { "limit": 60, "period": 60 } }
+  ],
   // Worker Previews: every push to a branch other than `release` makes (or
   // updates) that branch's Preview via Cloudflare Workers Builds, whose
   // Preview command runs `pnpm run preview`. Previews never become the
@@ -58,6 +67,18 @@
       "BLOB_MAX_BYTES": "5242880",
       "BLOB_QUOTA_BYTES": "52428800"
     },
+    "ratelimits": [
+      {
+        "name": "ROOM_CREATION_LIMIT",
+        "namespace_id": "1011",
+        "simple": { "limit": 20, "period": 60 }
+      },
+      {
+        "name": "CONNECTION_LIMIT",
+        "namespace_id": "1012",
+        "simple": { "limit": 60, "period": 60 }
+      }
+    ],
     // Per-Preview logs and traces: Cloudflare dashboard → `edit` Worker →
     // Previews → <branch> → Observability. (`wrangler tail` can't target
     // Previews.)
@@ -82,7 +103,19 @@
         "bindings": [{ "name": "ROOM", "class_name": "Room" }]
       },
       "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
-      "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "edit-lab-blobs" }]
+      "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "edit-lab-blobs" }],
+      "ratelimits": [
+        {
+          "name": "ROOM_CREATION_LIMIT",
+          "namespace_id": "1021",
+          "simple": { "limit": 20, "period": 60 }
+        },
+        {
+          "name": "CONNECTION_LIMIT",
+          "namespace_id": "1022",
+          "simple": { "limit": 60, "period": 60 }
+        }
+      ]
     }
   }
 }

@@ -2,7 +2,7 @@ import { evictDurableObject, runInDurableObject } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { ADMISSION_HEADER, admissionProtocols } from '@pedit/protocol/admission'
 import { describe, expect, it, vi } from 'vitest'
-import { roomIdFor } from '../src/index.ts'
+import { clientKey, overLimit, roomIdFor } from '../src/index.ts'
 import {
   BLOB_OVERHEAD,
   BYTE_RATE,
@@ -19,6 +19,7 @@ const ROOM_CLOSED = 4001
 const CLIENT_OUTDATED = 4002
 const SERVER_OUTDATED = 4003
 const ROOM_FULL = 4004
+const RELAY_BUSY = 4005
 // The tests run with small limits (vitest.config.ts).
 const { guests: GUESTS, blobBytes: BLOB_BYTES } = limits(env)
 
@@ -30,8 +31,22 @@ interface Room {
 
 const admissions = new Map<string, string>()
 
+// Each request comes from an address of its own unless a test says otherwise,
+// so the per-network rate limits only count what a test means them to.
+let lastAddress = 0
+const nextAddress = () => {
+  lastAddress++
+  return `10.${(lastAddress >> 16) & 255}.${(lastAddress >> 8) & 255}.${lastAddress & 255}`
+}
+
+const postRoom = (ip = nextAddress()) =>
+  exports.default.fetch('https://pedit.test/api/rooms', {
+    method: 'POST',
+    headers: { 'CF-Connecting-IP': ip },
+  })
+
 async function createRoom(): Promise<Room> {
-  const res = await exports.default.fetch('https://pedit.test/api/rooms', { method: 'POST' })
+  const res = await postRoom()
   expect(res.status).toBe(201)
   const room = await res.json<Room>()
   room.admission = crypto.randomUUID().replaceAll('-', '') + 'A'.repeat(11)
@@ -50,6 +65,7 @@ function upgrade(id: string, headers: Record<string, string> = {}): Promise<Resp
     headers: {
       Upgrade: 'websocket',
       'Sec-WebSocket-Protocol': admissionProtocols(admissions.get(id)!).join(', '),
+      'CF-Connecting-IP': nextAddress(),
       ...headers,
     },
   })
@@ -576,5 +592,66 @@ describe('blobs', () => {
     // The next session starts with a fresh quota.
     await host(room)
     expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(201)
+  })
+})
+
+describe('rate limits', () => {
+  it('counts a client by its address, and IPv6 by its /64', () => {
+    const key = (ip?: string) =>
+      clientKey(
+        new Request('https://pedit.test', { headers: ip ? { 'CF-Connecting-IP': ip } : {} }),
+      )
+    expect(key('203.0.113.7')).toBe('203.0.113.7')
+    expect(key('2001:db8:1:2:3:4:5:6')).toBe('2001:db8:1:2::/64')
+    expect(key('2001:DB8:0001:0002::9')).toBe('2001:db8:1:2::/64')
+    expect(key('2001:db8::1')).toBe('2001:db8:0:0::/64')
+    expect(key('::1')).toBe('0:0:0:0::/64')
+    expect(key()).toBe('unknown')
+  })
+
+  it('limits nothing without the binding', async () => {
+    expect(await overLimit(undefined, new Request('https://pedit.test'), 'test')).toBe(false)
+  })
+
+  it('turns away a network that creates too many rooms', async () => {
+    const ip = nextAddress()
+    for (let i = 0; i < 20; i++) expect((await postRoom(ip)).status).toBe(201)
+    const res = await postRoom(ip)
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('60')
+    expect(await res.text()).toMatch(/Try again in a minute/)
+    // Other networks are not held back.
+    expect((await postRoom()).status).toBe(201)
+  })
+
+  it('counts an IPv6 network as one', async () => {
+    for (let i = 0; i < 20; i++) expect((await postRoom(`2001:db8:5::${i + 1}`)).status).toBe(201)
+    expect((await postRoom('2001:db8:5::ffff')).status).toBe(429)
+    expect((await postRoom('2001:db8:6::1')).status).toBe(201)
+  })
+
+  it('tells a network that connects too often to come back later', async () => {
+    const room = await createRoom()
+    await host(room)
+    const ip = nextAddress()
+    // Turned away by the room for a wrong admission, but counted all the same.
+    const wrong = admissionProtocols('B'.repeat(43)).join(', ')
+    for (let i = 0; i < 60; i++) {
+      const res = await upgrade(room.id, {
+        'CF-Connecting-IP': ip,
+        'Sec-WebSocket-Protocol': wrong,
+      })
+      expect(res.status).toBe(403)
+    }
+    const res = await upgrade(room.id, { 'CF-Connecting-IP': ip })
+    expect(res.status).toBe(101)
+    expect(res.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v1')
+    const ws = res.webSocket as WebSocket
+    const closed = new Promise<CloseEvent>((resolve) => ws.addEventListener('close', resolve))
+    ws.accept()
+    expect((await closed).code).toBe(RELAY_BUSY)
+    // Another network still gets in.
+    const other = await connect(room.id)
+    expect(other.ws.readyState).toBe(WebSocket.OPEN)
   })
 })

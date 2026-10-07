@@ -388,7 +388,7 @@ function safeClose(ws: WebSocket, code: number, reason: string): void {
  * HTTP errors of a failed upgrade, but they do see close codes. `protocol` is
  * one the client offered, or the handshake would fail before the close.
  */
-function refuse(code: number, reason: string, protocol = SOCKET_PROTOCOL): Response {
+export function refuse(code: number, reason: string, protocol = SOCKET_PROTOCOL): Response {
   const { 0: client, 1: server } = new WebSocketPair()
   server.accept()
   server.close(code, reason)

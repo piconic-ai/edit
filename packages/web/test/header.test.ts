@@ -82,6 +82,8 @@ describe('Header', () => {
     expect(el.textContent).toBe('Connected')
     status.set('disconnected')
     expect(el.textContent).toBe('Offline')
+    status.set('busy')
+    expect(el.textContent).toBe('Busy, retrying…')
     status.set('closed')
     expect(el.textContent).toBe('Ended')
     status.set('full')

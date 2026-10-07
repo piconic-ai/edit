@@ -33,6 +33,11 @@ const ServerOutdated = 4003
 // reconnect on it by themselves: the room stays full until someone leaves.
 const RoomFull = 4004
 
+// RelayBusy is the WebSocket close code for a connection the relay turns away
+// because too many came from the same network just now. Clients reconnect, but
+// wait longer than after a dropped connection.
+const RelayBusy = 4005
+
 // ErrUnknownMessageType marks a message type this version does not know, from
 // a newer peer. Clients skip such messages instead of reporting them.
 var ErrUnknownMessageType = errors.New("unknown message type")

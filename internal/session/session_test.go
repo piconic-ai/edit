@@ -267,7 +267,11 @@ func TestExplainsWhyRoomCannotBeCreated(t *testing.T) {
 		body   string
 		want   string
 	}{
-		{"server error", http.StatusServiceUnavailable, "nope", "503 Service Unavailable"},
+		{"server error", http.StatusServiceUnavailable, "nope", "503 Service Unavailable: nope"},
+		{"rate limited", http.StatusTooManyRequests, "Too many rooms were created from your network.\nTry again in a minute.\n", "429 Too Many Requests: Too many rooms were created from your network. Try again in a minute."},
+		// Sent as text/plain, though not sniffed as text.
+		{"control characters", http.StatusForbidden, "no\x1b[31m way\x07", "403 Forbidden: no [31m way"},
+		{"HTML", http.StatusBadGateway, "<!doctype html><title>Bad gateway</title>", "502 Bad Gateway"},
 		{"not JSON", http.StatusOK, "<html>", "did not answer like a pedit server (check server in .pedit/config.yaml)"},
 		{"no room id", http.StatusCreated, `{"hostToken":"t"}`, "did not answer like a pedit server"},
 		{"no host token", http.StatusCreated, `{"id":"AAAAAAAAAAAAAAAAAAAAAA"}`, "did not return a host token; the server is older than this pedit"},
@@ -277,6 +281,9 @@ func TestExplainsWhyRoomCannotBeCreated(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "notes.md")
 			_ = os.WriteFile(file, []byte("x"), 0o644)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tt.name == "control characters" {
+					w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				}
 				w.WriteHeader(tt.status)
 				_, _ = w.Write([]byte(tt.body))
 			}))
@@ -284,6 +291,10 @@ func TestExplainsWhyRoomCannotBeCreated(t *testing.T) {
 			_, err := Start(context.Background(), Options{File: file, Server: server.URL})
 			if err == nil || !strings.Contains(err.Error(), tt.want) || !strings.Contains(err.Error(), server.URL) {
 				t.Fatalf("err = %v", err)
+			}
+			// Only plain text is shown, never markup or terminal escapes.
+			if strings.ContainsAny(err.Error(), "<\x1b\x07") {
+				t.Fatalf("err = %q", err)
 			}
 		})
 	}

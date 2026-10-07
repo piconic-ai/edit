@@ -9,6 +9,29 @@ is copied; the Go CLI is not included. The new repository uses `wrangler.json`
 at its root.
 The relay is public by default; configure Access to require sign-in.
 
+## Public relay limits
+
+The public relay at `edit.piconic.ai` is shared by everyone who tries pedit,
+so it keeps rooms small and turns away networks that ask too much at once:
+
+| | Public relay | Self-hosted default |
+| --- | --- | --- |
+| Guests in a room, besides the host | 4 | 31 |
+| One image | 5 MiB | 10 MiB |
+| Images of a session | 50 MiB | 100 MiB, 500 images |
+| New rooms from one network | 20 a minute | 20 a minute |
+| Connections from one network | 60 a minute | 60 a minute |
+
+A network is one IP address, or for IPv6 one /64, so everyone behind the same
+NAT or Wi-Fi counts together. A person never gets near 20 new rooms a minute,
+but a class or workshop starting pedit at the same moment on one Wi-Fi can:
+the CLI then says to try again in a minute. A guest who finds the room full is
+told so in the editor. A client over the connection limit shows the relay as
+busy and reconnects on its own after a few seconds.
+
+To go past these limits, self-host the relay and set your own (see
+[Room limits](#room-limits)).
+
 ## Protect the entire deployment
 
 Set up a [Cloudflare Access self-hosted application](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
@@ -113,3 +136,11 @@ Whatever the limits, a connection that sends far more than editing needs is
 closed, and its client reconnects; a room stores at most four images at once.
 The public relay at `edit.piconic.ai` sets lower limits in
 `packages/worker/wrangler.jsonc`.
+
+New rooms and connections are limited per network by the Workers Rate Limiting
+bindings `ROOM_CREATION_LIMIT` and `CONNECTION_LIMIT`, in `ratelimits` in
+`packages/wrangler.json`. Change their `limit` (per `period` of 10 or 60
+seconds) to raise them, for example for a class that starts pedit together, or
+remove a binding to drop that limit. Their `namespace_id` must not be used by
+another Worker in the same Cloudflare account. The limits are counted per
+Cloudflare location and are approximate.

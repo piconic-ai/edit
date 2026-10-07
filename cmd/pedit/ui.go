@@ -288,6 +288,8 @@ func (u *ui) liveLine() string {
 		return u.green("●") + " " + whoIsHere(u.people)
 	case protocol.StatusDisconnected:
 		return u.yellow("○") + " Offline. Reconnecting…"
+	case protocol.StatusBusy:
+		return u.yellow("○") + " The relay is busy. Retrying…"
 	case protocol.StatusClosed:
 		return u.yellow("○") + " Closed."
 	case protocol.StatusFull:

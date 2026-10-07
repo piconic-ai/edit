@@ -24,6 +24,8 @@ type Relay struct {
 	Hosted bool
 	Guests int
 	Refuse int
+	// Busy turns away this many connections with RelayBusy before letting any in.
+	Busy int
 
 	mu      sync.Mutex
 	conns   map[*Conn]bool
@@ -42,6 +44,10 @@ func (r *Relay) Dial(_ context.Context, url string, header http.Header) (protoco
 	defer r.mu.Unlock()
 	r.urls = append(r.urls, url)
 	r.headers = append(r.headers, header.Clone())
+	if r.Busy > 0 {
+		r.Busy--
+		return nil, &protocol.CloseError{Code: protocol.RelayBusy}
+	}
 	if r.Refuse != 0 {
 		return nil, &protocol.CloseError{Code: r.Refuse}
 	}
