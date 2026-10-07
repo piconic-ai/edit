@@ -32,6 +32,14 @@
   // bucket needs a lifecycle rule expiring `rooms/` after a day, as a backstop
   // for deletion (see docs/contributing/deployment.md and docs/self-hosting.md).
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "edit-blobs" }],
+  // The public relay is a demo: the host and 4 guests per room, images up to
+  // 5 MiB each and 50 MiB per session. Self-hosted relays (packages/wrangler.json
+  // and the lab) keep the defaults in Limits (packages/worker/src/room.ts).
+  "vars": {
+    "ROOM_GUESTS": "4",
+    "BLOB_MAX_BYTES": "5242880",
+    "BLOB_QUOTA_BYTES": "52428800"
+  },
   // Worker Previews: every push to a branch other than `release` makes (or
   // updates) that branch's Preview via Cloudflare Workers Builds, whose
   // Preview command runs `pnpm run preview`. Previews never become the
@@ -44,6 +52,12 @@
       "bindings": [{ "name": "ROOM", "class_name": "Room" }]
     },
     "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "edit-blobs-preview" }],
+    // Previews run with the public relay's limits, so they show what it does.
+    "vars": {
+      "ROOM_GUESTS": "4",
+      "BLOB_MAX_BYTES": "5242880",
+      "BLOB_QUOTA_BYTES": "52428800"
+    },
     // Per-Preview logs and traces: Cloudflare dashboard → `edit` Worker →
     // Previews → <branch> → Observability. (`wrangler tail` can't target
     // Previews.)

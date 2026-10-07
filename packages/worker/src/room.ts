@@ -6,7 +6,7 @@ import {
   readAdmissionProtocol,
   SOCKET_PROTOCOL,
 } from '@pedit/protocol/admission'
-import { CLIENT_OUTDATED, ROOM_CLOSED, SERVER_OUTDATED } from '@pedit/protocol/close'
+import { CLIENT_OUTDATED, ROOM_CLOSED, ROOM_FULL, SERVER_OUTDATED } from '@pedit/protocol/close'
 
 // Shared browser code brings DOM's SubtleCrypto into this program. Augment it
 // with the documented Workers extension also present in our generated types.
@@ -16,16 +16,77 @@ declare global {
   }
 }
 
+/** Connections one room takes at most, hosts included. */
 export const MAX_PEERS = 32
 export const MAX_MESSAGE_BYTES = 1024 * 1024
 /** Set by the Worker (never by clients) on the host's upgrade request. */
 export const HOST_HEADER = 'X-Pedit-Host'
 
-/** An attachment of up to 10 MiB, plus its AES-GCM IV and tag. */
-export const MAX_BLOB_BYTES = 10 * 1024 * 1024 + 28
-/** Default quota of one room; BLOB_QUOTA_BYTES and BLOB_QUOTA_COUNT override it. */
-export const ROOM_BLOB_BYTES = 100 * 1024 * 1024
-export const ROOM_BLOB_COUNT = 500
+/** AES-GCM's IV and tag around an encrypted attachment. */
+export const BLOB_OVERHEAD = 28
+/** Uploads one room takes at once; each is held in memory until it is stored. */
+export const MAX_UPLOADS = 4
+
+/**
+ * What one connection may send: a burst, then a steady rate. Messages are what
+ * a room is billed for, so they are counted, but above the busiest editing:
+ * dragging on a canvas sends the pointer once per frame, up to 144 times a
+ * second on fast displays, besides typing and cursors. Bytes are counted
+ * loosely: every
+ * peer answers a newcomer with the whole document (one message of at most
+ * MAX_MESSAGE_BYTES), so a full room reconnecting at once must fit.
+ *
+ * A guest over it is closed, and its client reconnects and resyncs, which
+ * loses nothing. A host over it ends the session, as any host leaving does,
+ * so the limits stay far above what editing needs.
+ */
+export const MESSAGE_RATE = { burst: 1000, perSecond: 200 }
+export const BYTE_RATE = { burst: MAX_PEERS * MAX_MESSAGE_BYTES, perSecond: 1024 * 1024 }
+/** Close code for a connection over its rate: a policy violation. */
+export const RATE_LIMITED = 1008
+
+/**
+ * What a room allows. The defaults suit a self-hosted relay; the public relay
+ * sets lower ones as Worker vars (wrangler.jsonc), and the tests set their own
+ * (vitest.config.ts).
+ */
+export interface Limits {
+  /** Guests at once, the host not counted. */
+  guests: number
+  /** One attachment, before encryption. */
+  blobBytes: number
+  /** All attachments of a session together, encrypted, and their number. */
+  quotaBytes: number
+  quotaCount: number
+}
+
+export const DEFAULT_LIMITS: Limits = {
+  guests: MAX_PEERS - 1,
+  blobBytes: 10 * 1024 * 1024,
+  quotaBytes: 100 * 1024 * 1024,
+  quotaCount: 500,
+}
+
+/** Worker vars that lower or raise the limits; unset or invalid ones keep the default. */
+export interface LimitVars {
+  ROOM_GUESTS?: string
+  BLOB_MAX_BYTES?: string
+  BLOB_QUOTA_BYTES?: string
+  BLOB_QUOTA_COUNT?: string
+}
+
+export function limits(env: LimitVars): Limits {
+  const positive = (value: string | undefined, fallback: number) => {
+    const n = Number(value)
+    return Number.isSafeInteger(n) && n > 0 ? n : fallback
+  }
+  return {
+    guests: Math.min(positive(env.ROOM_GUESTS, DEFAULT_LIMITS.guests), MAX_PEERS - 1),
+    blobBytes: positive(env.BLOB_MAX_BYTES, DEFAULT_LIMITS.blobBytes),
+    quotaBytes: positive(env.BLOB_QUOTA_BYTES, DEFAULT_LIMITS.quotaBytes),
+    quotaCount: positive(env.BLOB_QUOTA_COUNT, DEFAULT_LIMITS.quotaCount),
+  }
+}
 
 const HOST_TAG = 'host'
 const BLOB_PATH = /\/blobs\/([A-Za-z0-9_-]{22})$/
@@ -53,6 +114,11 @@ interface Usage {
 export class Room extends DurableObject<Env> {
   // Blob ids being uploaded right now, so two uploads of one id cannot race.
   private readonly uploading = new Set<string>()
+  // What each connection may still send. In memory only: a room that wakes
+  // from hibernation starts everyone with a full allowance, which is fine.
+  private readonly allowances = new WeakMap<WebSocket, Allowance>()
+  // What the allowances are refilled by; the tests stop and move it.
+  private now = () => Date.now()
   // Deleting the blobs of a session that just ended. A reconnecting host must
   // not start using blobs before it finishes.
   private cleaning: Promise<void> = Promise.resolve()
@@ -86,8 +152,10 @@ export class Room extends DurableObject<Env> {
     // register the verifier; a guest cannot claim an unopened room's token.
     if (!(await this.authorize(token, isHost)))
       return new Response('invalid room admission', { status: 403 })
-    if (this.ctx.getWebSockets().length >= MAX_PEERS) {
-      return new Response('room is full', { status: 429 })
+    const peers = this.ctx.getWebSockets().length
+    const guests = peers - this.hosts().length
+    if (peers >= MAX_PEERS || (!isHost && guests >= limits(this.env).guests)) {
+      return refuse(ROOM_FULL, 'room is full')
     }
     const { 0: client, 1: server } = new WebSocketPair()
     this.ctx.acceptWebSocket(server, isHost ? [HOST_TAG] : [])
@@ -118,6 +186,10 @@ export class Room extends DurableObject<Env> {
       ws.close(1009, 'message too big')
       return
     }
+    if (!this.allow(ws, message.byteLength)) {
+      ws.close(RATE_LIMITED, 'rate limited')
+      return
+    }
     for (const peer of this.ctx.getWebSockets()) {
       if (peer === ws) continue
       try {
@@ -136,6 +208,26 @@ export class Room extends DurableObject<Env> {
   override async webSocketError(ws: WebSocket): Promise<void> {
     safeClose(ws, 1011, 'error')
     await this.closeIfHostLeft(ws)
+  }
+
+  // Takes one message of `bytes` from the connection's allowance, refilled
+  // with the time since its last message.
+  private allow(ws: WebSocket, bytes: number): boolean {
+    const now = this.now()
+    const a = this.allowances.get(ws) ?? {
+      messages: MESSAGE_RATE.burst,
+      bytes: BYTE_RATE.burst,
+      at: now,
+    }
+    const seconds = Math.max(0, now - a.at) / 1000
+    a.messages = Math.min(MESSAGE_RATE.burst, a.messages + seconds * MESSAGE_RATE.perSecond)
+    a.bytes = Math.min(BYTE_RATE.burst, a.bytes + seconds * BYTE_RATE.perSecond)
+    a.at = now
+    this.allowances.set(ws, a)
+    if (a.messages < 1 || a.bytes < bytes) return false
+    a.messages -= 1
+    a.bytes -= bytes
+    return true
   }
 
   private hosts(except?: WebSocket): WebSocket[] {
@@ -190,9 +282,18 @@ export class Room extends DurableObject<Env> {
     if (!header || !Number.isSafeInteger(length) || length < 0) {
       return new Response('Content-Length required', { status: 411 })
     }
-    if (length > MAX_BLOB_BYTES) return new Response('blob too large', { status: 413 })
+    if (length > limits(this.env).blobBytes + BLOB_OVERHEAD) {
+      return new Response('blob too large', { status: 413 })
+    }
     // Claim the id before awaiting anything.
     if (this.uploading.has(key)) return new Response('upload in progress', { status: 409 })
+    // Each upload is held in memory whole, so take only a few at once.
+    if (this.uploading.size >= MAX_UPLOADS) {
+      return new Response('too many uploads at once', {
+        status: 503,
+        headers: { 'Retry-After': '1' },
+      })
+    }
     this.uploading.add(key)
     try {
       return await this.upload(request, key, length)
@@ -213,8 +314,8 @@ export class Room extends DurableObject<Env> {
     // Reserve the quota before awaiting anything else, so concurrent uploads
     // cannot all squeeze in under it.
     const usage = this.usage()
-    const quota = this.quota()
-    if (usage.bytes + length > quota.bytes || usage.count + 1 > quota.count) {
+    const { quotaBytes, quotaCount } = limits(this.env)
+    if (usage.bytes + length > quotaBytes || usage.count + 1 > quotaCount) {
       return new Response('room quota exceeded', { status: 429 })
     }
     this.setUsage({ bytes: usage.bytes + length, count: usage.count + 1 })
@@ -266,13 +367,12 @@ export class Room extends DurableObject<Env> {
   private setUsage(usage: Usage): void {
     this.ctx.storage.kv.put(USAGE_KEY, usage)
   }
+}
 
-  private quota(): Usage {
-    return {
-      bytes: Number(this.env.BLOB_QUOTA_BYTES) || ROOM_BLOB_BYTES,
-      count: Number(this.env.BLOB_QUOTA_COUNT) || ROOM_BLOB_COUNT,
-    }
-  }
+interface Allowance {
+  messages: number
+  bytes: number
+  at: number
 }
 
 function safeClose(ws: WebSocket, code: number, reason: string): void {

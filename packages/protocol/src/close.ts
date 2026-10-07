@@ -16,3 +16,10 @@ export const CLIENT_OUTDATED = 4002
  * the server. Clients must not reconnect on it: the server has to be updated.
  */
 export const SERVER_OUTDATED = 4003
+
+/**
+ * WebSocket close code sent to a guest who tries to join a room that already
+ * has as many guests as the relay allows. Clients must not reconnect on it by
+ * themselves: the room stays full until someone leaves.
+ */
+export const ROOM_FULL = 4004

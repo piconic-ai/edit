@@ -28,6 +28,11 @@ const ClientOutdated = 4002
 // server has to be updated.
 const ServerOutdated = 4003
 
+// RoomFull is the WebSocket close code sent to a guest who tries to join a
+// room that already has as many guests as the relay allows. Clients must not
+// reconnect on it by themselves: the room stays full until someone leaves.
+const RoomFull = 4004
+
 // ErrUnknownMessageType marks a message type this version does not know, from
 // a newer peer. Clients skip such messages instead of reporting them.
 var ErrUnknownMessageType = errors.New("unknown message type")

@@ -1,13 +1,26 @@
-import { evictDurableObject } from 'cloudflare:test'
+import { evictDurableObject, runInDurableObject } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { ADMISSION_HEADER, admissionProtocols } from '@pedit/protocol/admission'
 import { describe, expect, it, vi } from 'vitest'
 import { roomIdFor } from '../src/index.ts'
-import { MAX_BLOB_BYTES, MAX_MESSAGE_BYTES, MAX_PEERS } from '../src/room.ts'
+import {
+  BLOB_OVERHEAD,
+  BYTE_RATE,
+  limits,
+  MAX_MESSAGE_BYTES,
+  MAX_PEERS,
+  MAX_UPLOADS,
+  MESSAGE_RATE,
+  RATE_LIMITED,
+  type Room as RoomObject,
+} from '../src/room.ts'
 
 const ROOM_CLOSED = 4001
 const CLIENT_OUTDATED = 4002
 const SERVER_OUTDATED = 4003
+const ROOM_FULL = 4004
+// The tests run with small limits (vitest.config.ts).
+const { guests: GUESTS, blobBytes: BLOB_BYTES } = limits(env)
 
 interface Room {
   id: string
@@ -59,6 +72,21 @@ async function connect(id: string, headers: Record<string, string> = {}): Promis
 
 const host = (room: Room, headers: Record<string, string> = {}) =>
   connect(room.id, { Authorization: `Bearer ${room.hostToken}`, ...headers })
+
+/**
+ * Stops the room's clock at 0 and returns a way to move it, so a test decides
+ * how much the allowances refill however slowly its messages are relayed.
+ */
+async function stopClock(room: Room): Promise<(ms: number) => void> {
+  let now = 0
+  const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+  await runInDurableObject(stub, (instance: RoomObject) => {
+    instance['now'] = () => now
+  })
+  return (ms) => {
+    now += ms
+  }
+}
 
 const until = async (check: () => boolean) => {
   for (let i = 0; i < 100 && !check(); i++) await new Promise((r) => setTimeout(r, 10))
@@ -241,12 +269,90 @@ describe('rooms', () => {
     expect((await big.closed).code).toBe(1009)
   })
 
-  it('caps the number of peers', async () => {
+  it('turns guests away once the room has as many as the relay allows', async () => {
     const room = await createRoom()
     await host(room)
-    for (let i = 1; i < MAX_PEERS; i++) await connect(room.id)
-    expect((await upgrade(room.id)).status).toBe(429)
+    const first = await connect(room.id)
+    for (let i = 1; i < GUESTS; i++) await connect(room.id)
+    const late = await connect(room.id)
+    const closed = await late.closed
+    expect(closed.code).toBe(ROOM_FULL)
+    expect(closed.reason).toBe('room is full')
+    // The host is not a guest: a reconnecting host still gets in.
+    const again = await host(room)
+    expect(again.ws.readyState).toBe(WebSocket.OPEN)
+    // Someone leaving frees their place.
+    first.ws.close(1000, 'bye')
+    await first.closed
+    await vi.waitFor(async () => {
+      const next = await connect(room.id)
+      expect(next.ws.readyState).toBe(WebSocket.OPEN)
+    })
   })
+
+  it('caps the number of connections', async () => {
+    const room = await createRoom()
+    for (let i = 0; i < MAX_PEERS; i++) await host(room)
+    expect((await (await host(room)).closed).code).toBe(ROOM_FULL)
+  })
+
+  it('reads its limits from the Worker vars, within the defaults', () => {
+    expect(limits({})).toEqual({
+      guests: MAX_PEERS - 1,
+      blobBytes: 10 * 1024 * 1024,
+      quotaBytes: 100 * 1024 * 1024,
+      quotaCount: 500,
+    })
+    expect(limits({ ROOM_GUESTS: '100' }).guests).toBe(MAX_PEERS - 1)
+    for (const bad of ['0', '-1', '1.5', 'many']) {
+      expect(limits({ ROOM_GUESTS: bad, BLOB_MAX_BYTES: bad }).guests).toBe(MAX_PEERS - 1)
+      expect(limits({ BLOB_MAX_BYTES: bad }).blobBytes).toBe(10 * 1024 * 1024)
+    }
+  })
+
+  it('closes a connection that sends too many messages', async () => {
+    const room = await createRoom()
+    const h = await host(room)
+    const guest = await connect(room.id)
+    await stopClock(room)
+    for (let i = 0; i <= MESSAGE_RATE.burst; i++) guest.ws.send(new Uint8Array(1))
+    expect((await guest.closed).code).toBe(RATE_LIMITED)
+    // The burst itself was relayed, and nobody else was cut off.
+    await until(() => h.received.length === MESSAGE_RATE.burst)
+    expect(h.ws.readyState).toBe(WebSocket.OPEN)
+  })
+
+  it('closes a connection that sends too many bytes', async () => {
+    const room = await createRoom()
+    await host(room)
+    const guest = await connect(room.id)
+    await stopClock(room)
+    const big = new Uint8Array(MAX_MESSAGE_BYTES)
+    for (let i = 0; i <= BYTE_RATE.burst / MAX_MESSAGE_BYTES; i++) guest.ws.send(big)
+    expect((await guest.closed).code).toBe(RATE_LIMITED)
+  })
+
+  it('lets a steady sender keep going', async () => {
+    const room = await createRoom()
+    const h = await host(room)
+    const guest = await connect(room.id)
+    const tick = await stopClock(room)
+    // The whole burst, then a second's worth of messages each second. Each
+    // batch is relayed before the clock moves, so it all counts against the
+    // allowance at the time it was sent.
+    const relayed = (n: number) =>
+      vi.waitFor(() => expect(h.received.length).toBe(n), { timeout: 10_000 })
+    for (let i = 0; i < MESSAGE_RATE.burst; i++) guest.ws.send(new Uint8Array(1))
+    let total = MESSAGE_RATE.burst
+    await relayed(total)
+    for (let second = 0; second < 2; second++) {
+      tick(1000)
+      for (let i = 0; i < MESSAGE_RATE.perSecond; i++) guest.ws.send(new Uint8Array(1))
+      total += MESSAGE_RATE.perSecond
+      await relayed(total)
+    }
+    expect(guest.ws.readyState).toBe(WebSocket.OPEN)
+  }, 30_000)
 })
 
 // A blob id: 22 base64url characters.
@@ -367,8 +473,10 @@ describe('blobs', () => {
       headers: { [ADMISSION_HEADER]: room.admission },
     })
     expect(del.status).toBe(405)
-    const big = await putBlob(room, blobId(1), new Uint8Array(MAX_BLOB_BYTES + 1))
+    const big = await putBlob(room, blobId(1), new Uint8Array(BLOB_BYTES + BLOB_OVERHEAD + 1))
     expect(big.status).toBe(413)
+    const fits = await putBlob(room, blobId(2), new Uint8Array(BLOB_BYTES))
+    expect(fits.status).toBe(201)
     // A stream of unknown length is sent without Content-Length.
     const { readable, writable } = new TransformStream()
     const unsized = exports.default.fetch(blobUrl(room, blobId(1)), {
@@ -388,6 +496,25 @@ describe('blobs', () => {
     expect((await putBlob(room, blobId(1), new Uint8Array(4))).status).toBe(409)
     expect((await first.finish()).status).toBe(201)
     expect((await putBlob(room, blobId(1), new Uint8Array(4))).status).toBe(200)
+  })
+
+  it('takes only a few uploads at once', async () => {
+    const room = await createRoom()
+    await host(room)
+    const slow = Array.from({ length: MAX_UPLOADS }, (_, i) => slowPut(room, blobId(i), 4))
+    // Wait for every slow upload to reach the room, looking inside it: any
+    // probe from outside would take an upload slot itself.
+    const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+    await vi.waitFor(() =>
+      runInDurableObject(stub, (instance: RoomObject) =>
+        expect(instance['uploading'].size).toBe(MAX_UPLOADS),
+      ),
+    )
+    const busy = await putBlob(room, blobId(MAX_UPLOADS), new Uint8Array(4))
+    expect(busy.status).toBe(503)
+    expect(busy.headers.get('Retry-After')).toBe('1')
+    for (const upload of slow) expect((await upload.finish()).status).toBe(201)
+    expect((await putBlob(room, blobId(MAX_UPLOADS), new Uint8Array(4))).status).toBe(201)
   })
 
   it('waits out every cleanup before serving a new session', async () => {
@@ -419,14 +546,16 @@ describe('blobs', () => {
   })
 
   it('enforces the room quota', async () => {
-    // The tests run with a quota of 100 bytes and 3 blobs (vitest.config.ts).
+    // The tests run with a quota of 100 bytes and 5 blobs (vitest.config.ts).
     const room = await createRoom()
     await host(room)
     expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(201)
     expect((await putBlob(room, blobId(2), new Uint8Array(20))).status).toBe(429)
     expect((await putBlob(room, blobId(3), new Uint8Array(5))).status).toBe(201)
     expect((await putBlob(room, blobId(4), new Uint8Array(5))).status).toBe(201)
-    expect((await putBlob(room, blobId(5), new Uint8Array(0))).status).toBe(429)
+    expect((await putBlob(room, blobId(5), new Uint8Array(0))).status).toBe(201)
+    expect((await putBlob(room, blobId(6), new Uint8Array(0))).status).toBe(201)
+    expect((await putBlob(room, blobId(7), new Uint8Array(0))).status).toBe(429)
     // A repeated upload is free.
     expect((await putBlob(room, blobId(1), new Uint8Array(90))).status).toBe(200)
   })

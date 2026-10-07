@@ -94,3 +94,22 @@ changes are overwritten on the next deployment.
 If applying the cleanup rules fails, deployment reports an error even if the
 Worker was already published. Fix the bucket or permission issue and rerun
 `pnpm run deploy` to apply the rules.
+
+## Room limits
+
+A self-hosted relay lets each room take the host and up to 31 guests, images
+of up to 10 MiB each and 100 MiB (500 images) per session. To change them, set
+these Worker variables (as `vars` in `packages/wrangler.json`, or in the
+Cloudflare dashboard → your Worker → Settings → Variables and Secrets):
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `ROOM_GUESTS` | Guests at once, the host not counted (at most 31) | `31` |
+| `BLOB_MAX_BYTES` | One image, in bytes | `10485760` |
+| `BLOB_QUOTA_BYTES` | All images of a session, in bytes | `104857600` |
+| `BLOB_QUOTA_COUNT` | All images of a session, in number | `500` |
+
+Whatever the limits, a connection that sends far more than editing needs is
+closed, and its client reconnects; a room stores at most four images at once.
+The public relay at `edit.piconic.ai` sets lower limits in
+`packages/worker/wrangler.jsonc`.

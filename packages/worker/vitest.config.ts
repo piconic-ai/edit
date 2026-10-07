@@ -5,8 +5,15 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: './wrangler.jsonc' },
-      // A small attachment quota, so the tests can fill it.
-      miniflare: { bindings: { BLOB_QUOTA_BYTES: '100', BLOB_QUOTA_COUNT: '3' } },
+      // Small limits, so the tests can reach them.
+      miniflare: {
+        bindings: {
+          ROOM_GUESTS: '3',
+          BLOB_MAX_BYTES: '95',
+          BLOB_QUOTA_BYTES: '100',
+          BLOB_QUOTA_COUNT: '5',
+        },
+      },
     }),
   ],
 })

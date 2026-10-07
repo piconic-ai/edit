@@ -59,6 +59,7 @@ type harness struct {
 	mu    sync.Mutex
 	blobs map[string][]byte // URL path → body
 	stall map[string]bool   // URL paths whose requests hang until cancelled
+	busy  int               // PUTs to answer 503 before taking any
 	gets  int
 	saved []string
 	errs  []error
@@ -113,6 +114,11 @@ func newHarness(t *testing.T) *harness {
 			_, _ = w.Write(body)
 		case http.MethodPut:
 			body, _ := io.ReadAll(r.Body)
+			if h.busy > 0 {
+				h.busy--
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
 			h.blobs[r.URL.Path] = body
 			w.WriteHeader(http.StatusCreated)
 		}
@@ -131,6 +137,7 @@ func newHarness(t *testing.T) *harness {
 		OnSaved: func(path string) { h.mu.Lock(); h.saved = append(h.saved, path); h.mu.Unlock() },
 		OnError: func(err error) { h.mu.Lock(); h.errs = append(h.errs, err); h.mu.Unlock() },
 	})
+	h.a.retryDelay = time.Millisecond
 	t.Cleanup(h.a.Close)
 	return h
 }
@@ -409,6 +416,50 @@ func TestUploadsWantedImagesFromDisk(t *testing.T) {
 	// Asked again right away: already uploaded, so nothing to do.
 	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
 	h.nothingSent()
+}
+
+func TestWaitsForTheRoomToTakeAWantedImage(t *testing.T) {
+	h := newHarness(t)
+	hash := protocol.ContentHash(png)
+	h.a.AllowLocalDocument("![](assets/" + hash + ".png)")
+	dir := filepath.Join(filepath.Dir(h.file), "assets")
+	_ = os.Mkdir(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, hash+".png"), png, 0o644)
+	h.mu.Lock()
+	h.busy = uploadRetries
+	h.mu.Unlock()
+
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	if m := h.next(); m.Kind != protocol.AttachmentAnnounce || m.Hash != hash {
+		t.Fatalf("got %+v", m)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if _, ok := h.blobs[h.blobPath(hash)]; !ok || len(h.errs) != 0 {
+		t.Fatalf("stored=%v errs=%v", ok, h.errs)
+	}
+}
+
+func TestGivesUpOnARoomThatStaysBusy(t *testing.T) {
+	h := newHarness(t)
+	hash := protocol.ContentHash(png)
+	h.a.AllowLocalDocument("![](assets/" + hash + ".png)")
+	dir := filepath.Join(filepath.Dir(h.file), "assets")
+	_ = os.Mkdir(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, hash+".png"), png, 0o644)
+	h.mu.Lock()
+	h.busy = uploadRetries + 1
+	h.mu.Unlock()
+
+	h.a.Handle(protocol.Attachment{Kind: protocol.AttachmentWant, Hashes: []string{hash}})
+	h.nothingSent()
+	errs := func() []error { h.mu.Lock(); defer h.mu.Unlock(); return append([]error{}, h.errs...) }
+	for deadline := time.Now().Add(time.Second); len(errs()) == 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := errs(); len(got) != 1 || !strings.Contains(got[0].Error(), "503") {
+		t.Fatalf("errs = %v", got)
+	}
 }
 
 func TestResendsWantedImagesAfterAWhile(t *testing.T) {

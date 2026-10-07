@@ -1,4 +1,4 @@
-import { ROOM_CLOSED } from './close.ts'
+import { ROOM_CLOSED, ROOM_FULL } from './close.ts'
 import type { SocketLike } from './room.ts'
 
 export interface RelayOptions {
@@ -8,6 +8,8 @@ export interface RelayOptions {
    * disconnected with ROOM_CLOSED when the last host leaves.
    */
   hosted?: boolean
+  /** Guests at once, the host not counted; more are turned away with ROOM_FULL. */
+  guests?: number
   /** Turn every socket away with this close code, as the Room does on a protocol version mismatch. */
   refuse?: number
 }
@@ -35,6 +37,11 @@ export class Relay {
       }
       if (this.opts.hosted && !socket.isHost && !this.hasHost()) {
         socket.close(ROOM_CLOSED)
+        return
+      }
+      const guests = [...this.sockets].filter((s) => !s.isHost && s.readyState === 1).length
+      if (!socket.isHost && this.opts.guests !== undefined && guests >= this.opts.guests) {
+        socket.close(ROOM_FULL)
         return
       }
       socket.readyState = 1

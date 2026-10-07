@@ -46,6 +46,11 @@ const (
 	// cannot hold up every message after it. It leaves room for 10 MiB on a
 	// slow uplink.
 	requestTimeout = 2 * time.Minute
+	// uploadRetries is how many times an upload the room cannot take yet is
+	// tried again: someone else uploads the same image (409), or the room
+	// takes as many uploads as it can at once (503).
+	uploadRetries = 5
+	retryDelay    = 500 * time.Millisecond
 )
 
 // Reasons sent in Rejected messages.
@@ -106,12 +111,13 @@ type Attachments struct {
 	allowed   map[string]struct{} // locally authorized image hashes
 
 	// Touched only by the worker goroutine.
-	total   int64
-	count   int
-	stored  map[string]string // hash → path
-	served  map[string]time.Time
-	now     func() time.Time
-	timeout time.Duration
+	total      int64
+	count      int
+	stored     map[string]string // hash → path
+	served     map[string]time.Time
+	now        func() time.Time
+	timeout    time.Duration
+	retryDelay time.Duration
 }
 
 func New(opts Options) *Attachments {
@@ -123,16 +129,17 @@ func New(opts Options) *Attachments {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &Attachments{
-		opts:    opts,
-		queue:   make(chan protocol.Attachment, queueSize),
-		ctx:     ctx,
-		cancel:  cancel,
-		done:    make(chan struct{}),
-		allowed: map[string]struct{}{},
-		stored:  map[string]string{},
-		served:  map[string]time.Time{},
-		now:     time.Now,
-		timeout: requestTimeout,
+		opts:       opts,
+		queue:      make(chan protocol.Attachment, queueSize),
+		ctx:        ctx,
+		cancel:     cancel,
+		done:       make(chan struct{}),
+		allowed:    map[string]struct{}{},
+		stored:     map[string]string{},
+		served:     map[string]time.Time{},
+		now:        time.Now,
+		timeout:    requestTimeout,
+		retryDelay: retryDelay,
 	}
 	a.AllowLocalDocument(opts.InitialDocument)
 	go a.run()
@@ -385,22 +392,43 @@ func (a *Attachments) fetch(hash string) ([]byte, error) {
 	return content, nil
 }
 
-// upload encrypts an attachment and stores it in the room.
+// upload encrypts an attachment and stores it in the room, waiting a little
+// while the room cannot take it yet.
 func (a *Attachments) upload(hash string, content []byte) error {
+	body := a.opts.Keys.Encrypt(content)
+	for attempt := 0; ; attempt++ {
+		status, err := a.put(hash, body)
+		if err != nil {
+			return fmt.Errorf("failed to upload an attachment: %w", err)
+		}
+		switch status {
+		case http.StatusOK, http.StatusCreated:
+			return nil
+		case http.StatusGone:
+			return errClosed
+		case http.StatusConflict, http.StatusServiceUnavailable:
+			if attempt < uploadRetries {
+				select {
+				case <-time.After(a.retryDelay):
+					continue
+				case <-a.ctx.Done():
+					return a.ctx.Err()
+				}
+			}
+		}
+		return fmt.Errorf("failed to upload an attachment: %d %s", status, http.StatusText(status))
+	}
+}
+
+func (a *Attachments) put(hash string, body []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, a.timeout)
 	defer cancel()
-	res, err := a.request(ctx, http.MethodPut, hash, a.opts.Keys.Encrypt(content))
+	res, err := a.request(ctx, http.MethodPut, hash, body)
 	if err != nil {
-		return fmt.Errorf("failed to upload an attachment: %w", err)
+		return 0, err
 	}
-	defer res.Body.Close()
-	switch res.StatusCode {
-	case http.StatusOK, http.StatusCreated:
-		return nil
-	case http.StatusGone:
-		return errClosed
-	}
-	return fmt.Errorf("failed to upload an attachment: %s", res.Status)
+	res.Body.Close()
+	return res.StatusCode, nil
 }
 
 // save writes an attachment beside the shared file, unless it is already

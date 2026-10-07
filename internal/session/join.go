@@ -50,6 +50,9 @@ type JoinOptions struct {
 // the host left, or the link is wrong.
 var ErrRoomClosed = errors.New("the room is closed: the host left, or the link is wrong")
 
+// ErrRoomFull means the room already has as many guests as its relay allows.
+var ErrRoomFull = errors.New("the room is full: its relay takes only so many people at once; try again when someone leaves")
+
 // ErrClientOutdated means the server speaks a newer protocol version than this
 // pedit, which has to be updated.
 var ErrClientOutdated = errors.New("this pedit is too old for the server; update it")
@@ -61,6 +64,8 @@ var ErrServerOutdated = errors.New("the server is older than this pedit; ask who
 // endedErr says why a Client ended in the final status st.
 func endedErr(st protocol.Status) error {
 	switch st {
+	case protocol.StatusFull:
+		return ErrRoomFull
 	case protocol.StatusClientOutdated:
 		return ErrClientOutdated
 	case protocol.StatusServerOutdated:

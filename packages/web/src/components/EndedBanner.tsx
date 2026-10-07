@@ -21,6 +21,7 @@ const LABELS = { idle: 'Copy text', copied: 'Copied', failed: 'Could not copy' }
 /** Why the room will not come back, for each status that says so. */
 const MESSAGES: Partial<Record<RoomStatus, string>> = {
   closed: 'This session has ended: the host is not connected. You can still copy the text.',
+  full: 'This room is full: its relay takes only so many people at once. Try again when someone leaves, or ask the host to run their own relay, which can take more.',
   'client-outdated':
     'This page is out of date: reload it to keep editing. You can still copy the text.',
   'server-outdated':
@@ -29,9 +30,10 @@ const MESSAGES: Partial<Record<RoomStatus, string>> = {
 
 /**
  * Shown once the room closes, which it does as soon as the host leaves, or
- * when the server speaks another protocol version than this page.
- * Copy text matters on phones, where selecting the whole document by hand
- * does not work: the editor only draws the lines on screen.
+ * when the server speaks another protocol version than this page, or when the
+ * room had no place for us. Copy text matters on phones, where selecting the
+ * whole document by hand does not work: the editor only draws the lines on
+ * screen. A full room never sent us any text, so there is none to copy.
  */
 export function EndedBanner(props: EndedBannerProps) {
   const status = () => props.status.get()
@@ -49,7 +51,7 @@ export function EndedBanner(props: EndedBannerProps) {
   return (
     <div className="banner" role="status" hidden={!MESSAGES[status()]}>
       <span>{MESSAGES[status()] ?? ''}</span>
-      <button type="button" onClick={copyAll}>
+      <button type="button" onClick={copyAll} hidden={status() === 'full'}>
         {LABELS[copy()]}
       </button>
       <button type="button" onClick={() => props.onReconnect()}>

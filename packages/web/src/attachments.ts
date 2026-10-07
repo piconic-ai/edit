@@ -50,6 +50,7 @@ export function whyNoImages(
   host: HostAttachments | null,
 ): string | null {
   if (status === 'closed') return 'The session has ended.'
+  if (status === 'full') return 'This room is full.'
   if (status === 'client-outdated') return 'This page is out of date. Reload it first.'
   if (status === 'server-outdated') return 'The server is older than this page.'
   if (status !== 'connected' || !hostHere) return 'Connecting to the host. Try again in a moment.'
@@ -93,7 +94,7 @@ export interface AttachmentsOptions {
   shrink?: Shrink
   /** How long to wait for the host to save an upload. */
   storedTimeoutMs?: number
-  /** How long to wait before retrying an upload someone else is making. */
+  /** How long to wait before retrying an upload the room cannot take yet. */
   retryDelayMs?: number
   /** How long to gather missing images into one `want`. */
   wantDelayMs?: number
@@ -396,8 +397,9 @@ export class Attachments implements ImageResolver {
         throw new AttachmentError(MESSAGES.failed)
       }
       if (res.ok) return
-      // Someone is uploading the same image right now.
-      if (res.status === 409 && attempt < RETRIES) {
+      // Someone is uploading the same image right now (409), or the room is
+      // taking as many uploads as it can at once (503).
+      if ((res.status === 409 || res.status === 503) && attempt < RETRIES) {
         await new Promise((r) => setTimeout(r, this.#opts.retryDelayMs ?? 500))
         continue
       }

@@ -24,10 +24,22 @@ function mount(props: Record<string, unknown> = {}) {
 
 describe('EndedBanner', () => {
   it('shows only once the room closes', () => {
-    const { status, banner } = mount()
+    const { status, banner, copy } = mount()
     expect(banner.hidden).toBe(true)
     status.set('closed')
     expect(banner.hidden).toBe(false)
+    expect(banner.textContent).toMatch(/session has ended/)
+    expect(copy.hidden).toBe(false)
+  })
+
+  it('says why a full room let nobody in, with nothing to copy', () => {
+    const { status, banner, copy, reconnect } = mount()
+    status.set('full')
+    expect(banner.hidden).toBe(false)
+    const shown = [...banner.querySelectorAll('span')].filter((s) => !s.hidden)
+    expect(shown.map((s) => s.textContent)).toEqual([expect.stringMatching(/room is full/)])
+    expect(copy.hidden).toBe(true)
+    expect(reconnect.hidden).toBe(false)
   })
 
   it('asks to reload a page that is out of date', () => {

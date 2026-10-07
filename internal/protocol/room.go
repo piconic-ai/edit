@@ -15,8 +15,9 @@ import (
 )
 
 // Status is the connection state of a Client. StatusClosed is final: the host
-// ended the session. So are StatusClientOutdated and StatusServerOutdated: the
-// server speaks an older or newer protocol version.
+// ended the session. So is StatusFull: the room had no place for us. So are
+// StatusClientOutdated and StatusServerOutdated: the server speaks an older or
+// newer protocol version.
 type Status string
 
 // errDestroyed ends the connection loop when the Client was destroyed mid-dial.
@@ -27,6 +28,7 @@ const (
 	StatusConnected    Status = "connected"
 	StatusDisconnected Status = "disconnected"
 	StatusClosed       Status = "closed"
+	StatusFull         Status = "full"
 
 	StatusClientOutdated Status = "client-outdated"
 	StatusServerOutdated Status = "server-outdated"
@@ -35,13 +37,14 @@ const (
 // finalStatus maps the close codes that end a Client for good to its status.
 var finalStatus = map[int]Status{
 	RoomClosed:     StatusClosed,
+	RoomFull:       StatusFull,
 	ClientOutdated: StatusClientOutdated,
 	ServerOutdated: StatusServerOutdated,
 }
 
 // Final reports whether a Client stays in s for good and no longer reconnects.
 func (s Status) Final() bool {
-	return s == StatusClosed || s == StatusClientOutdated || s == StatusServerOutdated
+	return s == StatusClosed || s == StatusFull || s == StatusClientOutdated || s == StatusServerOutdated
 }
 
 type ClientOptions struct {
