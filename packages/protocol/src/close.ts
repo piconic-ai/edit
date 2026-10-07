@@ -23,3 +23,10 @@ export const SERVER_OUTDATED = 4003
  * themselves: the room stays full until someone leaves.
  */
 export const ROOM_FULL = 4004
+
+/**
+ * WebSocket close code for a connection the relay turns away because too many
+ * came from the same network just now. Clients reconnect, but wait longer
+ * than after a dropped connection.
+ */
+export const RELAY_BUSY = 4005

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -314,6 +316,9 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 		return nil, fmt.Errorf("failed to create a room on %s: %w", server, ErrBehindAccess)
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
+		if msg := serverMessage(res); msg != "" {
+			return nil, fmt.Errorf("failed to create a room on %s: %s: %s", server, res.Status, msg)
+		}
 		return nil, fmt.Errorf("failed to create a room on %s: %s", server, res.Status)
 	}
 	var r room
@@ -325,6 +330,27 @@ func createRoom(ctx context.Context, client *http.Client, server string, header 
 		return nil, fmt.Errorf("failed to create a room: %s did not return a host token; the server is older than this pedit and needs an update", server)
 	}
 	return &r, nil
+}
+
+// serverMessage is what a server says about an error in a short plain-text
+// body, such as when to try again, cut to one line of printable characters so
+// it cannot garble the terminal. Anything else says nothing.
+func serverMessage(res *http.Response) string {
+	if media, _, err := mime.ParseMediaType(res.Header.Get("Content-Type")); err != nil || media != "text/plain" {
+		return ""
+	}
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+	text := strings.Map(func(r rune) rune {
+		if r == utf8.RuneError || !unicode.IsPrint(r) {
+			return ' '
+		}
+		return r
+	}, string(body))
+	text = strings.Join(strings.Fields(text), " ")
+	if runes := []rune(text); len(runes) > 200 {
+		text = string(runes[:200]) + "…"
+	}
+	return text
 }
 
 // keepAlive renews our awareness state and drops peers that went silent, as the

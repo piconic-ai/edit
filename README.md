@@ -151,9 +151,19 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Self-host
 
-Self-host when you want to limit who can join editing sessions. Cloudflare
-Access lets you allow specific email addresses or identity provider groups;
-participants need both an allowed identity and the session link.
+The public relay at `edit.piconic.ai` is shared, so it has limits:
+
+| | Public relay |
+| --- | --- |
+| People in a room | The host and 4 guests |
+| Images | 5 MB each, 50 MB per session |
+| New rooms | 20 a minute from one network |
+| Session length | No limit while the host is connected |
+
+Self-host when you need more, or when you want to limit who can join editing
+sessions. Cloudflare Access lets you allow specific email addresses or identity
+provider groups; participants need both an allowed identity and the session
+link.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fpiconic-ai%2Fpedit%2Ftree%2Fmain%2Fpackages)
 

@@ -242,6 +242,32 @@ describe('RoomClient', () => {
     expect(relay.urls).toHaveLength(2)
   })
 
+  it('waits out a busy relay longer than a dropped connection, then gets in', async () => {
+    const relay = new Relay({ busy: 1 })
+    const seen: string[] = []
+    const doc = new Y.Doc()
+    const client = new RoomClient({
+      admissionToken: 'A'.repeat(43),
+      url: 'ws://test',
+      key: await importKey(generateKey()),
+      doc,
+      awareness: new Awareness(doc),
+      createSocket: relay.create,
+      minBackoffMs: 1,
+      busyBackoffMs: 200,
+      onStatus: (s) => seen.push(s),
+    })
+    clients.push(client)
+    client.connect()
+    await vi.waitFor(() => expect(client.status).toBe('busy'))
+    // A drop would be retried within a few milliseconds; a busy relay is not.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(relay.urls).toHaveLength(1)
+    await vi.waitFor(() => expect(client.status).toBe('connected'))
+    expect(relay.urls).toHaveLength(2)
+    expect(seen).toEqual(['connecting', 'busy', 'connecting', 'connected'])
+  })
+
   it('is turned away from a room without a host', async () => {
     const relay = new Relay({ hosted: true })
     const guest = await join(relay, await importKey(generateKey()))

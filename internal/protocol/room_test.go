@@ -1,6 +1,7 @@
 package protocol_test
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -36,6 +37,8 @@ type joinOpts struct {
 	onError      func(error)
 	onAttachment func(protocol.Attachment)
 	onSynced     func()
+	busyBackoff  time.Duration
+	onStatus     func(protocol.Status)
 }
 
 func join(t *testing.T, relay *prototest.Relay, key string, o joinOpts) *peer {
@@ -62,6 +65,8 @@ func join(t *testing.T, relay *prototest.Relay, key string, o joinOpts) *peer {
 		Header:       o.header,
 		Dial:         relay.Dial,
 		MinBackoff:   20 * time.Millisecond,
+		BusyBackoff:  o.busyBackoff,
+		OnStatus:     o.onStatus,
 		OnError:      o.onError,
 		OnAttachment: o.onAttachment,
 		OnSynced:     o.onSynced,
@@ -323,6 +328,34 @@ func TestStopsForGoodWhenRoomIsFull(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if late.Status() != protocol.StatusFull || len(relay.URLs()) != 3 {
 		t.Fatalf("status=%v dials=%d", late.Status(), len(relay.URLs()))
+	}
+}
+
+func TestWaitsOutABusyRelayLongerThanADrop(t *testing.T) {
+	relay := prototest.NewRelay(false)
+	relay.Busy = 1
+	var mu sync.Mutex
+	var seen []protocol.Status
+	p := join(t, relay, protocol.GenerateKey(), joinOpts{
+		busyBackoff: 300 * time.Millisecond,
+		onStatus: func(s protocol.Status) {
+			mu.Lock()
+			seen = append(seen, s)
+			mu.Unlock()
+		},
+	})
+	prototest.WaitFor(t, wait, func() bool { return p.Status() == protocol.StatusBusy }, "busy")
+	// A drop is retried after 10-20 ms here; a busy relay waits 150-300 ms.
+	time.Sleep(100 * time.Millisecond)
+	if n := len(relay.URLs()); n != 1 {
+		t.Fatalf("dialed %d times while busy", n)
+	}
+	prototest.WaitFor(t, wait, func() bool { return p.Status() == protocol.StatusConnected }, "connected")
+	mu.Lock()
+	defer mu.Unlock()
+	want := []protocol.Status{protocol.StatusConnecting, protocol.StatusBusy, protocol.StatusConnecting, protocol.StatusConnected}
+	if fmt.Sprint(seen) != fmt.Sprint(want) {
+		t.Fatalf("statuses = %v", seen)
 	}
 }
 

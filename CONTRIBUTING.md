@@ -60,7 +60,8 @@ is shared by both implementations: change them together.
   stop reconnecting and ask to update pedit or reload the page.
 - Other close codes the Room sends and clients do not reconnect on: `4001`
   (the host left and the session is over) and `4004` (the room already has as
-  many guests as the relay allows).
+  many guests as the relay allows). On `4005` (too many connections from the
+  client's network) clients reconnect, but wait at least 5 to 10 seconds.
 - While pedit is 0.x, patch releases keep the wire format compatible. Additive
   changes (a new message type or kind that older peers skip) do not change the
   version. A change older peers cannot skip bumps the version, ships in a minor

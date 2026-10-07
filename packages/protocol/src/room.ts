@@ -12,7 +12,7 @@ import {
 } from './attachment.ts'
 import { type CanvasMessage, decodeCanvas, encodeCanvas, UnknownCanvasKindError } from './canvas.ts'
 import { decrypt, encrypt } from './cipher.ts'
-import { CLIENT_OUTDATED, ROOM_CLOSED, ROOM_FULL, SERVER_OUTDATED } from './close.ts'
+import { CLIENT_OUTDATED, RELAY_BUSY, ROOM_CLOSED, ROOM_FULL, SERVER_OUTDATED } from './close.ts'
 import {
   decodeMessage,
   encodeMessage,
@@ -24,12 +24,14 @@ import {
 /**
  * `closed` is final: the host ended the session. So is `full`: the room had no
  * place for us. So are `client-outdated` and `server-outdated`: the server
- * speaks an older or newer protocol version.
+ * speaks an older or newer protocol version. `busy` is not: the relay turned
+ * us away for now, and the client tries again later than after a drop.
  */
 export type RoomStatus =
   | 'connecting'
   | 'connected'
   | 'disconnected'
+  | 'busy'
   | 'closed'
   | 'full'
   | 'client-outdated'
@@ -77,6 +79,8 @@ export interface RoomClientOptions {
   createSocket?: (url: string, headers?: Record<string, string>, protocols?: string[]) => SocketLike
   minBackoffMs?: number
   maxBackoffMs?: number
+  /** The least a busy relay is waited out before trying again. */
+  busyBackoffMs?: number
   onStatus?: (status: RoomStatus) => void
   onError?: (error: unknown) => void
   onAttachment?: (attachment: Attachment) => void
@@ -150,6 +154,11 @@ export class RoomClient {
       const final = ev.code === undefined ? undefined : FINAL_CLOSE.get(ev.code)
       if (final && !this.destroyed) {
         this.setStatus(final)
+        return
+      }
+      if (ev.code === RELAY_BUSY) {
+        this.setStatus('busy')
+        this.scheduleReconnect(this.opts.busyBackoffMs ?? 10_000)
         return
       }
       this.setStatus('disconnected')
@@ -289,11 +298,12 @@ export class RoomClient {
       .catch((error) => this.opts.onError?.(error))
   }
 
-  private scheduleReconnect(): void {
+  private scheduleReconnect(atLeastMs = 0): void {
     if (this.destroyed) return
     const min = this.opts.minBackoffMs ?? 500
     const max = this.opts.maxBackoffMs ?? 30_000
-    const delay = Math.min(max, min * 2 ** this.attempts) * (0.5 + Math.random() / 2)
+    const backoff = Math.max(atLeastMs, Math.min(max, min * 2 ** this.attempts))
+    const delay = backoff * (0.5 + Math.random() / 2)
     this.attempts++
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null

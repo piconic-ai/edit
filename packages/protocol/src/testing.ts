@@ -1,4 +1,4 @@
-import { ROOM_CLOSED, ROOM_FULL } from './close.ts'
+import { RELAY_BUSY, ROOM_CLOSED, ROOM_FULL } from './close.ts'
 import type { SocketLike } from './room.ts'
 
 export interface RelayOptions {
@@ -12,6 +12,8 @@ export interface RelayOptions {
   guests?: number
   /** Turn every socket away with this close code, as the Room does on a protocol version mismatch. */
   refuse?: number
+  /** Turn away this many sockets with RELAY_BUSY before letting any in. */
+  busy?: number
 }
 
 /** An in-memory stand-in for the Worker: relays every frame to all other sockets. */
@@ -31,6 +33,11 @@ export class Relay {
     const socket = new FakeSocket(this, Boolean(headers?.Authorization))
     this.sockets.add(socket)
     queueMicrotask(() => {
+      if (this.opts.busy) {
+        this.opts.busy--
+        socket.close(RELAY_BUSY)
+        return
+      }
       if (this.opts.refuse !== undefined) {
         socket.close(this.opts.refuse)
         return

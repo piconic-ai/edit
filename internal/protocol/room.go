@@ -17,7 +17,8 @@ import (
 // Status is the connection state of a Client. StatusClosed is final: the host
 // ended the session. So is StatusFull: the room had no place for us. So are
 // StatusClientOutdated and StatusServerOutdated: the server speaks an older or
-// newer protocol version.
+// newer protocol version. StatusBusy is not: the relay turned us away for now,
+// and the Client tries again later than after a drop.
 type Status string
 
 // errDestroyed ends the connection loop when the Client was destroyed mid-dial.
@@ -27,6 +28,7 @@ const (
 	StatusConnecting   Status = "connecting"
 	StatusConnected    Status = "connected"
 	StatusDisconnected Status = "disconnected"
+	StatusBusy         Status = "busy"
 	StatusClosed       Status = "closed"
 	StatusFull         Status = "full"
 
@@ -58,8 +60,10 @@ type ClientOptions struct {
 	Dial       Dialer
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
-	OnStatus   func(Status)
-	OnError    func(error)
+	// BusyBackoff is the least a busy relay is waited out before trying again.
+	BusyBackoff time.Duration
+	OnStatus    func(Status)
+	OnError     func(error)
 	// OnSynced is called once, on the connection's read loop, when the first
 	// SyncStep2 from a peer has been applied: the doc now holds what the room
 	// had. Return quickly.
@@ -124,6 +128,9 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 	if opts.MaxBackoff == 0 {
 		opts.MaxBackoff = 30 * time.Second
+	}
+	if opts.BusyBackoff == 0 {
+		opts.BusyBackoff = 10 * time.Second
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
@@ -223,10 +230,14 @@ func (c *Client) run() {
 			c.setStatus(st)
 			return
 		}
-		c.onError(err)
-		c.setStatus(StatusDisconnected)
-
 		backoff := min(c.opts.MaxBackoff, c.opts.MinBackoff<<min(attempts, 16))
+		if closeCode(err) == RelayBusy {
+			c.setStatus(StatusBusy)
+			backoff = max(backoff, c.opts.BusyBackoff)
+		} else {
+			c.onError(err)
+			c.setStatus(StatusDisconnected)
+		}
 		delay := time.Duration(float64(backoff) * (0.5 + rand.Float64()/2))
 		attempts++
 		select {
