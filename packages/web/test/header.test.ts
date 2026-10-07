@@ -88,6 +88,8 @@ describe('Header', () => {
     expect(el.textContent).toBe('Ended')
     status.set('full')
     expect(el.textContent).toBe('Room full')
+    status.set('maintenance')
+    expect(el.textContent).toBe('Maintenance')
     status.set('client-outdated')
     expect(el.textContent).toBe('Outdated')
     status.set('server-outdated')

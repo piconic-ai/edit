@@ -130,6 +130,14 @@ func TestFinish(t *testing.T) {
 	}
 }
 
+func TestResumeOnEnter(t *testing.T) {
+	resumed := 0
+	resumeOnEnter(strings.NewReader("\n\nnot a full line"), func() { resumed++ })
+	if resumed != 2 {
+		t.Fatalf("resumed %d times, want once per Enter", resumed)
+	}
+}
+
 func TestFinishJoin(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -149,6 +157,7 @@ func TestFinishJoin(t *testing.T) {
 		{name: "pedit outdated", ended: protocol.StatusClientOutdated, code: 1, stdout: []string{"✓ Saved notes.md", "This pedit is too old for the server", "To upgrade, run: brew upgrade piconic-ai/tap/pedit"}, not: []string{"host closed"}},
 		{name: "temporary, pedit outdated", temporary: true, ended: protocol.StatusClientOutdated, code: 1, stdout: []string{"The temporary copy was removed.", "This pedit is too old"}},
 		{name: "server outdated", ended: protocol.StatusServerOutdated, code: 1, stdout: []string{"✓ Saved notes.md", "The server is older than this pedit", "Ask whoever runs the server"}, not: []string{"To upgrade"}},
+		{name: "maintenance", ended: protocol.StatusMaintenance, code: 1, stdout: []string{"✓ Saved notes.md", "The relay was closed for maintenance. Run pedit again once it is back."}, not: []string{"host closed", "To upgrade"}},
 		{name: "temporary not removed", temporary: true, stopErr: errors.New("busy"), code: 1, not: []string{"removed"}, stderr: "could not remove the temporary copy notes.md: busy"},
 	}
 	for _, tt := range tests {

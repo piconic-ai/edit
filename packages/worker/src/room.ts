@@ -6,7 +6,13 @@ import {
   readAdmissionProtocol,
   SOCKET_PROTOCOL,
 } from '@pedit/protocol/admission'
-import { CLIENT_OUTDATED, ROOM_CLOSED, ROOM_FULL, SERVER_OUTDATED } from '@pedit/protocol/close'
+import {
+  CLIENT_OUTDATED,
+  RELAY_MAINTENANCE,
+  ROOM_CLOSED,
+  ROOM_FULL,
+  SERVER_OUTDATED,
+} from '@pedit/protocol/close'
 
 // Shared browser code brings DOM's SubtleCrypto into this program. Augment it
 // with the documented Workers extension also present in our generated types.
@@ -86,6 +92,17 @@ export function limits(env: LimitVars): Limits {
     quotaBytes: positive(env.BLOB_QUOTA_BYTES, DEFAULT_LIMITS.quotaBytes),
     quotaCount: positive(env.BLOB_QUOTA_COUNT, DEFAULT_LIMITS.quotaCount),
   }
+}
+
+type Maintenance = 'none' | 'no-new-rooms' | 'closed'
+
+/**
+ * The maintenance level in force, from the MAINTENANCE Worker var set in the
+ * dashboard. Anything but the known values is none.
+ */
+export function maintenance(env: { MAINTENANCE?: string }): Maintenance {
+  const level = env.MAINTENANCE?.trim()
+  return level === 'no-new-rooms' || level === 'closed' ? level : 'none'
 }
 
 const HOST_TAG = 'host'
@@ -184,6 +201,16 @@ export class Room extends DurableObject<Env> {
     }
     if (message.byteLength > MAX_MESSAGE_BYTES) {
       ws.close(1009, 'message too big')
+      return
+    }
+    // Setting the var redeploys the Worker, which normally restarts rooms and
+    // drops their connections, but Cloudflare may keep a room running on a
+    // change of vars only. Then its next message, at the latest a client's
+    // awareness renewal every 15 s, closes it.
+    if (maintenance(this.env as { MAINTENANCE?: string }) === 'closed') {
+      for (const peer of this.ctx.getWebSockets()) {
+        safeClose(peer, RELAY_MAINTENANCE, 'closed for maintenance')
+      }
       return
     }
     if (!this.allow(ws, message.byteLength)) {

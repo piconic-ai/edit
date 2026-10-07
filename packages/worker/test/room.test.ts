@@ -1,8 +1,8 @@
-import { evictDurableObject, runInDurableObject } from 'cloudflare:test'
+import { createExecutionContext, evictDurableObject, runInDurableObject } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { ADMISSION_HEADER, admissionProtocols } from '@pedit/protocol/admission'
 import { describe, expect, it, vi } from 'vitest'
-import { clientKey, overLimit, roomIdFor } from '../src/index.ts'
+import app, { clientKey, maintenance, overLimit, roomIdFor } from '../src/index.ts'
 import {
   BLOB_OVERHEAD,
   BYTE_RATE,
@@ -20,6 +20,7 @@ const CLIENT_OUTDATED = 4002
 const SERVER_OUTDATED = 4003
 const ROOM_FULL = 4004
 const RELAY_BUSY = 4005
+const RELAY_MAINTENANCE = 4006
 // The tests run with small limits (vitest.config.ts).
 const { guests: GUESTS, blobBytes: BLOB_BYTES } = limits(env)
 
@@ -652,4 +653,87 @@ describe('rate limits', () => {
     const other = await connect(room.id)
     expect(other.ws.readyState).toBe(WebSocket.OPEN)
   }, 20_000)
+})
+
+describe('maintenance', () => {
+  // The Worker as deployed with MAINTENANCE set to level.
+  const under = (level: string) => (request: Request) =>
+    app.fetch(request, { ...env, MAINTENANCE: level }, createExecutionContext())
+
+  it('reads the level, treating anything unknown as none', () => {
+    expect(maintenance({})).toBe('none')
+    expect(maintenance({ MAINTENANCE: 'no-new-rooms' })).toBe('no-new-rooms')
+    expect(maintenance({ MAINTENANCE: ' closed ' })).toBe('closed')
+    expect(maintenance({ MAINTENANCE: 'off' })).toBe('none')
+  })
+
+  it('takes no new rooms but keeps open ones going', async () => {
+    const room = await createRoom()
+    await host(room)
+    const fetch = under('no-new-rooms')
+    const res = await fetch(new Request('https://pedit.test/api/rooms', { method: 'POST' }))
+    expect(res.status).toBe(503)
+    expect(await res.text()).toMatch(/not taking new rooms.*self-hosting/)
+    const guest = await fetch(
+      new Request(`https://pedit.test/api/rooms/${room.id}/ws`, {
+        headers: {
+          Upgrade: 'websocket',
+          'Sec-WebSocket-Protocol': admissionProtocols(room.admission).join(', '),
+        },
+      }),
+    )
+    expect(guest.status).toBe(101)
+    guest.webSocket?.accept()
+    const blob = await fetch(
+      new Request(blobUrl(room, blobId(1)), {
+        method: 'PUT',
+        body: new Uint8Array([1]),
+        headers: { [ADMISSION_HEADER]: room.admission },
+      }),
+    )
+    expect(blob.status).toBe(201)
+  })
+
+  it('closes rooms that are still open at their next message', async () => {
+    const room = await createRoom()
+    const h = await host(room)
+    const guest = await connect(room.id)
+    // As if Cloudflare kept the room running when the var changed.
+    const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+    await runInDurableObject(stub, (instance: RoomObject) => {
+      instance['env'] = { ...instance['env'], MAINTENANCE: 'closed' } as Env
+    })
+    guest.ws.send(new Uint8Array(1))
+    expect((await guest.closed).code).toBe(RELAY_MAINTENANCE)
+    expect((await h.closed).code).toBe(RELAY_MAINTENANCE)
+    expect(h.received).toHaveLength(0)
+  })
+
+  it('closes everything when closed', async () => {
+    const room = await createRoom()
+    await host(room)
+    const fetch = under('closed')
+    const create = await fetch(new Request('https://pedit.test/api/rooms', { method: 'POST' }))
+    expect(create.status).toBe(503)
+    expect(await create.text()).toMatch(/closed for maintenance/)
+    const upgraded = await fetch(
+      new Request(`https://pedit.test/api/rooms/${room.id}/ws`, {
+        headers: {
+          Upgrade: 'websocket',
+          'Sec-WebSocket-Protocol': admissionProtocols(room.admission).join(', '),
+          Authorization: `Bearer ${room.hostToken}`,
+        },
+      }),
+    )
+    expect(upgraded.status).toBe(101)
+    expect(upgraded.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v1')
+    const ws = upgraded.webSocket as WebSocket
+    const closed = new Promise<CloseEvent>((resolve) => ws.addEventListener('close', resolve))
+    ws.accept()
+    expect((await closed).code).toBe(RELAY_MAINTENANCE)
+    const blob = await fetch(
+      new Request(blobUrl(room, blobId(1)), { headers: { [ADMISSION_HEADER]: room.admission } }),
+    )
+    expect(blob.status).toBe(503)
+  })
 })

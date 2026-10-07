@@ -32,6 +32,16 @@ describe('EndedBanner', () => {
     expect(copy.hidden).toBe(false)
   })
 
+  it('says the relay is closed for maintenance, with the text to copy and Reconnect', () => {
+    const { status, banner, copy, reconnect, onReconnect } = mount()
+    status.set('maintenance')
+    expect(banner.hidden).toBe(false)
+    expect(banner.textContent).toMatch(/closed for maintenance.*host has reconnected/)
+    expect(copy.hidden).toBe(false)
+    reconnect.click()
+    expect(onReconnect).toHaveBeenCalled()
+  })
+
   it('says why a full room let nobody in, with nothing to copy', () => {
     const { status, banner, copy, reconnect } = mount()
     status.set('full')

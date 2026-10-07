@@ -38,6 +38,11 @@ const RoomFull = 4004
 // wait longer than after a dropped connection.
 const RelayBusy = 4005
 
+// RelayMaintenance is the WebSocket close code for a connection to a relay
+// closed for maintenance. Clients must not reconnect on it by themselves:
+// whoever was editing decides whether to pick the session up again.
+const RelayMaintenance = 4006
+
 // ErrUnknownMessageType marks a message type this version does not know, from
 // a newer peer. Clients skip such messages instead of reporting them.
 var ErrUnknownMessageType = errors.New("unknown message type")

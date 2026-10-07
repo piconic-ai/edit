@@ -1,9 +1,9 @@
 import { checkProtocolVersion } from '@pedit/protocol/admission'
-import { RELAY_BUSY } from '@pedit/protocol/close'
+import { RELAY_BUSY, RELAY_MAINTENANCE } from '@pedit/protocol/close'
 import { Hono } from 'hono'
-import { HOST_HEADER, refuse } from './room.ts'
+import { HOST_HEADER, maintenance, refuse } from './room.ts'
 
-export { Room } from './room.ts'
+export { maintenance, Room } from './room.ts'
 
 // Room ids are 128+ bits, base64url without padding.
 const ROOM_ID = /^[A-Za-z0-9_-]{22}$/
@@ -76,15 +76,35 @@ export async function overLimit(
   return !success
 }
 
-/** Optional rate limit bindings (see the ratelimits in wrangler.jsonc). */
+/**
+ * Optional rate limit bindings (see the ratelimits in wrangler.jsonc), and the
+ * maintenance level, set in the dashboard when the relay has to stop: no new
+ * rooms, or closed altogether.
+ */
 type Bindings = Omit<Env, 'ROOM_CREATION_LIMIT' | 'CONNECTION_LIMIT'> & {
   ROOM_CREATION_LIMIT?: RateLimit
   CONNECTION_LIMIT?: RateLimit
+  MAINTENANCE?: string
+}
+
+const UNDER_MAINTENANCE =
+  'This relay is not taking new rooms right now, for maintenance. Try again later, or run a relay of your own: https://github.com/piconic-ai/pedit/blob/main/docs/self-hosting.md'
+const CLOSED_FOR_MAINTENANCE = 'This relay is closed for maintenance. Try again later.'
+
+// The subprotocol to answer an upgrade in when accepting it only to close it:
+// one the client offered, or it never sees the close.
+function offeredProtocol(request: Request): string | undefined {
+  const version = checkProtocolVersion(request.headers.get('Sec-WebSocket-Protocol'))
+  return 'offered' in version ? version.offered : undefined
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.post('/api/rooms', async (c) => {
+  const level = maintenance(c.env)
+  if (level !== 'none') {
+    return c.text(level === 'closed' ? CLOSED_FOR_MAINTENANCE : UNDER_MAINTENANCE, 503)
+  }
   if (await overLimit(c.env.ROOM_CREATION_LIMIT, c.req.raw, 'POST /api/rooms')) {
     return c.text('Too many rooms were created from your network. Try again in a minute.', 429, {
       'Retry-After': '60',
@@ -101,11 +121,11 @@ app.get('/api/rooms/:id/ws', async (c) => {
     return c.text('expected a WebSocket upgrade', 426)
   }
   if (!allowedOrigin(c.req.raw)) return c.text('cross-origin WebSocket not allowed', 403)
+  if (maintenance(c.env) === 'closed') {
+    return refuse(RELAY_MAINTENANCE, 'closed for maintenance', offeredProtocol(c.req.raw))
+  }
   if (await overLimit(c.env.CONNECTION_LIMIT, c.req.raw, 'GET /api/rooms/:id/ws')) {
-    // Answer in a subprotocol the client offered, or it never sees the close.
-    const version = checkProtocolVersion(c.req.header('Sec-WebSocket-Protocol') ?? null)
-    const offered = 'offered' in version ? version.offered : undefined
-    return refuse(RELAY_BUSY, 'too many connections from your network', offered)
+    return refuse(RELAY_BUSY, 'too many connections from your network', offeredProtocol(c.req.raw))
   }
 
   // Never trust a role header coming from outside.
@@ -125,6 +145,7 @@ app.get('/api/rooms/:id/ws', async (c) => {
 // Encrypted attachments, stored while the room's host is connected. The Room
 // verifies the admission capability before allowing reads or writes.
 app.all('/api/rooms/:id/blobs/:blobId', async (c) => {
+  if (maintenance(c.env) === 'closed') return c.text(CLOSED_FOR_MAINTENANCE, 503)
   const id = c.req.param('id')
   if (!ROOM_ID.test(id) || !BLOB_ID.test(c.req.param('blobId'))) {
     return c.text('invalid room or blob id', 400)

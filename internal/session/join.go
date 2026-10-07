@@ -53,6 +53,9 @@ var ErrRoomClosed = errors.New("the room is closed: the host left, or the link i
 // ErrRoomFull means the room already has as many guests as its relay allows.
 var ErrRoomFull = errors.New("the room is full: its relay takes only so many people at once; try again when someone leaves")
 
+// ErrRelayMaintenance means the relay is closed for maintenance.
+var ErrRelayMaintenance = errors.New("the relay is closed for maintenance; try again later")
+
 // ErrClientOutdated means the server speaks a newer protocol version than this
 // pedit, which has to be updated.
 var ErrClientOutdated = errors.New("this pedit is too old for the server; update it")
@@ -66,6 +69,8 @@ func endedErr(st protocol.Status) error {
 	switch st {
 	case protocol.StatusFull:
 		return ErrRoomFull
+	case protocol.StatusMaintenance:
+		return ErrRelayMaintenance
 	case protocol.StatusClientOutdated:
 		return ErrClientOutdated
 	case protocol.StatusServerOutdated:

@@ -327,10 +327,11 @@ func TestJoinFailsWhenTheRoomIsFull(t *testing.T) {
 	}
 }
 
-func TestJoinSaysWhichSideIsOutdated(t *testing.T) {
+func TestJoinSaysWhyTheServerTurnedItAway(t *testing.T) {
 	for code, want := range map[int]error{
-		protocol.ClientOutdated: ErrClientOutdated,
-		protocol.ServerOutdated: ErrServerOutdated,
+		protocol.ClientOutdated:   ErrClientOutdated,
+		protocol.ServerOutdated:   ErrServerOutdated,
+		protocol.RelayMaintenance: ErrRelayMaintenance,
 	} {
 		relay := prototest.NewRelay(false)
 		relay.Refuse = code
