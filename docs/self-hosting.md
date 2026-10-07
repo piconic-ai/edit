@@ -123,8 +123,8 @@ Worker was already published. Fix the bucket or permission issue and rerun
 To stop your relay for a while, set the Worker variable `MAINTENANCE` (in the
 Cloudflare dashboard → your Worker → Settings → Variables and Secrets):
 `no-new-rooms` turns away new rooms and keeps open ones going, `closed` turns
-away every connection. Changing it redeploys the Worker, which drops open
-connections; nothing reconnects on its own. Delete the variable to end it.
+away every connection, open rooms included within about 15 seconds. Nothing
+reconnects on its own. Delete the variable to end it.
 `keep_vars` in `wrangler.json` keeps it across deploys.
 
 ## Room limits

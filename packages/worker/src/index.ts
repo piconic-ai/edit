@@ -1,9 +1,9 @@
 import { checkProtocolVersion } from '@pedit/protocol/admission'
 import { RELAY_BUSY, RELAY_MAINTENANCE } from '@pedit/protocol/close'
 import { Hono } from 'hono'
-import { HOST_HEADER, refuse } from './room.ts'
+import { HOST_HEADER, maintenance, refuse } from './room.ts'
 
-export { Room } from './room.ts'
+export { maintenance, Room } from './room.ts'
 
 // Room ids are 128+ bits, base64url without padding.
 const ROOM_ID = /^[A-Za-z0-9_-]{22}$/
@@ -85,14 +85,6 @@ type Bindings = Omit<Env, 'ROOM_CREATION_LIMIT' | 'CONNECTION_LIMIT'> & {
   ROOM_CREATION_LIMIT?: RateLimit
   CONNECTION_LIMIT?: RateLimit
   MAINTENANCE?: string
-}
-
-type Maintenance = 'none' | 'no-new-rooms' | 'closed'
-
-/** The maintenance level in force. Anything but the known values is none. */
-export function maintenance(env: { MAINTENANCE?: string }): Maintenance {
-  const level = env.MAINTENANCE?.trim()
-  return level === 'no-new-rooms' || level === 'closed' ? level : 'none'
 }
 
 const UNDER_MAINTENANCE =

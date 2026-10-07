@@ -694,6 +694,21 @@ describe('maintenance', () => {
     expect(blob.status).toBe(201)
   })
 
+  it('closes rooms that are still open at their next message', async () => {
+    const room = await createRoom()
+    const h = await host(room)
+    const guest = await connect(room.id)
+    // As if Cloudflare kept the room running when the var changed.
+    const stub = env.ROOM.get(env.ROOM.idFromName(room.id))
+    await runInDurableObject(stub, (instance: RoomObject) => {
+      instance['env'] = { ...instance['env'], MAINTENANCE: 'closed' } as Env
+    })
+    guest.ws.send(new Uint8Array(1))
+    expect((await guest.closed).code).toBe(RELAY_MAINTENANCE)
+    expect((await h.closed).code).toBe(RELAY_MAINTENANCE)
+    expect(h.received).toHaveLength(0)
+  })
+
   it('closes everything when closed', async () => {
     const room = await createRoom()
     await host(room)
