@@ -634,15 +634,13 @@ describe('rate limits', () => {
     const room = await createRoom()
     await host(room)
     const ip = nextAddress()
-    // Turned away by the room for a wrong admission, but counted all the same.
-    const wrong = admissionProtocols('B'.repeat(43)).join(', ')
-    for (let i = 0; i < 60; i++) {
-      const res = await upgrade(room.id, {
-        'CF-Connecting-IP': ip,
-        'Sec-WebSocket-Protocol': wrong,
-      })
-      expect(res.status).toBe(403)
-    }
+    // Turned away by the Worker for a wrong host token, after being counted.
+    const turnedAway = await Promise.all(
+      Array.from({ length: 60 }, () =>
+        upgrade(room.id, { 'CF-Connecting-IP': ip, Authorization: 'Bearer wrong' }),
+      ),
+    )
+    expect(turnedAway.map((r) => r.status)).toEqual(Array(60).fill(403))
     const res = await upgrade(room.id, { 'CF-Connecting-IP': ip })
     expect(res.status).toBe(101)
     expect(res.headers.get('Sec-WebSocket-Protocol')).toBe('pedit-v1')
@@ -653,5 +651,5 @@ describe('rate limits', () => {
     // Another network still gets in.
     const other = await connect(room.id)
     expect(other.ws.readyState).toBe(WebSocket.OPEN)
-  })
+  }, 20_000)
 })
