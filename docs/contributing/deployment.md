@@ -54,6 +54,35 @@ is disconnected, so keep this table in sync with them:
 > pull request renaming the Worker in `packages/wrangler.json`; close it, as
 > self-hosted deployments rely on that name.
 
+### Zone settings
+
+Settings of the `piconic.ai` zone (Cloudflare dashboard → piconic.ai) also live
+only in the dashboard. They apply to every hostname in the zone, not only
+`edit.piconic.ai`:
+
+| Setting | Value | Where |
+| --- | --- | --- |
+| Minimum TLS Version | TLS 1.2 | SSL/TLS → Edge Certificates |
+
+Cloudflare's default lets a client negotiate TLS 1.0 or 1.1. The README's
+`curl -fsSL https://edit.piconic.ai/install.sh | sh` relies on the connection
+alone, so the floor is set on the server instead of asking everyone to pass
+`--tlsv1.2`. GitHub, which serves the release archives, already refuses TLS 1.0
+and 1.1. Set on 2026-10-10.
+
+To check: a refused version fails to connect and prints `000 1`, an accepted
+one prints `200 0`.
+
+```sh
+for v in 1.0 1.1 1.2; do
+  printf 'tls%s: ' "$v"
+  curl -sS -o /dev/null --tlsv$v --tls-max $v -w '%{http_code} %{ssl_verify_result}\n' https://edit.piconic.ai/ 2>&1 | tail -1
+done
+```
+
+macOS's stock curl (SecureTransport) cannot speak TLS 1.3, so `--tlsv1.3`
+failing there says nothing about the server.
+
 ### Maintenance mode
 
 When the public relay has to stop (a traffic spike, abuse the rate limits do
