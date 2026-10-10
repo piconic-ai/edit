@@ -70,18 +70,23 @@ alone, so the floor is set on the server instead of asking everyone to pass
 `--tlsv1.2`. GitHub, which serves the release archives, already refuses TLS 1.0
 and 1.1. Set on 2026-10-10.
 
-To check: a refused version fails to connect and prints `000 1`, an accepted
-one prints `200 0`.
+To check, pin curl to one version at a time:
 
 ```sh
 for v in 1.0 1.1 1.2; do
-  printf 'tls%s: ' "$v"
-  curl -sS -o /dev/null --tlsv$v --tls-max $v -w '%{http_code} %{ssl_verify_result}\n' https://edit.piconic.ai/ 2>&1 | tail -1
+  echo "tls$v:"
+  curl -sS -o /dev/null --tlsv$v --tls-max $v -w '%{http_code}\n' https://edit.piconic.ai/
 done
 ```
 
-macOS's stock curl (SecureTransport) cannot speak TLS 1.3, so `--tlsv1.3`
-failing there says nothing about the server.
+Only a `tlsv1 alert protocol version` error proves that Cloudflare refused the
+version: that alert comes from the server. `no protocols available` (OpenSSL)
+means the local curl refuses to speak it itself and says nothing about the
+server, which is the case on current Linux distributions; probe from a client
+that still allows the old versions, such as macOS's stock curl, or see
+[Cloudflare's note on testing](https://developers.cloudflare.com/ssl/edge-certificates/additional-options/minimum-tls/#test-supported-tls-versions).
+An accepted version prints `200`. macOS's stock curl (SecureTransport) cannot
+speak TLS 1.3, so `--tlsv1.3` failing there says nothing about the server either.
 
 ### Maintenance mode
 
